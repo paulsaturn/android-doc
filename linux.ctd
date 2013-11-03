@@ -1,0 +1,909 @@
+<?xml version="1.0" ?><cherrytree><node name="udhcpc" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>就可以直接把simple.script拿来使用，改不改名字都可以，busybox里面默认的目录文件是/usr/share/udhcpc/default.script
+ 　　可以查看下帮助
+ 　　# udhcpc --help
+ 　　BusyBox v1.14.1 (2010-01-22 10:35:16 CST) multi-call binary
+ 　　Usage: udhcpc [-Cfbnqtvo] [-c CID] [-V VCLS] [-H HOSTNAME] [-i INTERFACE]
+ 　　[-p pidfile] [-r IP] [-s script] [-O dhcp-option]... [-P N]
+ 　　-V CLASSID      Vendor class identifier
+ 　　-i INTERFACE    Interface to use (default: eth0)
+ 　　-H,-h HOSTNAME  Client hostname
+ 　　-c CLIENTID     Client identifier
+ 　　-C              Suppress default client identifier
+ 　　-p file         Create pidfile
+ 　　-r IP           IP address to request
+ 　　-s file         Run file at DHCP events (default /usr/share/udhcpc/default.script)
+ 　　-t N            Send up to N request packets
+ 　　-T N            Try to get a lease for N seconds (default 3)
+ 　　-A N            Wait N seconds (default 20) after failure
+ 　　-O OPT          Request DHCP option OPT (cumulative)
+ 　　-o              Do not request any options (unless -O is also given)
+ 　　-f              Run in foreground
+ 　　-b              Background if lease is not immediately obtained
+ 　　-S              Log to syslog too
+ 　　-n              Exit with failure if lease is not immediately obtained
+ 　　-q              Quit after obtaining lease
+ 　　-R              Release IP on quit
+ 　　-P N            Use port N instead of default 68
+ 　　-a              Use arping to validate offered address
+ 　　#
+ 　　这样就很好理解了。
+ 　　下面就说说使用udhcpd，同样可以直接把busybox自带的udhcpd.conf作为参考，怎么设置该文件就不详述了，去参考相关文档即可。看看udhcpd怎么使用
+ 　　# udhcpd --help
+ 　　BusyBox v1.14.1 (2010-01-22 10:35:16 CST) multi-call binary
+ 　　Usage: udhcpd [-fS] [-P N] [configfile]
+ 　　DHCP server
+ 　　-f      Run in foreground
+ 　　-S      Log to syslog too
+ 　　-P N    Use port N instead of default 67
+ 　　帮助一目了然。
+ 　　我使用的时候直接
+ 　　#udhcpd /etc/udhcpd.conf
+ 　　即可。
+ 　　还有一个租约文件要简要说说，使用udhcpd时会要求建立一个租约文件，按照提示创建一个就行了，它起什么作用呢？就是为了记录客户端所获得的IP，如果没有租约文件，则会重新给客户端分配一个新IP，如果有，则使用原先分配的IP。
+
+
+最近在做项目的时候卡在了dhcp处，当没有网络的时候，板子一直发送dhcp请求，导致程序不往下执行，解决的办法是把它切换到后台运行，可是如何切换到后台呢，有办法，它自带参数可以实现该功能。如下：
+   udhcpc</rich_text><rich_text foreground="#ff0000"> -b</rich_text><rich_text> -i eth0 -p /var/run/udhcpc.pid -R
+解释一下，-b就是切换到后台指令，-i是指定使用哪个网络接口，双网卡的时候一定要使用它来指定eth0  or  eth1。
+业务不熟练害死人啊，所以只要多看看源码，一般问题都能搞定。
+【最近新添加 -R】
+对于 -R参数，其实也很重要，在关闭udhcpc时，可以向dhcpserver发送release取消租约。
+</rich_text></node><node name="原子操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>  在任何处理器平台下，都会有一些原子性操作，供操作系统使用，我们这里只讲x86下面的。在单处理器情况下，每条指令的执行都是原子性的，但在多处理器情 况下，只有那些单独的读操作或写操作才是原子性的。为了弥补这一缺点，x86提供了附加的lock前缀，使带lock前缀的读修改写指令也能原子性执行。 带lock前缀的指令在操作时会锁住总线，使自身的执行即使在多处理器间也是原子性执行的。xchg指令不带lock前缀也是原子性执行，也就是说 xchg执行时默认会锁内存总线。原子性操作是线程间同步的基础，linux专门定义了一种只进行原子操作的类型atomic_t，并提供相关的原子读写 调用API。本节就来分析这些原子操作在x86下的实现。
+1. typedef struct {  
+2.     volatile int counter;  
+3. } atomic_t;  
+ 原子类型其实是int类型，只是禁止寄存器对其暂存。
+1. #define ATOMIC_INIT(i)  { (i) }  
+原子类型的初始化。32位x86平台下atomic API在arch/x86/include/asm/atomic_32.h中实现。
+1. static inline int atomic_read(const atomic_t *v)  
+2. {  
+3.     return v-&gt;counter;  
+4. }  
+5.   
+6. static inline void atomic_set(atomic_t *v, int i)  
+7. {  
+8.     v-&gt;counter = i;  
+9. }  
+单独的读操作或者写操作，在x86下都是原子性的。
+1. static inline void atomic_add(int i, atomic_t *v)  
+2. {  
+3.     asm volatile(LOCK_PREFIX &quot;addl %1,%0&quot;  
+4.              : &quot;+m&quot; (v-&gt;counter)  
+5.              : &quot;ir&quot; (i));  
+6. }  
+7.   
+8. static inline void atomic_sub(int i, atomic_t *v)  
+9. {  
+10.     asm volatile(LOCK_PREFIX &quot;subl %1,%0&quot;  
+11.              : &quot;+m&quot; (v-&gt;counter)  
+12.              : &quot;ir&quot; (i));  
+13. }  
+atomic_add和atomic_sub属于读修改写操作，实现时需要加lock前缀。
+1. static inline int atomic_sub_and_test(int i, atomic_t *v)  
+2. {  
+3.     unsigned char c;  
+4.   
+5.     asm volatile(LOCK_PREFIX &quot;subl %2,%0; sete %1&quot;  
+6.              : &quot;+m&quot; (v-&gt;counter), &quot;=qm&quot; (c)  
+7.              : &quot;ir&quot; (i) : &quot;memory&quot;);  
+8.     return c;  
+9. }  
+atomic_sub_and_test执行完减操作后检查结果是否为0。
+1. static inline void atomic_inc(atomic_t *v)  
+2. {  
+3.     asm volatile(LOCK_PREFIX &quot;incl %0&quot;  
+4.              : &quot;+m&quot; (v-&gt;counter));  
+5. }  
+6.   
+7. static inline void atomic_dec(atomic_t *v)  
+8. {  
+9.     asm volatile(LOCK_PREFIX &quot;decl %0&quot;  
+10.              : &quot;+m&quot; (v-&gt;counter));  
+11. }  
+atomic_inc和atomic_dec是递增递减操作。
+1. static inline int atomic_dec_and_test(atomic_t *v)  
+2. {  
+3.     unsigned char c;  
+4.   
+5.     asm volatile(LOCK_PREFIX &quot;decl %0; sete %1&quot;  
+6.              : &quot;+m&quot; (v-&gt;counter), &quot;=qm&quot; (c)  
+7.              : : &quot;memory&quot;);  
+8.     return c != 0;  
+9. }  
+atomic_dec_and_test在递减后检查结果是否为0。
+1. static inline int atomic_inc_and_test(atomic_t *v)  
+2. {  
+3.     unsigned char c;  
+4.   
+5.     asm volatile(LOCK_PREFIX &quot;incl %0; sete %1&quot;  
+6.              : &quot;+m&quot; (v-&gt;counter), &quot;=qm&quot; (c)  
+7.              : : &quot;memory&quot;);  
+8.     return c != 0;  
+9. }  
+atomic_inc_and_test在递增后检查结果是否为0。
+1. static inline int atomic_add_negative(int i, atomic_t *v)  
+2. {  
+3.     unsigned char c;  
+4.   
+5.     asm volatile(LOCK_PREFIX &quot;addl %2,%0; sets %1&quot;  
+6.              : &quot;+m&quot; (v-&gt;counter), &quot;=qm&quot; (c)  
+7.              : &quot;ir&quot; (i) : &quot;memory&quot;);  
+8.     return c;  
+9. }  
+atomic_add_negative在加操作后检查结果是否为负数。
+1. static inline int atomic_add_return(int i, atomic_t *v)  
+2. {  
+3.     int __i;  
+4. #ifdef CONFIG_M386  
+5.     unsigned long flags;  
+6.     if (unlikely(boot_cpu_data.x86 &lt;= 3))  
+7.         goto no_xadd;  
+8. #endif  
+9.     /* Modern 486+ processor */  
+10.     __i = i;  
+11.     asm volatile(LOCK_PREFIX &quot;xaddl %0, %1&quot;  
+12.              : &quot;+r&quot; (i), &quot;+m&quot; (v-&gt;counter)  
+13.              : : &quot;memory&quot;);  
+14.     return i + __i;  
+15.   
+16. #ifdef CONFIG_M386  
+17. no_xadd: /* Legacy 386 processor */  
+18.     local_irq_save(flags);  
+19.     __i = atomic_read(v);  
+20.     atomic_set(v, i + __i);  
+21.     local_irq_restore(flags);  
+22.     return i + __i;  
+23. #endif  
+24. }  
+atomic_add_return 不仅执行加操作，而且把相加的结果返回。它是通过xadd这一指令实现的。
+1. static inline int atomic_sub_return(int i, atomic_t *v)  
+2. {  
+3.     return atomic_add_return(-i, v);  
+4. }  
+atomic_sub_return 不仅执行减操作，而且把相减的结果返回。它是通过atomic_add_return实现的。
+1. static inline int atomic_cmpxchg(atomic_t *v, int old, int new)  
+2. {  
+3.     return cmpxchg(&amp;v-&gt;counter, old, new);  
+4. }  
+5.   
+6. #define cmpxchg(ptr, o, n)                      \  
+7.     ((__typeof__(*(ptr)))__cmpxchg((ptr), (unsigned long)(o),   \  
+8.                        (unsigned long)(n),      \  
+9.                        sizeof(*(ptr))))  
+10.   
+11. static inline unsigned long __cmpxchg(volatile void *ptr, unsigned long old,  
+12.                       unsigned long new, int size)  
+13. {  
+14.     unsigned long prev;  
+15.     switch (size) {  
+16.     case 1:  
+17.         asm volatile(LOCK_PREFIX &quot;cmpxchgb %b1,%2&quot;  
+18.                  : &quot;=a&quot;(prev)  
+19.                  : &quot;q&quot;(new), &quot;m&quot;(*__xg(ptr)), &quot;0&quot;(old)  
+20.                  : &quot;memory&quot;);  
+21.         return prev;  
+22.     case 2:  
+23.         asm volatile(LOCK_PREFIX &quot;cmpxchgw %w1,%2&quot;  
+24.                  : &quot;=a&quot;(prev)  
+25.                  : &quot;r&quot;(new), &quot;m&quot;(*__xg(ptr)), &quot;0&quot;(old)  
+26.                  : &quot;memory&quot;);  
+27.         return prev;  
+28.     case 4:  
+29.         asm volatile(LOCK_PREFIX &quot;cmpxchgl %k1,%2&quot;  
+30.                  : &quot;=a&quot;(prev)  
+31.                  : &quot;r&quot;(new), &quot;m&quot;(*__xg(ptr)), &quot;0&quot;(old)  
+32.                  : &quot;memory&quot;);  
+33.         return prev;  
+34.     case 8:  
+35.         asm volatile(LOCK_PREFIX &quot;cmpxchgq %1,%2&quot;  
+36.                  : &quot;=a&quot;(prev)  
+37.                  : &quot;r&quot;(new), &quot;m&quot;(*__xg(ptr)), &quot;0&quot;(old)  
+38.                  : &quot;memory&quot;);  
+39.         return prev;  
+40.     }  
+41.     return old;  
+42. }  
+
+ atomic_cmpxchg是由cmpxchg指令完成的。它把旧值同atomic_t类型的值相比较，如果相同，就把新值存入atomic_t类型的值中，返回atomic_t类型变量中原有的值。
+ 
+ 
+1. static inline int atomic_xchg(atomic_t *v, int new)  
+2. {  
+3.     return xchg(&amp;v-&gt;counter, new);  
+4. }  
+5.   
+6. #define xchg(ptr, v)                            \  
+7.     ((__typeof__(*(ptr)))__xchg((unsigned long)(v), (ptr), sizeof(*(ptr))))  
+8.   
+9. static inline unsigned long __xchg(unsigned long x, volatile void *ptr,  
+10.                    int size)  
+11. {  
+12.     switch (size) {  
+13.     case 1:  
+14.         asm volatile(&quot;xchgb %b0,%1&quot;  
+15.                  : &quot;=q&quot; (x)  
+16.                  : &quot;m&quot; (*__xg(ptr)), &quot;0&quot; (x)  
+17.                  : &quot;memory&quot;);  
+18.         break;  
+19.     case 2:  
+20.         asm volatile(&quot;xchgw %w0,%1&quot;  
+21.                  : &quot;=r&quot; (x)  
+22.                  : &quot;m&quot; (*__xg(ptr)), &quot;0&quot; (x)  
+23.                  : &quot;memory&quot;);  
+24.         break;  
+25.     case 4:  
+26.         asm volatile(&quot;xchgl %k0,%1&quot;  
+27.                  : &quot;=r&quot; (x)  
+28.                  : &quot;m&quot; (*__xg(ptr)), &quot;0&quot; (x)  
+29.                  : &quot;memory&quot;);  
+30.         break;  
+31.     case 8:  
+32.         asm volatile(&quot;xchgq %0,%1&quot;  
+33.                  : &quot;=r&quot; (x)  
+34.                  : &quot;m&quot; (*__xg(ptr)), &quot;0&quot; (x)  
+35.                  : &quot;memory&quot;);  
+36.         break;  
+37.     }  
+38.     return x;  
+39. }  
+
+ atomic_xchg则是将新值存入atomic_t类型的变量，并将变量的旧值返回。它使用xchg指令实现。
+ 
+1. /** 
+2.  * atomic_add_unless - add unless the number is already a given value 
+3.  * @v: pointer of type atomic_t 
+4.  * @a: the amount to add to v... 
+5.  * @u: ...unless v is equal to u. 
+6.  * 
+7.  * Atomically adds @a to @v, so long as @v was not already @u. 
+8.  * Returns non-zero if @v was not @u, and zero otherwise. 
+9.  */  
+10. static inline int atomic_add_unless(atomic_t *v, int a, int u)  
+11. {  
+12.     int c, old;  
+13.     c = atomic_read(v);  
+14.     for (;;) {  
+15.         if (unlikely(c == (u)))  
+16.             break;  
+17.         old = atomic_cmpxchg((v), c, c + (a));  
+18.         if (likely(old == c))  
+19.             break;  
+20.         c = old;  
+21.     }  
+22.     return c != (u);  
+23. }  
+
+ atomic_add_unless的功能比较特殊。它检查v是否等于u，如果不是则把v的值加上a，返回值表示相加前v是否等于u。因为在atomic_read和atomic_cmpxchg中间可能有其它的写操作，所以要循环检查自己的值是否被写进去。
+ 
+1. #define atomic_inc_not_zero(v) atomic_add_unless((v), 1, 0)  
+2.   
+3. #define atomic_inc_return(v)  (atomic_add_return(1, v))  
+4. #define atomic_dec_return(v)  (atomic_sub_return(1, v))  
+
+atomic_inc_not_zero在v值不是0时加1。
+atomic_inc_return对v值加1，并返回相加结果。
+atomic_dec_return对v值减1，并返回相减结果。
+ 
+1. #define atomic_clear_mask(mask, addr)               \  
+2.     asm volatile(LOCK_PREFIX &quot;andl %0,%1&quot;           \  
+3.              : : &quot;r&quot; (~(mask)), &quot;m&quot; (*(addr)) : &quot;memory&quot;)  
+atomic_clear_mask清除变量某些位。
+1. #define atomic_set_mask(mask, addr)             \  
+2.     asm volatile(LOCK_PREFIX &quot;orl %0,%1&quot;                \  
+3.              : : &quot;r&quot; (mask), &quot;m&quot; (*(addr)) : &quot;memory&quot;)  
+
+ atomic_set_mask将变量的某些位置位。
+1. /* Atomic operations are already serializing on x86 */  
+2. #define smp_mb__before_atomic_dec() barrier()  
+3. #define smp_mb__after_atomic_dec()  barrier()  
+4. #define smp_mb__before_atomic_inc() barrier()  
+5. #define smp_mb__after_atomic_inc()  barrier()  
+因为x86的atomic操作大多使用原子指令或者带lock前缀的指令。带lock前缀的指令执行前会完成之前的读写操作，对于原子操作来说不会 受之前对同一位置的读写操作，所以这里只是用空操作barrier()代替。barrier()的作用相当于告诉编译器这里有一个内存屏障，放弃在寄存器 中的暂存值，重新从内存中读入。
+ 
+本节的atomic_t类型操作是最基础的，为了介绍下面的内容，必须先介绍它。如果可以使用atomic_t类型代替临界区操作，也可以加快不少速度。
+
+
+=======================================================================================
+如没有赋值，则返回非零；否则返回零。
+int android_atomic_cmpxchg(int32_t oldvalue, int32_t newvalue, volatile int32_t* addr) {
+    return OSAtomicCompareAndSwap32Barrier(oldvalue, newvalue,(int32_t*)addr) == 0;
+}
+
+OSAtomicCompareAndSwap32Barrier :
+
+if (*addr == oldvalue) {
+     *addr = newvalue;
+     return 1;
+  } else {
+     return 0;
+  }
+
+</rich_text></node><node name="关于热插拔usb hotplug /proc/sys/kernel mdev udev busybox " prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text foreground="#000000">这篇文章说的很好http://blog.chinaunix.net/u1/38994/showart_2022040.html：</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">如何使用busybox精简版本udev程序--mdev动态创建插入的u盘和鼠标等设备 </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">busybox的mdev是一个精简了的udev管理程序,它可以间接的以hotplug方式被内核调用,进而在arm平台上/dev目录下动态创建设备 节点,因为hotplug会被内核发送uevent之前调用,所以如果动态可插拔设备很多,很频繁,那么每次内核都会调用elf格式的用户空间的 hotplug,生成一个独立的hotplug程序来处理,所以hotplug是一个非常笨重的实现方法,但是在我们的arm开发板上,可插拔设备并没有 想象中的频繁
+ 目前还没有必要移植完全版的udev,所以完全可以在不复杂的嵌入式设备上使用mdev来管理动态节点,
+ 方法也很简单,就是在rcS脚本中加入下面一句,将用户空间的应用程序路径传递给内核,
+ echo /sbin/mdev &gt; /proc/sys/kernel/hotplug
+ 之后kernel会在每次设备出现变动时调用上面一句传递进去的用户空间应用程序/sbin/mdev来处理对应的信息,进而mdev应用程序操作/dev目录下的设备,进行添加或删除,可以参考</rich_text><rich_text foreground="#000000" link="webs http://blog.chinaunix.net/u1/38994/showart_1981836.html">添加hotplug函数到内核,监控uevent信息</rich_text><rich_text foreground="#000000"> 
+   mdev的另外一个很有用的地方是,他可以通过proc和sys文件系统来动态整理出注册的设备,进而到/dev/下生成他们对应的节点,
+ 使用该功能之前必须mount上proc和sys文件系统,然后简单的执行下面的一句就弯成了:
+   mdev -s
+ 
+ 如果需要编译udev,下面是udev的下载地址：</rich_text><rich_text foreground="#000000" link="webs http://www.us.kernel.org/pub/linux/utils/kernel/hotplug/udev-145.tar.bz2">http://www.us.kernel.org/pub/linux/utils/kernel/hotplug/udev-145.tar.bz2</rich_text><rich_text foreground="#000000"> </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">这个哥们也说得比较详细：</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">http://203.208.39.132/search?q=cache:c8dPpXQD5HwJ:jimmy-lee.blog.hexun.com/31155612_d.html+busybox+hotplug&amp;cd=9&amp;hl=zh-CN&amp;ct=clnk&amp;gl=cn&amp;st_usg=ALhdy28vvvlS7owkZsMZfoX5oCEEE3l8aA</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">1, </rich_text><rich_text background="#ffffff" foreground="#000000">busybox</rich_text><rich_text>   添加mdev支持  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">2, 在/etc/rc.d/rcS中添加</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">#mount filesystem</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">/bin/mount -a</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">#start mdev</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">#设置系统的hotplug 程序为mdev</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">echo /sbin/mdev &gt; /proc/sys/kernel/</rich_text><rich_text background="#ffffff" foreground="#000000">hotplug  </rich_text><rich_text>   
+   
+</rich_text><rich_text foreground="#000000">#</rich_text><rich_text foreground="#ff0000">扫描并创建节点，这一步可不能少</rich_text><rich_text> 
+   
+</rich_text><rich_text foreground="#000000">mdev –s </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">/etc/fstab的内容如下：</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">proc    /proc   proc    defaults    0       0</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">none    /tmp    ramfs   defaults 0       0</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">mdev    /dev    ramfs   defaults 0       0</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">sysfs   /sys    sysfs   defaults    0       0</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">执行mdev -s  ：以‘-s’为参数调用位于 /sbin目录写的mdev（其实是个链接，作用是传递参数给/bin目录下的</rich_text><rich_text background="#ffffff" foreground="#000000">busybox </rich_text><rich_text> 程序并调用它），mdev扫描 /sys/class 和 /sys/block 中所有的类设备目录，如果在目录中含有名为“dev”的文件，且文件中包含的是设备号，则mdev就利用这些信息为这个设备在/dev 下创建设备节点文件。一般只在启动时才执行一次 “mdev -s”。  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">热插拔事件：由于启动时运行了命令：echo /sbin/mdev &gt; /proc/sys/kernel/</rich_text><rich_text background="#ffffff" foreground="#000000"> </rich_text><rich_text> hotplug ，那么当有热插拔事件产生时，内核就会调用位于 /sbin目录的mdev。这时mdev通过环境变量中的 ACTION 和 DEVPATH，来确定此次热插拔事件的动作以及影响了/sys中的那个目录。接着会看看这个目录中是否有“dev”的属性文件，如果有就利用这些信息为 这个设备在/dev 下创建设备节点文件。  
+</rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">解决使用mdev时“cannot create /proc/sys/kernel/hotplug :nonexistent directory”错误</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">确保编译内核时编译如下选项：</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">CONFIG_PROC_FS=y</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">CONFIG_PROC_SYSCTL=y</rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">CONFIG_HOTPLUG=y </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">CONFIG_NET=y </rich_text><rich_text>  
+</rich_text><rich_text foreground="#000000">如果CONFIG_HOTPLUG和CONFIG_NET不选或没全选上的话，/proc/sys/kernel下将不会创建</rich_text><rich_text background="#ffffff" foreground="#000000"> </rich_text><rich_text> hotplug文件.(参见kernel/sysctl.c)
+</rich_text><rich_text foreground="#000000">////////////////////////////////////////////////////////</rich_text><rich_text>
+</rich_text><rich_text foreground="#000000">这里有一段翻译的：</rich_text><rich_text>
+ 
+</rich_text><rich_text foreground="#000000">MDEV 入门(转)
+</rich_text><rich_text> 
+Busybox-1.7.0/docs/mdev.txt
+翻译：tekkamanninja Email：tekkamanninja@163.com - 1 -
+-------------
+MDEV Primer
+</rich_text><rich_text foreground="#0000ff">MDEV 入门</rich_text><rich_text>
+-------------
+For those of us who know how to use mdev, a primer might seem lame. For
+</rich_text><rich_text foreground="#0000ff">这份文档对于那些知道如何使用 mdev 的人看来可能有些肤浅。</rich_text><rich_text>
+everyone else, mdev is a weird black box that they hear is awesome, but can't
+</rich_text><rich_text foreground="#0000ff">但对于其他人，mdev 可能是一个神秘的黑匣子，以至让人敬畏。</rich_text><rich_text>
+seem to get their head around how it works. Thus, a primer.
+</rich_text><rich_text foreground="#0000ff">而这份文档又不足以让他们知道mdev 是如何工作的。 因此，这是一份入门文档。
+</rich_text><rich_text>-----------
+Basic Use
+</rich_text><rich_text foreground="#0000ff">基本使用方法
+</rich_text><rich_text>-----------
+Mdev has two primary uses: initial population and dynamic updates. Both
+</rich_text><rich_text foreground="#0000ff">mdev 有两个主要的应用：初始化对象和动态更新。</rich_text><rich_text>
+require sysfs support in the kernel and have it mounted at /sys. For dynamic
+</rich_text><rich_text foreground="#0000ff">两个应用都需要内核 sysfs 的支持，且必须挂载到 /sys 。为了实现动态更新，</rich_text><rich_text>
+updates, you also need to have hotplugging enabled in your kernel.
+</rich_text><rich_text foreground="#0000ff">你还必须在内核配置时增加热插拔支持（hotplugging）。</rich_text><rich_text>
+Here's a typical code snippet from the init script:
+</rich_text><rich_text foreground="#0000ff">以下是系统初始化脚本中一个典型的使用mdev 的代码片段：
+</rich_text><rich_text>    [1] mount -t sysfs sysfs /sys
+    [2] echo /bin/mdev &gt; /proc/sys/kernel/hotplug
+    [3] mdev -s
+Of course, a more &quot;full&quot; setup would entail executing this before the previous
+</rich_text><rich_text foreground="#0000ff">当然，一个对mdev 更完整的安装还必须在以上代码片段前执行下面的命令：</rich_text><rich_text>
+code snippet:
+    [4] mount -t tmpfs mdev /dev
+    [5] mkdir /dev/pts
+    [6] mount -t devpts devpts /dev/pts
+The simple explanation here is that [1] you need to have /sys mounted before
+</rich_text><rich_text foreground="#0000ff">简单说明一下上面的代码：[1]你必须在执行mdev 前挂载 /sys 。</rich_text><rich_text>
+executing mdev. Then you [2] instruct the kernel to execute /bin/mdev whenever
+</rich_text><rich_text foreground="#0000ff">随后你 [2] 命令内核在增删设备时执行 /bin/mdev ，</rich_text><rich_text>
+a device is added or removed so that the device node can be created or
+</rich_text><rich_text foreground="#0000ff">使设备节点文件会被创建和删除。</rich_text><rich_text>
+destroyed. Then you [3] seed /dev with all the device nodes that were created
+</rich_text><rich_text foreground="#0000ff">最后你 [3] 设置mdev，让它在系统启动时创建所有的设备节点。</rich_text><rich_text>
+while the system was booting.
+For the &quot;full&quot; setup, you want to [4] make sure /dev is a tmpfs filesystem
+</rich_text><rich_text foreground="#0000ff">而对mdev 更完整的安装，你必须[4]确保 /dev 是 tmpfs 文件系统</rich_text><rich_text>
+(assuming you're running out of flash). Then you want to [5] create the
+</rich_text><rich_text foreground="#0000ff">(假设文件系统在 flash 外运行)。 而且你必须 [5] 创建</rich_text><rich_text>
+
+-------------
+MDEV Config (/etc/mdev.conf)
+</rich_text><rich_text foreground="#0000ff">MDEV 配置 (/etc/mdev.conf)</rich_text><rich_text>
+-------------
+Mdev has an optional config file for controlling ownership/permissions of
+device nodes if your system needs something more than the default root/root
+660 permissions.
+</rich_text><rich_text foreground="#0000ff">如果你的系统需要一些比默认的 root/root 660 更多的权限，
+你可以使用 mdev 的可选配置文件，以控制设备节点的 所有者 和 权限。</rich_text><rich_text>
+The file has the format:
+</rich_text><rich_text foreground="#0000ff">这个文件的格式如下：</rich_text><rich_text>
+    &lt;device regex&gt; &lt;uid&gt;:&lt;gid&gt; &lt;octal permissions&gt;
+For example:
+</rich_text><rich_text foreground="#0000ff">例如：</rich_text><rich_text>
+    hd[a-z][0-9]* 0:3 660
+The config file parsing stops at the first matching line. If no line is
+</rich_text><rich_text foreground="#0000ff">这个配置文件在第一个匹配行处停止解析。 如果没有匹配行，</rich_text><rich_text>
+matched, then the default of 0:0 660 is used. To set your own default, simply
+</rich_text><rich_text foreground="#0000ff">那么就使用默认的 0:0 660 。 你也可以通过在最后创建如下的全匹配
+</rich_text><rich_text>create your own total match like so:
+</rich_text><rich_text foreground="#0000ff">行，来设置你自己的默认设置：</rich_text><rich_text>
+    .* 1:1 777
+If you also enable support for executing your own commands, then the file has
+</rich_text><rich_text foreground="#0000ff">如果你想 mdev 在找到匹配行时可以执行自定义的命令，那么文件格式如下：</rich_text><rich_text>
+the format:
+    &lt;device regex&gt; &lt;uid&gt;:&lt;gid&gt; &lt;octal permissions&gt; [&lt;@|$|*&gt; &lt;command&gt;]
+The special characters have the meaning:
+</rich_text><rich_text foreground="#0000ff">特殊字符的意义如下：</rich_text><rich_text>
+   @ Run after creating the device.
+</rich_text><rich_text foreground="#0000ff">    @ 在创建设备节点后运行命令。
+</rich_text><rich_text>    $ Run before removing the device.
+</rich_text><rich_text foreground="#0000ff">    $ 在删除设备节点前运行命令。</rich_text><rich_text>
+    * Run both after creating and before removing the device.
+</rich_text><rich_text foreground="#0000ff">    * 在创建设备节点后和删除设备节点前都运行命令。
+</rich_text><rich_text>The command is executed via the system() function (which means you're giving a
+</rich_text><rich_text foreground="#0000ff">这些命令是通过系统函数（system()）执行的（也就是说你在对shell 下命令）</rich_text><rich_text>
+command to the shell), so make sure you have a shell installed at /bin/sh.
+</rich_text><rich_text foreground="#0000ff">，所以请确保你已在 /bin/sh 安装了shell。</rich_text><rich_text>
+For your convenience, the shell env var $MDEV is set to the device name. So if
+</rich_text><rich_text foreground="#0000ff">为了方便，shell 的环境变量 $MDEV 会被设置成设备名。 例如</rich_text><rich_text>
+the device 'hdc' was matched, MDEV would be set to &quot;hdc&quot;.
+</rich_text><rich_text foreground="#0000ff">mdev 解析到设备 'hdc' 匹配，MDEV 将会被设置为 &quot;hdc&quot;。</rich_text><rich_text>
+
+----------
+FIRMWARE
+</rich_text><rich_text foreground="#0000ff">固件</rich_text><rich_text>
+----------
+Some kernel device drivers need to request firmware at runtime in order to
+</rich_text><rich_text foreground="#0000ff">有些设备驱动程序在运行时，为了正确的初始化设备，需要上传固件。</rich_text><rich_text>
+properly initialize a device. Place all such firmware files into the
+</rich_text><rich_text foreground="#0000ff">请将所有的固件文件放入</rich_text><rich_text>
+/lib/firmware/ directory. At runtime, the kernel will invoke mdev with the
+</rich_text><rich_text foreground="#0000ff">/lib/firmware/ 目录。 在运行时，内核将会按固件文件名调用 mdev ，</rich_text><rich_text>
+filename of the firmware which mdev will load out of /lib/firmware/ and into
+</rich_text><rich_text foreground="#0000ff">之后 mdev 会通过 sysfs 接口将固件从 /lib/firmware/</rich_text><rich_text>
+the kernel via the sysfs interface. The exact filename is hardcoded in the
+</rich_text><rich_text foreground="#0000ff">装载到内核。 确定的文件名被固化在内核中，</rich_text><rich_text>
+kernel, so look there if you need to want to know what to name the file in
+</rich_text><rich_text foreground="#0000ff">如有必要，你必须知道如何在用户空间命名这个文件。</rich_text><rich_text>
+userspace.
+</rich_text></node><node name="戴文linux内核" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text></rich_text><node name="01 介绍" prog_lang="custom-colors" readonly="False" tags="" unique_id="5"><rich_text>本文作者戴文.科利尔.约翰逊(Devyn Collier Johnson)今年才19岁，但是他在Linux内核、人工智能、编程语言方面拥有丰富的经验，本文是其在</rich_text><rich_text link="webs http://www.linux.org/threads/%EF%BB%BFthe-linux-kernel-introduction.4203/">linux.org上连载的一系列关于内核的文章</rich_text><rich_text>。文章写的深入浅出，本站不揣浅陋，由LCTT成员geekpi进行了系列翻译，以分享给广大Linux爱好者。
+ 
+在1991年，一个叫林纳斯·本纳第克特·托瓦兹的芬兰学生制作了一个现在非常流行的操作系统的内核。他于1991年9月发 布了Linux  0.01，并且于1992年以GPL许可证的方式授权了该内核。GNU通用许可证(GPL)允许人们使用、拥有、修改，以及合法和免费的分发源代码。这使 得内核变得非常流行，因为任何人都可以免费地下载。现在任何人都可以生成他们自己的内核，这有助于人们学习如何获取、编辑、配置、编译并安装Linux内 核。
+内核是操作系统的核心。操作系统是一系列的管理硬件并允许用户在电脑上运行应用的程序。内核控制着硬件和应用。应用并不直接和硬件打交道，而是首先和内核交互。总之，软件运行在内核上，而内核操作着硬件。没有内核，电脑就是一个没用的物件。
+用户制作他们自己的内核有各种各样的原因。许多用户也许想要一个只包含他们需要的代码的系统内核。比如说我的内核包含了火线 设备驱动，但是我的电脑缺乏这些端口。当系统启动时，时间和内存就会浪费在那些我系统上并没有安装的设备上。如果我想要简化我的内核，我会制作自己不包含 火线驱动的内核。至于另外一个理由，某个用户可能拥有一台有特殊硬件的设备，但是最新的Ubuntu版本中的内核缺乏所需的驱动。这个用户可以下载最新的 内核(比当前Ununtu的Linux内核要新)，并制作他们自己的有相应驱动的内核。不管怎样，这两个原因是用户想要制作自己的Linux内核的普遍原 因。
+在下载内核前，我们应该讨论一些重要的术语和事实。Linux内核是一个宏内核，这意味着整个操作系统都运行在内核预留的内 存里。说的更清楚一些，内核是放在内存里的。内核所使用的空间是内核预留的。只有内核可以使用预留的内核空间。内核拥有这些内存空间，直到系统关闭。与内 核空间相对应的还是用户空间。用户空间是内存上用户程序拥有的空间。比如浏览器、电子游戏、文字处理器、媒体播放器、壁纸、主题等都是放在内存里的用户空 间。当一个程序关闭的时候，任何程序都可以使用新释放的空间。在内核空间，一旦内存被占用，则没有任何其他程序可以使用这块空间。
+Linux内核也是一个抢占式多任务内核。这意味该内核可以暂停一些任务来保证任何应用都有机会来使用CPU。举个例子，如 果一个应用正在运行但是正在等待一些数据，内核会把这个应用暂停并允许其他的程序使用新释放的CPU资源，直到数据到来。否则的话，系统就会浪费资源给那 些正在等待数据或者其他程序执行的的任务。内核将会强制程序去等待或者停止使用CPU。没有内核的允许，应用程序不能脱离暂停或者使用CPU。
+Linux内核使得设备作为文件显示在/dev文件夹下。举个例子，USB端口位于/dev/bus/usb。硬盘分区则位 于/dev/disk/分区。因为这个特性，许多人说：“在Linux上，一切皆文件”。举个例子，如果一个用户想要访问在存储卡上的数据，他们能通过设 备文件访问这些数据。（译注：此处原文是“If a user wanted to access data on their memory  card, for example, they cannot access the data through these device files.”，但根据上下文和实际经验看，应该是“can 能”）
+Linux内核是可移植的。可移植性是Linux流行的一个最重要的原因。可移植性使得内核可以工作在各种处理器和系统上。 一些内核支持的处理器的型号包括：Alpha、AMD、ARM、C6X、Intel、x86、Microblaze、MIPS、PowerPC、 SPARC、UltraSPARC等，这还不是全部的列表。
+在引导文件夹(/boot),用户会看到诸如“vmlinux”或者“vmlinuz”的文件。这两者都是已编译的 Linux内核。以“z”结尾的是已压缩的。“vm”代表虚拟内存。在SPARC处理器的系统上，用户可以看见一个zImage文件。一小部分用户可以发 现一个bzImage文件，这也是一个已压缩的Linux内核。无论用户有哪个文件，这些引导文件都是不能更改的，除非用户知道他们正在做什么。否则系统 会变成无法引导，也就是说系统启动不了了。
+内核源代码就是程序编码。有了源代码，程序员可以修改内核并能观察到内核是如何工作的。
+
+</rich_text><rich_text scale="h3">下载内核:</rich_text><rich_text>
+现在我们想更多地了解了内核，就要下载内核源代码了。进入kernel.org并点击那个巨大的下载按钮。下载完成后，解压下载的文件。
+对于本文，我使用的源代码是Linux kernel 3.9.4.这个文章系列的所有指导对于所有的内核版本是相同的(或者非常相似的)
+</rich_text></node><node name="02 源代码" prog_lang="custom-colors" readonly="False" tags="" unique_id="6"><rich_text>在下载并解压内核源代码后，用户可以看到许多文件夹和文件。尝试去找一个特定的文件或许是一个挑战。谢天谢地，源代码以一个特定的方式组织的。这使开发者能够轻松找到任何文件或者内核的一部分。
+内核源代码的根目录下包含了以下文件夹
+arch
+block
+crypto
+Documentation
+drivers
+firmware
+fs
+include
+init
+ipc
+kernel
+lib
+mm
+net
+samples
+scripts
+security
+sound
+tools
+usr
+virt还有一些文件在源代码的根目录下。它们会在下面列出。
+COPYING -许可和授权信息。Linux内核在GPLv2许可证下授权。该许可证授予任何人有权免费去使用、修改、分发和共享源代码和编译代码。然而，没有人可以出售源代码。
+CREDITS - 贡献者列表
+Kbuild - 这是一个设置一些内核设定的脚本。打个比方，这个脚本设定一个ARCH变量，这是开发者想要生成的内核支持的处理器类型。
+Kconfig - 这个脚本会在开发人员配置内核的时候用到，这会在以后的文章中讨论。
+MAINTAINERS - 这是一个目前维护者列表，他们的电子邮件地址，主页，和他们负责开发和维护的内核的特定部分或文件。当一个开发者在内核中发现一个问题，并希望能够报告给能够处理这个问题的维护者时，这是是很有用的。
+Makefile - This script is the main file  that is used to compile the kernel. This file passes parameters to the  compiler as well as the list of files to compile and any other necessary  information. 这个脚本是编译内核的主要文件。这个文件将编译参数和编译所需的文件和必要的信息传给编译器。
+README - 这个文档提供给开发者想要知道的如何编译内核的信息。
+REPORTING-BUGS - 这个文档提供如何报告问题的信息。
+内核的代码是以“.c”或“.h”为扩展名的文件。 “.c”的扩展名表明内核是用众多的编程语言之一的C语言写的，  “h”的文件是头文件，而他们也是用C写成。头文件包含了许多“.c”文件需要使用的代码，因为他们可以引入已有的代码而不是重新编写代码，这节省了程序 员的时间。否则，一组执行相同的动作的代码，将存在许多或全部都是“c”文件。这也会消耗和浪费硬盘空间。（译注：头文件不仅仅可节省重复编码，而且代码 复用也会降低代码错误的几率）
+所有上面列出的文件夹中的文件都组织得很好。文件夹名称至少可以帮助开发人员很好地猜测文件夹中的内容。下面提供了一个目录树和描述。
+arch -  这个文件夹包含了一个Kconfig文件，它用于设置这个目录里的源代码编译所需的一系列设定。每个支持的处理器架构都在它相应的文件夹中。 如，Alpha处理器的源代码在alpha文件夹中。请记住，随着时间的推移，一些新的处理器将被支持,有些会被放弃。对于Linux  v3.9.4，arch下有以下文件夹：
+alpha
+arc
+arm
+arm64
+avr32
+blackfin
+c6x
+cris
+frv
+h8300
+hexagon
+ia64
+m32r
+m68k
+metag
+microblaze
+mips
+mn10300
+openrisc
+parisc
+powerpc
+s390
+score
+sh
+sparc
+tile
+um
+unicore32
+x86
+xtensablock – 此文件夹包含块设备驱动程序的代码。块设备是以数据块方式接收和发送的数据的设备。数据块都是一块一块的数据而不是持续的数据流。
+crypto - 这个文件夹包含许多加密算法的源代码。例如，“sha1_generic.c”这个文件包含了SHA1加密算法的代码。
+Documentation - 此文件夹包含了内核信息和其他许多文件信息的文本文档。如果开发者需要一些信息，他们也许能在这里找到所需要的信息。
+drivers -  该目录包含了驱动代码。驱动是一个控制硬件的软件。例如，要让计算机知道键盘并使其可用，键盘驱动是必要的。这个文件夹中存在许多文件夹。每个文件夹都以 硬件的种类或者型号命名。例如，'bluetooth'包含了蓝牙驱动程序的代码。还有其他很明显的驱动像SCSI、USB和火线等。有些驱动程序可能会 比较难找到。例如，操纵杆驱动不在'joystick'文件夹中，它们却在./drivers/input/joystick。同样键盘和鼠标驱动也在这 个input文件夹中。 'Macintosh'包含了苹果的硬件代码。 'Xen'包含了Xen  hypervisor代码。（hypervisor是一种允许用户在一台计算机上运行多个操作系统的软件或硬件。这意味着在Xen允许用户在一台计算机上 同时运行的两个或两个以上的Linux系统。用户还可以运行Windows，Solaris，FreeBSD或其他操作系统在Linux系统 上。）driver文件夹下还有许多其他的文件夹，但他们在这篇文章中无法一一列举，他们将在以后的文章中提到。
+firmware -  fireware中包含了让计算机读取和理解从设备发来的信号的代码。举例来说，一个摄像头管理它自己的硬件，但计算机必须了解摄像头给计算机发送的信 号。Linux系统会使用vicam固件（firmware）来理解摄像头的通讯。否则，没有了固件，Linux系统将不知道如何处理摄像头发来的信息。 另外，固件同样有助于将Linux系统发送消息给该设备。这样Linux系统可以告诉摄像头重新调整或关闭摄像头。
+fs -  这是文件系统的文件夹。理解和使用的文件系统所需要的所有的代码就在这里。在这个文件夹里，每种文件系统都有自己的文件夹。例如，ext4文件系统的代码 在ext4文件夹内。  在fs文件夹内，开发者会看到一些不在文件夹中的文件。这些文件用来控制整个文件系统。例如，mount.h中会包含挂载文件系统的代码。文件系统是以结 构化的方式来存储和管理的存储设备上的文件和目录。每个文件系统都有自己的优点和缺点。这是由文件系统的设计决定的。举例来说，NTFS文件系统支持的透 明压缩（当启用时，会在用户不知道的情况下自动压缩存储文件）。大多数文件系统缺乏此功能，但如果在fs文件夹里编入相应的文件，它们也有这种能力。
+include - include包含了内核所需的各种头文件.这个名字来自于C语言用&quot;include&quot;来在编译时导入头文件。
+init - init文件夹包含了内核启动的处理代码(INITiation)。main.c是内核的核心文件，这是用来衔接所有的其他文件的源代码主文件。
+ipc -  IPC代表进程间通讯。此文件夹中的代码是作为内核与进程之间的通信层。内核控制着硬件，因此程序只能请求内核来执行任务。假设用户有一个打开DVD托盘 的程序。程序不直接打开托盘，相反，该程序通知内核托盘应该被打开。然后，内核给硬件发送一个信号去打开托盘。这些代码同样管理kill信号。举例来说， 当系统管理员打开进程管理器去关闭一个已经锁死的程序，这个关闭程序的信号被称为kill信号。内核接收到信号，然后内核会要求程序停止或直接把进程从内 存和CPU中移除（取决于kill的类型）。命令行中的管道同样用于进程间通信。管道会告诉内核在某个内存页上写入输出数据。程序或者命令得到的数据是来 自内存页上的某个给定的指针。
+kernel - 这个文件夹中的代码控制内核本身。例如，如果一个调试器需要跟踪问题，内核将使用这个文件夹中代码来将内核指令通知调试器跟踪内核进行的所有动作。这里也有跟踪时间的代码。在内核文件夹下有个&quot;power&quot;文件夹，这里的代码可以使计算机重新启动、关机和挂起。
+lib - 这个文件夹包含了内核需要引用的一系列内核库文件代码。
+mm - mm文件夹中包含了内存管理代码。内存并不是任意存储在RAM芯片上的。相反，内核小心地将数据放在RAM芯片上。内核不会覆盖任何正在使用或保存重要数据的内存区域。
+net - net文件夹中包含了网络协议代码。这包括IPv6、AppleTalk、以太网、WiFi、蓝牙等的代码，此外处理网桥和DNS解析的代码也在net目录。
+samples - 此文件夹包含了程序示例和正在编写中的模块代码。假设一个新的模块引入了一个想要的有用功能，但没有程序员说它已经可以正常运行在内核上。那么，这些模块就会移到这里。这给了新内核程序员一个机会通过这个文件夹来获得帮助，或者选择一个他们想要协助开发的模块。
+scripts - 这个文件夹有内核编译所需的脚本。最好不要改变这个文件夹内的任何东西。否则，您可能无法配置或编译内核。
+security - 这个文件夹是有关内核安全的代码。它对计算机免于受到病毒和黑客的侵害很重要。否则，Linux系统可能会遭到损坏。关于内核的安全性，将在以后的文章中讨论。
+sound - 这个文件夹中包含了声卡驱动。
+tools - 这个文件夹中包含了和内核交互的工具。
+usr - 还记得在以前的文章中提到vmlinuz和其他类似的文件么？这个文件夹中的代码在内核编译完成后创建这些文件。
+virt -  此文件夹包含了虚拟化代码，它允许用户一次运行多个操作系统。这与先前提到的Xen是不同的。通过虚拟化，客户机操作系统就像任何其他运行在Linux主 机的应用程序一样运行。通过Xen这样的hypervisor(注:虚拟机管理程序)，两个操作系统可以同时管理硬件。在虚拟化中，在客户机操作系统上运 行在Linux内核上，而在hypervisor中，它没有客户系统并且所有的系统不互相依赖。
+提示: 绝不在内核源代码内移动文件，除非你知道你在做什么。否则，编译会由于缺失文件失败。
+Linux内核的文件夹结构保持相对稳定。内核开发者会做一些修改，但总体来说，这些设置对整个内核版本都是一样。驱动程序文件夹的布局也基本保持一样。
+</rich_text></node><node name="04 安全" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text>Linux内核是所有Linux系统的核心。如果有任何恶意代码控制或破害了内核的任何一部分，那么系统会严重受损，文件可 能被删除或损坏，私人信息可能被盗等等。很明显，保持内核安全涉及到用户的最大利益。值得庆幸的是，由于Linux内核极其安全，Linux是一个非常安 全的系统。在用户比例上，Linux病毒比Windows病毒更少，并且Linux用户比Windows用户个人更少感染病毒。(这就是为什么许多公司使 用Linux来管理他们的服务器的一个原因。)  然而，我们仍然没有借口去忽视内核的安全。Linux有几个安全特性和程序，但本文只讨论Linux安全模块(LSM)及其它的内核安全特性。
+
+AppArmor（应用盔甲）最初是由Immunix写的安全模块。自从2009年以来，Canonical维护着这些代码 （Novell在Immunix之后，Canonical以前管理这些代码）。这个安全模块已经从2.6.36版本进入Linux主分支之中。 AppArmor限制了程序的能力。AppArmor使用文件路径来跟踪程序限制。许多Linux管理员称AppArmor是最容易配置的安全模块。然 而，而许多Linux用户觉得这个模块与其它的替代品相比很糟糕。
+安全增强Linux(SELinux)是AppArmor的替代品，它最初由美国国家安全局开发（NSA）。SELinux 自从2.6版本就进入内核主分支中。SELinux是限制修改内核和用户空间的工具。SELinux给可执行文件(主要是守护进程和服务端程序)最小特权 去完成它们的任务。SELinux也可以用来控制用户权限。SELinux不像AppArmor那样使用文件路径，而SELinux在追踪权限时使用文件 系统去标记可执行文件。因为SElinux本身使用文件系统管理可执行文件，所以SELinux不能像AppArmor那样对整个文件系统提供保护。
+注意：守护进程是在后台运行的程序
+注意：虽然在内核中有AppArmor、SELinux及其它安全模块，但只能有一个安全模块被激活。
+Smack是安全模块的另一种选择。Smack从2.6.25起进入内核主分支。Smack应能比AppArmor更安全，但比SELinux更容易配置。
+TOMOYO，是另外一个安全模块，在2.6.30进入内核主分支。TOMOYO可以提供安全防护，但是它的主要用途是分析系统安全缺陷。
+AppArmor、SELinux、Smack和TOMYO组成了四个标准Linux安全模块。这些都通过使用强制访问控制 (MAC ： mandatory access  control)工作，这种访问控制是通过限制程序或者用户执行一些任务来实现的。安全模块还有某些形式的列表规定了它们可以做什么不可以做什么。
+Yama在Linux内核中一个新安全模块。Yama还没有作为标准的安全模块，但是在将来他会成为第5个标准安全模块。Yama和其他安全模块一样使用相同的机制。
+“grsecurity”是一系列Linux内核安全补丁的集合。多数补丁用于处理远程网络连接和缓冲区溢出的安全问题(以 后讨论)。grsecurity中有一个叫PaX的有趣组件。PaX补丁允许内存里的代码使用最少的所需权限。例如，存储程序的内存段被标为不可写。想想 看，为什么一个可执行的程序需要在内存中是可写的？通过这个补丁，恶意代码就不能修改目前正在执行的程序。缓冲区溢出是一种当程序由于bug或者恶意代码 在内存上写入数据，并让它的内存边界超出到其他程序的内存页上的安全事件。当Pax被激活时，它会帮助阻止这些缓冲区溢出，因为程序没有写到其他内存页上 的权限了。
+Linux入侵检测系统(LIDS)是一个内核安全补丁，提供了强制访问控制(MAC)的特性。这个补丁就像扮演LSM模块的角色。
+Systrace是一个减少和控制应用程序访问系统文件和系统调用的工具。系统调用是对内核的服务请求。比如，当一个文本编辑器写入一个文件到硬盘上时，程序将会发送一个系统请求让内核写入文件到硬盘中。
+这些是在Linux安全系统中非常重要的组件。这些安全模块和补丁使内核免于受到恶意代码的攻击。没有这些特性，Linux系统将会变成一个不安全的操作系统。
+</rich_text></node><node name="05 配置内核 (1)" prog_lang="custom-colors" readonly="False" tags="" unique_id="8"><rich_text>现在我们已经了解了内核，现在我们可以进入主要工作：配置并编译内核代码。配置内核代码并不会花费太长时间。配置工具会询问 许多问题并且允许开发者配置内核的每个方面。如果你有不确定的问题或者特性，你最好使用配置工具提供的默认值。本系列教程会使读者逐步了解配置内核的整个 过程。
+
+配置代码前需要在源文件的文件夹内打开一个终端。当终端打开后，基于你喜好的配置界面，这里有几种不同的配置方法：
+    • make config - 纯文本界面 (最常用的选择)。
+    • make menuconfig - 基于文本彩色菜单和单选列表。这个选项可以加快开发者开发速度。需要安装ncurses(ncurses-devel)。
+    • make nconfig - 基于文本的彩色菜单。需要安装curses (libcdk5-dev)。
+    • make xconfig - QT/X-windows 界面。需要安装QT。
+    • make gconfig - Gtk/X-windows 界面。需要安装GTK。
+    • make oldconfig - 纯文本界面，但是其默认的问题是基于已有的本地配置文件。
+    • make silentoldconfig - 和oldconfig相似，但是不会显示配置文件中已有的问题的回答。
+    • make olddefconfig -和silentoldconfig相似，但有些问题已经以它们的默认值选择。
+    • make defconfig - 这个选项将会创建一份以当前系统架构为基础的默认设置文件。
+    • make ${PLATFORM}defconfig - 创建一份使用arch/$ARCH/configs/${PLATFORM}defconfig中的值的配置文件。
+    • make allyesconfig - 这个选项将会创建一份尽可能多的问题回答都为‘yes’的配置文件。
+    • make allmodconfig - 这个选项将会创建一份将尽可能多的内核部分配置为模块的配置文件。
+注意：内核代码可以放进内核自身，也可以成为一个模块。例如，用户可以将蓝牙驱动作为一个模块加入(独立于内核)，或者直接 放到内核栗，或者完全不加蓝牙驱动。当代码放到内核本身时，内核将会请求更多的内存并且启动会花费更长的时间。然而，内核会执行的更好。如果代码作为模块 加入，代码将会一直存在于硬盘上直到被需要时加载。接着模块被加载到内存中。这可以减少内核的内存使用并减少启动的时间。然而，因为内核和模块在内存上相 互独立所以会影响内核的性能。另一种选择是不添加一些代码。举例来说，内核开发人员假如知道系统永远都不会使用蓝牙设备，因此这个驱动就可以不加到内核 中。这提升了内核的性能。然而，如果用户之后需要蓝牙设备，那么他么需要安装蓝牙模块或者升级内核才行。
+    • make allnoconfig - 这个选项只会生成内核所必要代码的配置文件。它对尽可能多的问题都回答no。这有时会导致内核无法工作在为编译该内核的硬件上。
+    • make randconfig - 这个选项会对内核选项随机选择（译注：这是做什么用途的？！）。
+    • make localmodconfig - 这个选项会根据当前已加载模块列表和系统配置来生成配置文件。
+    • make localyesconfig - 将所有可装载模块（LKM）都编译进内核(译者注：这里与原文 ‘This will set all module options to yes - most (or all) of the kernel will not be in modules’的意思不同，作者也作出了解释：</rich_text><rich_text link="webs http://www.linux.org/threads/the-linux-kernel-configuring-the-kernel-part-1.4274/#post-13307%29&amp;%2312290">http://www.linux.org/threads/the-linux-kernel-configuring-the-kernel-part-1.4274/#post-13307)。</rich_text><rich_text>;
+贴士：最好使用“make menuconfig”，因为用户可以保存进度。“make config”不会提供这样的便利，因为配置过程会耗费大量时间。
+
+</rich_text><rich_text scale="h3">配置:</rich_text><rich_text>
+大多数开发者选择使用“make  menucongfig”或者其他图形菜单之一。当键入上述配置命令后，第一个问题，是受否将内核编译成64位。选项有“Y”、“n”和“?”。问号用来 解释这个问题，“n”代表这个问题回答否(no),&quot;Y&quot;代表这个问题回答是(yes)。在这个教程里，我选择是。  这里我输入&quot;Y&quot;(这里是大小写敏感的)并输入回车。
+注意：当内核在32位系统上编译时，编译工具会询问内核是否编译成32位。第一个问题在不同的处理器上不一样。
+下一行显示的是&quot;Cross-compiler tool prefix (CROSS_COMPILE)  []&quot;（交叉编译器工具前缀）。如果你不是做交叉编译就直接按下回车。如果你正在交叉编译，对ARM系统输入像&quot;arm-unknown-linux- gnu-&quot;，对64位PC输入像&quot;x86_64-pc-linux-gnu-&quot;的字样。对其他处理器而言还有许多其他可能的命令，但是这个表太大了。一旦 一名开发者知道他们想要支持的处理器，很容易就可研究出处理器需要的命令。
+注意：交叉编译是为别的处理器编译代码。比如，一台Intel系统正编译着不在Intel处理器上运行的程序，比如，这个系统可能正在编译着要在ARM或AMD处理器上运行的代码。
+注意：每一项选择会改变接下来显示什么问题及何时显示。我会(在教程里)包含上我的选择让读者可以在他们自己的系统上跟上配置的进度。
+接下来,用户会看到“Local version - append to kernel release  (LOCALVERSION)  []”（本地版本号，附加到内核版本号后面）。这使开发人员可以给定一个特殊版本号或命名他们自定义的内核。我将输入“LinuxDotOrg”，这样， 内核版本会显示为“3.9.4-LinuxDotOrg”。接下来，配置工具会询问“Automatically append version  information to the version string (LOCALVERSION_AUTO)  [N/y/?]”（是否自动添加版本信息到版本号后）。如果本地有一个git版本库，git的修订号会被添加到版本号后面。这个例子中我们没有使用 git，所以我回答&quot;no&quot;。不然git修订号将会追加到版本号中。还记得vmlinuz和几个类似的文件么？好了，下一个问题就是问使用哪一种格式压缩 内核。开发人员可以从五个选项中选择一个。它们是
+    1. Gzip (KERNEL_GZIP)
+    2. Bzip2 (KERNEL_BZIP2)
+    3. LZMA (KERNEL_LZMA)
+    4. XZ (KERNEL_XZ)
+    5. LZO (KERNEL_LZO)
+Gzip是默认值，所以我选择&quot;1&quot;并按回车。每种压缩格式和其他压缩格式相比都有更高或者更低的压缩比。更好的压缩比意味着更小的体积，但是与低压缩比文件相比，它解压时需要更多的时间。
+现在这行显示“Default hostname (DEFAULT_HOSTNAME) [(none)]”（默认主机名）。这里可以配置主机名。通常地，开发者这行留空(我这里留空)，以便以后Linux用户可以自己设置他们的主机名。
+接下来开发者可以启用或者禁用交换分区。Linux使用一个叫做&quot;swap  space&quot;的独立分区来使用虚拟内存。这相当于Windows中的页面文件。典型地，开发者在这行“Support for paging of  anonymous memory (swap) (SWAP) [Y/n/?]”（是否支持匿名内存换页）回答“Y”。
+接下来的一行（System V IPC (SYSVIPC)  [Y/n/?]）询问内核是否支持IPC。进程间通信使进程间可以通信和同步。最好启用IPC不然许多程序将无法工作。这个问题回答“Y”会使配置工具接 下来问“POSIX Message Queues (POSIX_MQUEUE)  [Y/n/?]”（是否使用POSIX消息队列），这个问题只会在IPC启用后看见。POSIX消息队列是一种给每条消息一个优先级的消息队列（一种进程 间通信形式）。默认的选择是“Y”。按回车选择默认选择（以大写选择指示默认）。
+下一个问题“open by fhandle syscalls (FHANDLE) [Y/n/?]”（是否使用文件句柄系统调用来打开文件）是问当有需要进行文件系统操作的时候，程序是否允许使用文件句柄而不是文件名进行。默认上，这个选择是“Y”。
+有时，开发者在做了一些选择后，某些问题会自动回答。比如，下一个问题“Auditing support (AUDIT)   [Y/?]”（是否支持审计）会在没有提示的情况下自动回答，因为先前的选项需要这个特性。审计支持会记录所有文件的访问和修改。下一个关于审计的问题 “Enable system-call auditing support (AUDITSYSCALL)  [Y/n/?]”（是否启用系统调用审计支持）。如果启用，所有的系统调用都会记录下来。如果开发者想要更好的性能，那么最好尽可能地禁用审计特性并且不 把它加入内核。而另外一些开发者可能为了安全监控而启用审计。这个问题我选择“n”。下一个审计方面的问题“Make audit loginuid  immutable (AUDITLOGINUIDIMMUTABLE)  [N/y/?]”（是否要审计进程身份ID不可变）是询问进程是否可以改变它们的loginuid(LOGIN User  ID)，如果启用，用户空间的进程将无法改变他们的loginuid。为了更好的性能，我们这里禁用这个特性。（译注：对于使用systemd这样的系 统，其是通过中央进程来重启登录服务的，设置为“y”可以避免一些安全问题；而使用较旧的SysVinit和Upstart的系统，其需要管理员手工重启 登录服务，应该设置为“N”）
+注意：当通过“make config”配置时，这些通过配置工具回答的问题会显示出来但是用户无法改变答案。当通过&quot;make menuconfig&quot;配置时，无论用户按任何键都无法改变选项。开发者不需要去改变这些选项，因为之前的选择决定了另外一个问题的选择。
+</rich_text></node></node><node name="linux wifi工具" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>Wireless tools for Linux介绍 
+Wireless tools for  Linux是一个Linux命令行工具包，用来设置支持Linux Wireless Extension的无线设备。Wireless tools  for Linux 和 Linux Wireless Extension 由 Jean  Tourrilhes在维护，由Hewlett-Packard（HP惠普）赞助。
+大多数基于Linux内核的操作系统都包含Wireless tools。在许多GNU/Linux 发行版中，都缺省安装这个工具包，即使是没有自动安装，也能很容易地找到其二进制代码安装包。
+Wireless Extension  (WE)是一组通用的API，能在用户空间对通用Wireless  LANs进行配置和统计。它的好处在于仅通过一组单一的工具就能对各种各样的Wireless  LANs进行管理，不过它们是什么类型，只要其驱动支持Wireless  Extension就行；另一个好处就是不用重启驱动或Linux就能改变这些参数。
+       Wireless Tools  (WT)就是用来操作Wireless Extensions的工具集，它们使用字符界面，虽然粗糙，但支持所有Wireless  Extension。虽然还有很多其他管理Wireless Extensions的工具，但Wireless Tools是参考实现，它包括以下工具：
+        iwconfig：设置基本无线参数
+        iwlist：扫描、列出频率，比特率，密钥等 
+        iwspy：获取每个节点链接的质量
+        iwpriv：操作Wireless Extensions 特定驱动
+        ifrename： 基于各种静态标准命名接口
+大多数 Linux 发行版本都在其网络初始化脚本中集成Wireless Extension，以便启动时配置无线接口。他们还将Wireless Tools作为其标准封装包。
+无线配置也可以使用hotplug或uDev脚本来完成，需要发行版特定的支持，这样能支持任何可移动的无线接口（Pcmcia，CardBus，USB接口...）。
+Wireless Tools（从版本19）开始完全支持IEEE 802.11标准参数和设备，支持旧风格的设备和最专有协议，并准备处理HiperLan。较新版本增加了更多802.11支持。但不幸的是，并非所有的驱动程序支持所有这些功能。
+最新的稳定版本的Wireless Tools是版本29，大多数愚蠢的错误已被删除，并支持所有的Wireless Extension（从版本v11至v21）。可以从</rich_text><rich_text link="webs http://www.hpl.hp.com/personal/Jean_Tourrilhes/Linux/wireless_tools.29.tar.gz">http://www.hpl.hp.com/personal/Jean_Tourrilhes/Linux/wireless_tools.29.tar.gz</rich_text><rich_text>下载最新的Wireless Tools。
+     我们经常会用到的主要是iwlist、iwconfig、 iwpriv： 命令行：(ap不需要验证密码)
+iwlist mlan0 scan //搜索ap
+iwconfig mlan0 essid “linksys” //连接ap
+udhcpc –i mlan0  //获得动态IP
+ 
+命令行：(ap需要验证密码)
+iwlist mlan0 scan //搜索ap
+iwconfig mlan0 key  xxxxxxxxxx  // 输入验证密码
+iwconfig mlan0 key open //密码验证功能打开
+iwconfig mlan0 essid “linksys” //连接ap
+udhcpc –i mlan0 //获得动态IP
+  
+   关于iwconfig 可以看上一篇文章；这里补充一下有关iwpriv：       [root@root- /]#iwpriv    mlan0     Available private ioctls :
+          extscan          (8BFA) : set   0 int   &amp; get   2 char
+          hostcmd          (8BE4) : set 2047 byte  &amp; get 2047 byte
+          arpfilter        (8BE6) : set 2047 byte  &amp; get 2047 byte
+          regrdwr          (8BE3) : set 256 char  &amp; get 256 char
+          sdcmd52rw        (8BFE) : set   7 byte  &amp; get   7 byte
+          sdcmd53rw        (8BFF) : set   0 char  &amp; get   0 char
+          setgetconf       (8BEA) : set 2000 byte  &amp; get 2000 byte
+          getcis           (8BE1) : set   0       &amp; get 512 byte
+          scantype         (8BEB) : set   8 char  &amp; get   8 char
+          deauth           (0001) : set   1 addr  &amp; get   0
+          getNF            (0001) : set   1 int   &amp; get   1 int
+          getRSSI          (0002) : set   1 int   &amp; get   1 int
+          bgscan           (0004) : set   1 int   &amp; get   1 int
+          enable11d        (0005) : set   1 int   &amp; get   1 int
+          adhocgrate       (0006) : set   1 int   &amp; get   1 int
+          sdioclock        (0007) : set   1 int   &amp; get   1 int
+          wmm              (0008) : set   1 int   &amp; get   1 int
+          uapsdnullgen     (000A) : set   1 int   &amp; get   1 int
+          setcoalescing    (000B) : set   1 int   &amp; get   1 int
+          adhocgprot       (000C) : set   1 int   &amp; get   1 int
+          disable_chsw     (000F) : set   1 int   &amp; get   1 int
+          setpowercons     (0001) : set   1 int   &amp; get   1 int
+          wmm_qosinfo      (0002) : set   1 int   &amp; get   1 int
+          lolisteninter    (0003) : set   1 int   &amp; get   1 int
+          psnullinterval   (0005) : set   1 int   &amp; get   1 int
+          bcnmisto         (0006) : set   1 int   &amp; get   1 int
+          ldocfg           (0008) : set   1 int   &amp; get   1 int
+          rtsctsctrl       (000F) : set   1 int   &amp; get   1 int
+          moduletype       (000B) : set   1 int   &amp; get   1 int
+          autodeepsleep    (000C) : set   1 int   &amp; get   1 int
+          enhanceps        (000D) : set   1 int   &amp; get   1 int
+          wakeupmt         (000E) : set   1 int   &amp; get   1 int
+          setrxant         (0001) : set   1 int   &amp; get   0
+          settxant         (0002) : set   1 int   &amp; get   0
+          authalgs         (0004) : set   1 int   &amp; get   0
+          encryptionmode   (0005) : set   1 int   &amp; get   0
+          setregioncode    (0006) : set   1 int   &amp; get   0
+          setlisteninter   (0007) : set   1 int   &amp; get   0
+          setmultipledtim  (0008) : set   1 int   &amp; get   0
+          setbcnavg        (0009) : set   1 int   &amp; get   0
+          setdataavg       (000A) : set   1 int   &amp; get   0
+          associate        (000B) : set   1 int   &amp; get   0
+          getregioncode    (0001) : set   0       &amp; get   1 int
+          getlisteninter   (0002) : set   0       &amp; get   1 int
+          getmultipledtim  (0003) : set   0       &amp; get   1 int
+          gettxrate        (0004) : set   0       &amp; get   1 int
+          getbcnavg        (0005) : set   0       &amp; get   1 int
+          getdataavg       (0006) : set   0       &amp; get   1 int
+          getauthtype      (0007) : set   0       &amp; get   1 int
+          getrsnmode       (0008) : set   0       &amp; get   1 int
+          act_paircipher   (0009) : set   0       &amp; get   1 int
+          act_groupcipher  (000A) : set   0       &amp; get   1 int
+          getdtim          (000B) : set   0       &amp; get   1 int
+          getrxant         (0001) : set   0       &amp; get  12 char
+          gettxant         (0002) : set   0       &amp; get  12 char
+          gettsf           (0003) : set   0       &amp; get  12 char
+          wpssession       (0004) : set   0       &amp; get  12 char
+          deepsleep        (8BFB) : set   1 char  &amp; get   6 char
+          adhocstop        (0004) : set   0       &amp; get   0
+          radioon          (0001) : set   0       &amp; get   0
+          radiooff         (0002) : set   0       &amp; get   0
+          rmaeskey         (0003) : set   0       &amp; get   0
+          crypto_test      (0006) : set   0       &amp; get   0
+          reasso-on        (0007) : set   0       &amp; get   0
+          reasso-off       (0008) : set   0       &amp; get   0
+          wlanidle-on      (0009) : set   0       &amp; get   0
+          wlanidle-off     (000A) : set   0       &amp; get   0
+          softreset        (000C) : set   0       &amp; get   0
+          sleepparams      (0002) : set  64 char  &amp; get  64 char
+          requesttpc       (0004) : set  64 char  &amp; get  64 char
+          powercap         (0005) : set  64 char  &amp; get  64 char
+          measreq          (000C) : set  64 char  &amp; get  64 char
+          bca-ts           (0003) : set  64 char  &amp; get  64 char
+          scanmode         (0006) : set  64 char  &amp; get  64 char
+          getadhocstatus   (0009) : set  64 char  &amp; get  64 char
+          setgenie         (000A) : set  64 char  &amp; get  64 char
+          getgenie         (000B) : set  64 char  &amp; get  64 char
+          qstatus          (000D) : set  64 char  &amp; get  64 char
+          ts_status        (000E) : set  64 char  &amp; get  64 char
+          setaeskey        (0001) : set  32 char  &amp; get   0
+          getaeskey        (0001) : set   1 int   &amp; get 128 char
+          version          (0002) : set   1 int   &amp; get 128 char
+          verext           (0003) : set   1 int   &amp; get 128 char
+          setwpaie         (8BE0) : set  24 char  &amp; get   0
+          setband          (0001) : set  10 char  &amp; get   0
+          setadhocch       (0002) : set  10 char  &amp; get   0
+          chanswann        (0003) : set  10 char  &amp; get   0
+          getband          (0001) : set   0       &amp; get  10 char
+          getadhocch       (0002) : set   0       &amp; get  10 char
+          getlog           (8BE9) : set   0       &amp; get 512 char
+          tpccfg           (0001) : set  16 int   &amp; get  16 int
+          scanprobes       (0006) : set  16 int   &amp; get  16 int
+          ledgpio          (0005) : set  16 int   &amp; get  16 int
+          sleeppd          (0007) : set  16 int   &amp; get  16 int
+          rateadapt        (0008) : set  16 int   &amp; get  16 int
+          getSNR           (0009) : set  16 int   &amp; get  16 int
+          getrate          (000A) : set  16 int   &amp; get  16 int
+          getrxinfo        (000B) : set  16 int   &amp; get  16 int
+          atimwindow       (000C) : set  16 int   &amp; get  16 int
+          bcninterval      (000D) : set  16 int   &amp; get  16 int
+          sdiopullctrl     (000E) : set  16 int   &amp; get  16 int
+          scantime         (000F) : set  16 int   &amp; get  16 int
+          sysclock         (0010) : set  16 int   &amp; get  16 int
+          txcontrol        (0012) : set  16 int   &amp; get  16 int
+          hscfg            (0014) : set  16 int   &amp; get  16 int
+          hssetpara        (0015) : set  16 int   &amp; get  16 int
+          inactoext        (0016) : set  16 int   &amp; get  16 int
+          dbgscfg          (0017) : set  16 int   &amp; get  16 int
+          drvdbg           (0018) : set  16 int   &amp; get  16 int
+          drvdelaymax      (001A) : set  16 int   &amp; get  16 int
+          intfctrl         (001B) : set  16 int   &amp; get  16 int
+          setquietie       (001C) : set  16 int   &amp; get  16 int
+          ctspowerctrl     (001E) : set  16 int   &amp; get  16 int
+          psmode           (001F) : set  16 int   &amp; get  16 int
+          setuserscan      (0001) : set 2000 byte  &amp; get 2000 byte
+          getscantable     (0002) : set 2000 byte  &amp; get 2000 byte
+          setmrvltlv       (0003) : set 2000 byte  &amp; get 2000 byte
+          getassocrsp      (0004) : set 2000 byte  &amp; get 2000 byte
+          addts            (0005) : set 2000 byte  &amp; get 2000 byte
+          delts            (0006) : set 2000 byte  &amp; get 2000 byte
+          qconfig          (0007) : set 2000 byte  &amp; get 2000 byte
+          qstats           (0008) : set 2000 byte  &amp; get 2000 byte
+          txpktstats       (000C) : set 2000 byte  &amp; get 2000 byte
+          getcfptable      (0009) : set 2000 byte  &amp; get 2000 byte
+          mefcfg           (000A) : set 2000 byte  &amp; get 2000 byte
+          getmem           (000B) : set 2000 byte  &amp; get 2000 byte
+    通过iwpriv，我们可以得到AP的一些参数设置，也可以设置自己的WIFI参数。       [root@root- /]#iwpriv mlan0 getband
+       mlan0     getband:bg -----------------------------------------------------------------1.WIFI介绍
+Wi-Fi（WirelessFidelity），即无线保真，与蓝牙技术一样，同属于在办公室和家庭中使用的短距离无线 技术。该技术使用的使2.4GHz附近的频段，该频段目前尚属没用许可的无线频段。其目前可使用的标准有两个，分别是IEEE802.11a和 IEEE802.11b。Wi-Fi技术突出的优势在于：  其一，无线电波的覆盖范围广，基于蓝牙技术的电波覆盖范围非常小，半径大约只有50英尺左右约合15米，而Wi-Fi的半径则可达300英尺左右约合 100米。  其二，传输速度非常快，可以达到11mbps，符合个人和社会信息化的需求。根据无线网卡使用的标准不同，WIFI的速度也有所不同。其中 IEEE802.11b最高为11Mbps（部分厂商在设备配套的情况下可以达到22Mbps），IEEE802.11a为54Mbps、 IEEE802.11g也是54Mbps。WIFI无线网络由AP(Access  Point)和无线网卡组成。AP一般称为网络桥接器或接入点，AP每100ms将SSID（Service Set  Identifier）经由beacons（信号台）封包广播一次，beacons封包的传输速率是1  Mbit/s，并且长度相当的短，所以这个广播动作对网络效能的影响不大。因为Wi-Fi规定的最低传输速率是1 Mbit/s  ，所以确保所有的Wi-Fi client端都能收到这个SSID广播封包，client  可以借此决定是否要和这一个SSID的AP连线。使用者可以设定要连线到哪一个SSID。Wi-Fi系统总是对用户端开放其连接标准，并支援漫游，这就是 Wi-Fi的好处。但亦意味着，一个无线适配器有可能在性能上优于其他的适配器。由于Wi-Fi通过空气传送信号，所以和非交换以太网有相同的特点。  Wifi加密方式主要有以下三种：WEP（有线等效加密）——采用WEP 64位或者128位数据加密 WPA-PSK  [TKIP]——采用预共享密钥的Wi-Fi保护访问，采用WPA-PSK标准加密技术，加密类型为TKIP WPA2-PSK  [AES]——采用预共享密钥的Wi-Fi保护访问（版本2），采用WPA2-PSK标准加密技术，加密类型为AES 
+2.WIFI相关工具安装
+在加载wifi驱动之前，我们需要安装应用层的工具，即wireless tools与wpa_supplicant。
+2.1 wireless-tools安装
+wireless-tools是一组无线网络扫描器及监控工具，可以用于监控、分析、以及测试WiFi网络，支持几乎所有的无线网卡和驱动，它可以支持WEP的AP，但它不能连接到那些只支持WPA的AP。连接AP需要使用它所编译出来的工具。
+1、资源下载
+下载wireless_tools.29.tar.gz
+2、解压
+# tar zxvf wireless_tools.29.tar.gz
+#cd wireless_tools.29
+3、修改Makefile
+## Compiler to use (modify this for cross compile).
+CC = mipsel-linux-gcc
+4、编译
+#make
+5、拷贝
+将生成的工具:iwlist、iwconfig、iwpriv等拷贝到目标板上，路径为:/root/app/bin/wifitools/
+2.3 wpa-supplicant安装
+由于wireless tools只能支持连接WEP的AP，所以要支持WPA的AP就需要移植wpa_supplicant。
+Rt73的原始驱动中采用的wpa_supplicant的版本比较旧，是0.5.8，我们采用版本。
+1、下载资源
+本文使用的是：
+</rich_text><rich_text link="webs http://hostap.epitest.fi/releases/wpa_supplicant-0.5.11.tar.gz">http://hostap.epitest.fi/releases/wpa_supplicant-0.5.11.tar.gz</rich_text><rich_text>
+最新 wpa-supplicant 
+</rich_text><rich_text link="webs http://hostap.epitest.fi/releases/wpa_supplicant-0.6.9.tar.gz">http://hostap.epitest.fi/releases/wpa_supplicant-0.6.9.tar.gz</rich_text><rich_text>
+2、文件修改
+对照2009_0206_RT73_Linux_STA_Drv.bz2中WPA_Supplicant-0.5.8的文件，修改0.5.11中的对应文件，
+3、解压
+# tar zxvf wpa_supplicant-0.5.11.tar.gz
+# cd wpa_supplicant-0.5.11
+4、编译
+#cp defconfig .config #使用默认的config
+#export CC=mipsel-linux-gcc
+#make
+5、安装
+将生成的wpa_supplicant 拷贝到目标板上, 路径为:/root/app/bin/wifitools/下
+6、编写wpa网络的配置文件wpa_supplicant.conf
+在目标板上目录为/root/appb/conf/wifi/下，创建一个wpa_supplicant.conf，键入以下内容：
+ctrl_interface=/var/run/wpa_supplicant
+ctrl_interface_group=0
+ap_scan=1
+network={
+ssid=&quot;a&quot; #essid
+psk=&quot;111&quot; #密码
+}
+3. WIFI驱动安装
+1、驱动下载
+</rich_text><rich_text link="webs http://www.ralinktech.com.tw/data/drivers/2009_0206_RT73_Linux_STA_Drv1.1.0.2.tar.bz2">http://www.ralinktech.com.tw/data/drivers/2009_0206_RT73_Linux_STA_Drv1.1.0.2.tar.bz2</rich_text><rich_text>
+2、解压
+# tar jxvf 2009_0206_RT73_Linux_STA_Drv1.1.0.2.tar.bz2
+# cd 2009_2006_RT73_Linux_STA_Drv_1.1.0.2/Module
+3、修改Makefile
+5 #PLATFORM=PC
+6 PLATFORM=CMPC
+40 ifeq ($(PLATFORM),CMPC)
+41 LINUX_SRC = /opt/smp86xx_kernel_source_2.8.4.1/linux-2.6.15
+42 endif
+4、编译
+# cp Makefile.6 ./Makefile
+# make
+5、安装
+在目标板上，先将生成的rt73.ko以及文件rt73sta.dat 与 rt73.bin 拷贝到目标板上。
+# cp rt73.ko /root/app/lib/ modules/2.6.15/
+# mkdir –p /etc/Wireless/RT73STA
+# cp rt73.bin /etc/Wireless/RT73STA
+# cp rt73sta.dat /etc/Wireless/RT73STA
+# insmod rt73.ko
+# lsmod
+另：ifrename 的使用
+touch /etc/iftab 
+ifrename -i ra0 -n wlan0 
+ifrename -i rausb0 -n wlan0 
+/etc/iftab  wlan1 mac 
+</rich_text><rich_text link="webs http://linux.die.net/man/8/ifrename">http://linux.die.net/man/8/ifrename</rich_text><rich_text>
+ ---------------------------------------------------------------------------
+移植wireless tools for liunx
+要正常使用无线网卡，还要正确配置。linux下的配置工具是wireless-tools，可以在这里下载到它的最新版。</rich_text><rich_text link="webs http://www.hpl.hp.com/personal/Jean_Tourrilhes/Linux/Tools.html">http://www.hpl.hp.com/personal/Jean_Tourrilhes/Linux/Tools.html</rich_text><rich_text>下载后，将源代码解压。再修改其中的makefile文件，将其中的
+CC = gcc
+AR = ar
+RANLIB = ranlib
+改为</rich_text><rich_text background="#fff700">
+CC = arm-linux-gcc</rich_text><rich_text>
+</rich_text><rich_text background="#fff700">AR = arm-linux-ar</rich_text><rich_text>
+</rich_text><rich_text background="#fff700">RANLIB = arm-linux-ranlib</rich_text><rich_text>再执行make，编译完成后，将生成的iwconfig，iwlist文件拷贝到rat-linux for mini2440的根文件系统中的/bin目录下，将libiw.so.29拷贝到/lib目录下。启动mini2440开发板，进入linux命令行后，执行ifconfig wlan0 up，启动无线网卡。再执行iwlist scanning，此命令可以搜索到可用的无线网络接入点。我的无线接入点是一台无线路由器，ESSID是&quot;rat-linux&quot;，执行此命令后就会下列输出wlan0     Scan completed :
+          Cell 01 - Address: 00:19:C6:53:B9:CE
+                    ESSID:&quot;rat-linux&quot;
+                    Mode:Master
+                    Channel:2
+                    Frequency:2.417 GHz (Channel 2)
+                    Quality=11/100  Signal level:66/100
+                    Encryption key:on
+                    Bit Rates:1 Mb/s; 2 Mb/s; 5.5 Mb/s; 11 Mb/s; 6 Mb/s
+                              9 Mb/s; 12 Mb/s; 18 Mb/s; 24 Mb/s; 36 Mb/s
+                              48 Mb/s; 54 Mb/s
+                    Extra:tsf=000000056306469f
+                    Extra: Last beacon: 1065ms ago
+其中可以看到我的无线接入点是需要密码的。假设密码是123456。使用如下的命令设置密码。
+  iwconfig wlan0 key 123456为了能接无线网，还要使用下面的命令设置ESSID  iwconfig wlan0 essid &quot;rat-linux&quot;其它的参数可以都采用默认的，不用再设了。可以使用下面的命令加入无线网了。
+ 
+  iwconfig wlan0 ap auto再执行iwconfig wlan0，就可以看到下面的信息。wlan0     IEEE 802.11bg  ESSID:&quot;rat-linux&quot;
+          Mode:Managed  Frequency:2.417 GHz  Access Point: 00:19:C6:53:B9:CE
+          Bit Rate=1 Mb/s   Tx-Power=27 dBm
+          Retry min limit:7   RTS thr:off   Fragment thr=2352 B
+          Encryption key:1234-56   Security mode:open
+          Power Management:off
+          Link Quality=100/100  Signal level:66/100
+          Rx invalid nwid:0  Rx invalid crypt:0  Rx invalid frag:0
+          Tx excessive retries:0  Invalid misc:0   Missed beacon:0这就表示已接入无线网。最后，为无线网卡指定IP地址。命令如下  ifconfig wlan0 192.168.1.30 netmask 255.255.255.0我的开发主机和无线网卡处于同一网段，因此是可以相互PING通的。因此可以用从开发主机上PING无线网卡的IP地址的方法来确网卡是否工作正常。从主机上执行ping 192.168.1.30，正常PING通。
+至此，无线网卡安装全部完成。最后，为了方便配置，可以将上述的配置命令写入linux脚本文件，以后，只要执行此脚本，即可完成上述步骤的配置。脚本文件内容如下。
+#! /bin/shifconfig wlan0 up
+iwconfig wlan0 key 123456
+iwconfig wlan0 essid &quot;rat-linux&quot;
+iwconfig wlan0 ap auto
+ifconfig wlan0 192.168.1.30 netmask 255.255.255.0</rich_text></node></cherrytree>
