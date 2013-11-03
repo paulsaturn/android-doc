@@ -48,7 +48,144 @@
 业务不熟练害死人啊，所以只要多看看源码，一般问题都能搞定。
 【最近新添加 -R】
 对于 -R参数，其实也很重要，在关闭udhcpc时，可以向dhcpserver发送release取消租约。
-</rich_text></node><node name="原子操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>  在任何处理器平台下，都会有一些原子性操作，供操作系统使用，我们这里只讲x86下面的。在单处理器情况下，每条指令的执行都是原子性的，但在多处理器情 况下，只有那些单独的读操作或写操作才是原子性的。为了弥补这一缺点，x86提供了附加的lock前缀，使带lock前缀的读修改写指令也能原子性执行。 带lock前缀的指令在操作时会锁住总线，使自身的执行即使在多处理器间也是原子性执行的。xchg指令不带lock前缀也是原子性执行，也就是说 xchg执行时默认会锁内存总线。原子性操作是线程间同步的基础，linux专门定义了一种只进行原子操作的类型atomic_t，并提供相关的原子读写 调用API。本节就来分析这些原子操作在x86下的实现。
+</rich_text></node><node name="printk的log level" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text>Printk的loglevel和日志记录分析
+（分析版本是ubuntu7.10，内核源码是2.6.23）
+ 
+首先，printk有8个loglevel,定义在&lt;linux/kernel.h&gt;中，其中数值范围从0到7，数值越小，优先级越高。
+#define    KERN_EMERG      &quot;&lt;0&gt;&quot;      /* system is unusable     */ 系统崩溃
+#define    KERN_ALERT       &quot;&lt;1&gt;&quot;/* action must be taken immediately*/必须紧急处理
+#define    KERN_CRIT  &quot;&lt;2&gt;&quot;      /* critical conditions      */ 临界条件，严重的硬软件错误
+#define    KERN_ERR    &quot;&lt;3&gt;&quot;      /* error conditions  */ 报告错误
+#define    KERN_WARNING &quot;&lt;4&gt;&quot;      /* warning conditions           */警告
+#define    KERN_NOTICE     &quot;&lt;5&gt;&quot;      /* normal but significant condition */普通但还是须注意
+#define    KERN_INFO  &quot;&lt;6&gt;&quot;      /* informational                    */ 信息
+#define    KERN_DEBUG      &quot;&lt;7&gt;&quot;      /* debug-level messages               */ 调试信息
+从这里也可以看出他们的优先级是数值越小，其紧急和严重程度就越高。
+extern int console_printk[];
+ 
+#define console_loglevel (console_printk[0])
+#define default_message_loglevel (console_printk[1])
+#define minimum_console_loglevel (console_printk[2])
+#define default_console_loglevel (console_printk[3])
+ 
+未指定优先级的默认级别定义在/kernel/printk.c中：
+ 
+/* printk's without a loglevel use this.. */
+#define DEFAULT_MESSAGE_LOGLEVEL 4 /* KERN_WARNING */
+/* We show everything that is MORE important than this.. */
+ 
+#define MINIMUM_CONSOLE_LOGLEVEL 1 /* Minimum loglevel we let people use */
+#define DEFAULT_CONSOLE_LOGLEVEL 7 /* anything MORE serious than KERN_DEBUG */
+ 
+int console_printk[4] = {
+       DEFAULT_CONSOLE_LOGLEVEL,   /* console_loglevel */ 终端级别
+       DEFAULT_MESSAGE_LOGLEVEL,   /* default_message_loglevel */默认级别
+       MINIMUM_CONSOLE_LOGLEVEL,  /* minimum_console_loglevel */让用户使用的最小级别
+       DEFAULT_CONSOLE_LOGLEVEL,   /* default_console_loglevel */默认终端级别
+};
+当优先级的值小于console_loglevel这个整数变量的值，信息才能显示出来。而console_loglevel的初始值DEFAULT_CONSOLE_LOGLEVEL也定义在/kernel/printk.c中： 
+ 
+cat /proc/sys/kernel/printk
+4   4   1   7
+这个默认值是在sysctl.conf中写的，在系统启动时就把这个值写到/proc/sys/kernel/printk这个文件了。也可以使用下面的命令修改其值
+echo 0 &gt; /proc/sys/kernel/printk 
+cat /proc/sys/kernel/printk
+0   4   1   7
+ 
+它们根据日志记录消息的重要性，定义将其发送到何处。关于不同日志级别的更多信息，请阅读 syslog(2) 联机帮助页。该文件的四个值为：
+控制台日志级别：优先级高于该值的消息将被打印至控制台
+缺省的消息日志级别：将用该优先级来打印没有优先级的消息
+最低的控制台日志级别：控制台日志级别可被设置的最小值（最高优先级）
+缺省的控制台日志级别：控制台日志级别的缺省值
+以下是我的测试程序和作的相关的测试。
+#include &lt;linux/module.h&gt;
+#include &lt;linux/init.h&gt;
+#include &lt;linux/kernel.h&gt;
+ 
+static int __init pinit(void)
+{
+ printk(&quot;&lt;0&gt;goodluck0!/n&quot;);
+ printk(&quot;&lt;1&gt;goodluck1!/n&quot;);
+ printk(&quot;&lt;2&gt;goodluck2!/n&quot;);
+ printk(&quot;&lt;3&gt;goodluck3!/n&quot;);
+ printk(&quot;&lt;4&gt;goodluck4!/n&quot;);
+ printk(&quot;&lt;5&gt;goodluck5!/n&quot;);
+ printk(&quot;&lt;6&gt;goodluck6!/n&quot;);
+ printk(&quot;&lt;7&gt;goodluck7!/n&quot;);
+ printk(&quot;&lt;8&gt;goodluck8!/n&quot;);//虽然没有这级别，我还是试了一把。目的是看默认级别。
+ return 0;
+}
+ 
+static void __exit pexit(void)
+{
+ printk(&quot;&lt;0&gt;goodbey!0/n&quot;);
+ printk(&quot;&lt;1&gt;goodbey!1/n&quot;);
+ printk(&quot;&lt;2&gt;goodbey!2/n&quot;);
+ printk(&quot;&lt;3&gt;goodbey!3/n&quot;);
+ printk(&quot;&lt;4&gt;goodbey!4/n&quot;);
+ printk(&quot;&lt;5&gt;goodbey!5/n&quot;);
+printk(&quot;&lt;6&gt;goodbey!6/n&quot;);
+ printk(&quot;&lt;7&gt;goodbey!7/n&quot;);
+}
+ 
+module_init(pinit);
+module_exit(pexit);
+ 
+在这里我只观察了四个比较重要的日志文件：messages，kern.log，syslog，debug。这四个文件都在/var/log/这个目录下。它的日志文件经观察未出现这些printk信息。
+cat /proc/sys/kernel/printk
+4   4   1   7
+在上面这种情况下日志文件的变化情况是：
+l         kern.log：   纪录了级别是0—7包括&lt;8&gt;的所有信息，在这些纪录当中，其中&lt;8&gt;的纪录是这样的。&lt;8&gt;goodluck8!
+l         Messages： 只是记录了456和&lt;8&gt;。
+l         Syslog：     记录和kern.log一样。
+l         Debug：     之记录级别是7的信息。
+cat /proc/sys/kernel/printk
+0   4   1   7
+在上面这种情况下日志文件的变化情况是：
+l         kern.log：   纪录了级别是0—7包括&lt;8&gt;的所有信息，在这些纪录当中，其中&lt;8&gt;的纪录是这样的。&lt;8&gt;goodluck8!
+l         Messages： 只是记录了456和&lt;8&gt;。
+l         Syslog：     记录和kern.log一样。
+l         Debug：     之记录级别是7的信息。
+ 
+cat /proc/sys/kernel/printk
+7   4   1   7
+l         kern.log：   纪录了级别是0—7包括&lt;8&gt;的所有信息，在这些纪录当中，其中&lt;8&gt;的纪录是这样的。&lt;8&gt;goodluck8!
+l         Messages： 只是记录了456和&lt;8&gt;。
+l         Syslog：     记录和kern.log一样。
+l         Debug：     之记录级别是7的信息。
+分析结论：在操作系统是图形化的界面下测试证明-日志记录和终端级别是没有关系的，但是在文本界面下的结果和这里是不太一样的，根据不同的设置有些信息会输出到终端。这里就不多说了。
+其次有关于系统的日志记录工具有两种主要的：syslog和klog。
+Linux系统中/etc/init.d/sysklogd会启动2个守护进程:Klogd, Syslogd。
+syslog 是 Unix 系统的一个常见组件，用于执行系统日志记录活动。syslogd 是它的守护进程。syslogd 从一组日志源（如 /dev/log 和  /dev/klog ）中读取数据，并按照 /etc/syslog.conf  中的说明处理这些日志消息。通过调用syslog()，可将应用程序日志消息记录到 syslog 中。syslog  消息采用一种包含可选优先级和设备的标准格式。优先级指示消息的紧急程度。设备指示发布消息的子系统。/usr/include/syslog.h中定义 了它的优先级和设备资源。
+klog是一个从Unix内核接受消息的设备klogd 守护进程获得并记录 Linux 内核信息。通常，syslogd 会记录 klogd 传来的所有内核信息。
+ 
+syslogd的配置文件是/etc/syslog.conf。
+下面是我机子上这个文件的部分内容。主要是对debug和messages文件要记录内容的设置。
+*.=debug;/
+        auth,authpriv.none;/
+        news.none;mail.none     -/var/log/debug
+*.=info;*.=notice;*.=warn;/
+        auth,authpriv.none;/
+        cron,daemon.none;/
+        mail,news.none          -/var/log/messages
+ 
+本文来自CSDN博客，转载请标明出处：</rich_text><rich_text link="webs http://blog.csdn.net/brfeng/archive/2008/08/05/2772502.aspx">http://blog.csdn.net/brfeng/archive/2008/08/05/2772502.aspx</rich_text><rich_text>
+ 
+要将linux内核的带级别控制的printk内容打印出来，在命令行 输入 dmesg -n 8 就将2010-12-13 17:01 
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+
+ 
+上面显示的4个数据分别对应控制台日志级别、默认的消息日志级别、最低的控制台日志级别和默认的控制台日志级别。
+可用下面的命令设置当前日志级别：
+ 
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+
+ 
+另外为了防止 printk() 瞬时被调用次数过多，可以通过 printk_ratelimit()  来控制速度。printk_ratelimit() 通过跟踪发送到控制台的消息数量工作，当输出速度超过一个临界值，就返回零。可通过修改  /proc/sys/kernel/{printk_ratelimit, printk_ratelimit_burst} 来调节  printk_ratelimit() 的计算。
+printk_ratelimit() 的典型用法如下：
+if (printk_ratelimit())
+    printk(KERN_INFO &quot;Hello, world!/n&quot;);
+</rich_text><codebox char_offset="4649" frame_height="150" frame_width="300" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True">#cat /proc/sys/kernel/printk6 4 1 7 </codebox><codebox char_offset="4727" frame_height="150" frame_width="300" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True"># echo 8 &gt; /proc/sys/kernel/printk </codebox></node><node name="原子操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>  在任何处理器平台下，都会有一些原子性操作，供操作系统使用，我们这里只讲x86下面的。在单处理器情况下，每条指令的执行都是原子性的，但在多处理器情 况下，只有那些单独的读操作或写操作才是原子性的。为了弥补这一缺点，x86提供了附加的lock前缀，使带lock前缀的读修改写指令也能原子性执行。 带lock前缀的指令在操作时会锁住总线，使自身的执行即使在多处理器间也是原子性执行的。xchg指令不带lock前缀也是原子性执行，也就是说 xchg执行时默认会锁内存总线。原子性操作是线程间同步的基础，linux专门定义了一种只进行原子操作的类型atomic_t，并提供相关的原子读写 调用API。本节就来分析这些原子操作在x86下的实现。
 1. typedef struct {  
 2.     volatile int counter;  
 3. } atomic_t;  
