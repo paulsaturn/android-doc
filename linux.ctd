@@ -185,7 +185,8 @@ syslogd的配置文件是/etc/syslog.conf。
 printk_ratelimit() 的典型用法如下：
 if (printk_ratelimit())
     printk(KERN_INFO &quot;Hello, world!/n&quot;);
-</rich_text><codebox char_offset="4649" frame_height="150" frame_width="300" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True">#cat /proc/sys/kernel/printk6 4 1 7 </codebox><codebox char_offset="4727" frame_height="150" frame_width="300" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True"># echo 8 &gt; /proc/sys/kernel/printk </codebox></node><node name="原子操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>  在任何处理器平台下，都会有一些原子性操作，供操作系统使用，我们这里只讲x86下面的。在单处理器情况下，每条指令的执行都是原子性的，但在多处理器情 况下，只有那些单独的读操作或写操作才是原子性的。为了弥补这一缺点，x86提供了附加的lock前缀，使带lock前缀的读修改写指令也能原子性执行。 带lock前缀的指令在操作时会锁住总线，使自身的执行即使在多处理器间也是原子性执行的。xchg指令不带lock前缀也是原子性执行，也就是说 xchg执行时默认会锁内存总线。原子性操作是线程间同步的基础，linux专门定义了一种只进行原子操作的类型atomic_t，并提供相关的原子读写 调用API。本节就来分析这些原子操作在x86下的实现。
+</rich_text><codebox char_offset="4649" frame_height="150" frame_width="300" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True">#cat /proc/sys/kernel/printk
+6 4 1 7 </codebox><codebox char_offset="4727" frame_height="150" frame_width="300" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True"># echo 8 &gt; /proc/sys/kernel/printk </codebox></node><node name="原子操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>  在任何处理器平台下，都会有一些原子性操作，供操作系统使用，我们这里只讲x86下面的。在单处理器情况下，每条指令的执行都是原子性的，但在多处理器情 况下，只有那些单独的读操作或写操作才是原子性的。为了弥补这一缺点，x86提供了附加的lock前缀，使带lock前缀的读修改写指令也能原子性执行。 带lock前缀的指令在操作时会锁住总线，使自身的执行即使在多处理器间也是原子性执行的。xchg指令不带lock前缀也是原子性执行，也就是说 xchg执行时默认会锁内存总线。原子性操作是线程间同步的基础，linux专门定义了一种只进行原子操作的类型atomic_t，并提供相关的原子读写 调用API。本节就来分析这些原子操作在x86下的实现。
 1. typedef struct {  
 2.     volatile int counter;  
 3. } atomic_t;  
@@ -720,6 +721,119 @@ usr - 还记得在以前的文章中提到vmlinuz和其他类似的文件么？�
 virt -  此文件夹包含了虚拟化代码，它允许用户一次运行多个操作系统。这与先前提到的Xen是不同的。通过虚拟化，客户机操作系统就像任何其他运行在Linux主 机的应用程序一样运行。通过Xen这样的hypervisor(注:虚拟机管理程序)，两个操作系统可以同时管理硬件。在虚拟化中，在客户机操作系统上运 行在Linux内核上，而在hypervisor中，它没有客户系统并且所有的系统不互相依赖。
 提示: 绝不在内核源代码内移动文件，除非你知道你在做什么。否则，编译会由于缺失文件失败。
 Linux内核的文件夹结构保持相对稳定。内核开发者会做一些修改，但总体来说，这些设置对整个内核版本都是一样。驱动程序文件夹的布局也基本保持一样。
+</rich_text></node><node name="03 驱动程序" prog_lang="custom-colors" readonly="False" tags="" unique_id="11"><rich_text>驱动程序是使内核能够沟通和操作硬件或协议（规则和标准）的小程序。没有驱动程序，内核不知道如何与硬件沟通或者处理协议 （内核实际上先发送指令给BIOS，然后BIOS传给硬件）。  Linux的内核代码在驱动程序文件夹中以源代码的形式包含了许多驱动程序。驱动文件夹中的每个文件夹会在下面说明。在配置和  编译内核时，这样有助于你了解驱动程序。否则，用户可能会在编译时加入不必要的或者漏掉重要的驱动。驱动代码通常会包含一个单行注释来指出驱动的目的。  比如，tc的驱动代码，有一行的注释说是用于TURBOchannel总线。由于这些文档，用户应该看驱动前几行的注释来了解它们的用途。
+有几个术语你应该已经知道，所以下面的信息应该是明白的。一个I/O设备指的是输入/输出设备。例如调制解调器和网卡，他们 发送和接收数据。监视器是一个输出设备 -  只有信息出来。键盘、鼠标和游戏杆是数据输入系统。存储设备用于存储数据，例如SD卡、硬盘、光盘、存储卡等。CPU（处理器）是计算机的“大脑”或“心 脏”  ，如果没有它，电脑就无法运作。主板则是一块连接板上不同组件的印刷线路板。主板及各个组件是计算机的运行的基础。许多计算机用户说主板是电脑的心脏（主 板上有CPU）。主板包含了用于连接外设的端口，外设包括输入、输出和存储设备。总线是主板的电路，它连接着外设。网络设备用于两台或多台计算机之间的连 接。端口则是用户可以插入另外一台设备或一根电缆的设备，例如，用户可以将插入一根火线记忆棒插入一个火线端口；将以太网电缆插入一个以太网端口。光碟的 读取是利用激光，从可以散射或反射的激光的反射面上读出数据，一个常见的  光盘是DVD。许多系统说自己是32位或者64位，这指的是寄存器、地址总线或数据总线的位数。例如，在一块64位的主板上，数据总线（组件之间的银线） 有64根并排到目的的线。存储器地址以位(0和1)的形式在存储器中编址，因此，一个32位存储地址包含32个0和1来表示存储器上的某处地址。
+
+许多驱动程序是通用驱动程序，这意味着一个通用键盘驱动可以使内核可以处理几乎所有的键盘。然而，有些驱动是专用驱动，像苹 果和Commodore就分别为苹果电脑和Amiga系统制造了专门的硬件。Linux内核中已经包含了许多诸如智能手机、苹果、Amiga系统、 PS3、Android平板，和许多其他设备的驱动程序。
+注意有些设备的驱动不在本目录中。比如，射频驱动在net和media文件夹下。
+</rich_text><rich_text foreground="#00000000ffff">accessibility</rich_text><rich_text> - 这些驱动提供支持一些辅助设备。在Linux 3.9.4中，这个文件夹中只有一个驱动就是盲文设备驱动。
+</rich_text><rich_text foreground="#00000000ffff">acpi</rich_text><rich_text> - 高级配置和电源接口（ACPI : Advanced Configuration and Power Interface）驱动用来管理电源使用。
+</rich_text><rich_text foreground="#00000000ffff">amba</rich_text><rich_text> - 高级微控制器总线架构（AMBA : Advanced  Microcontroller Bus  Architecture）是与片上系统（SoC）的管理和互连的协议。SoC是一块包含许多或所有必要的计算机组件的芯片。这里的AMBA驱动让内核能 够运行在这上面。
+</rich_text><rich_text foreground="#00000000ffff">ata</rich_text><rich_text> - 该目录包含PATA和SATA设备的驱动程序。串行ATA（SATA）是一种连接主机总线适配器到像硬盘那样的存储器的计算机总线接口。并行ATA（PATA）用于连接存储设备，如硬盘驱动器，软盘驱动器，光盘驱动器的标准。PATA就是我们所说的IDE。
+</rich_text><rich_text foreground="#00000000ffff">atm</rich_text><rich_text> - 异步通信模式(ATM : Asynchronous Transfer Mode)是一种通信标准。这里有各种接到PCI桥的驱动(他们连接到PCI总线)和以太网控制器(控制以太网通信的集成电路芯片)。
+</rich_text><rich_text foreground="#00000000ffff">auxdisplay</rich_text><rich_text> - 这个文件夹提供了三个驱动。LCD 帧缓存（framebuffer）驱动、LCD控制器驱动和一个LCD驱动。这些驱动用于管理液晶显示器 —— 液晶显示器会在按压时显示波纹。注意:按压会损害屏幕,所以请不要用力戳LCD显示屏。
+</rich_text><rich_text foreground="#00000000ffff">base</rich_text><rich_text> - 这是个重要的目录包含了固件、系统总线、虚拟化能力等基本的驱动。
+</rich_text><rich_text foreground="#00000000ffff">bcma</rich_text><rich_text> - 这些驱动用于使用基于AMBA协议的总线。AMBA是由博通公司开发。
+</rich_text><rich_text foreground="#00000000ffff">block</rich_text><rich_text> - 这些驱动提供对块设备的支持，像软驱、SCSI磁带、TCP网络块设备等等。
+</rich_text><rich_text foreground="#00000000ffff">bluetooth</rich_text><rich_text> - 蓝牙是一种安全的无线个人区域网络标准(PANs)。蓝牙驱动就在这个文件夹，它允许系统使用各种蓝牙设备。例如，一个蓝牙鼠标不用电缆，并且计算机有一个电子狗(小型USB接收器)。Linux系统必须能够知道进入电子狗的信号，否则蓝牙设备无法工作。
+</rich_text><rich_text foreground="#00000000ffff">bus</rich_text><rich_text> - 这个目录包含了三个驱动。一个转换ocp接口协议到scp协议。一个是设备间的互联驱动，第三个是用于处理互联中的错误处理。
+</rich_text><rich_text foreground="#00000000ffff">cdrom</rich_text><rich_text> - 这个目录包含两个驱动。一个是cd-rom，包括DVD和CD的读写。第二个是gd-rom(只读GB光盘)，GD光盘是1.2GB容量的光盘，这像一个更大的CD或者更小的DVD。GD通常用于世嘉游戏机中。
+</rich_text><rich_text foreground="#00000000ffff">char</rich_text><rich_text> - 字符设备驱动就在这里。字符设备每次传输数据传输一个字符。这个文件夹里的驱动包括打印机、PS3闪存驱动、东芝SMM驱动和随机数发生器驱动等。
+</rich_text><rich_text foreground="#00000000ffff">clk </rich_text><rich_text>- 这些驱动用于系统时钟。
+</rich_text><rich_text foreground="#00000000ffff">clocksource </rich_text><rich_text>- 这些驱动用于作为定时器的时钟。
+</rich_text><rich_text foreground="#00000000ffff">connector</rich_text><rich_text> - 这些驱动使内核知道当进程fork并使用proc连接器更改UID(用户ID)、GID(组ID)和SID(会话ID)。内核需要知道什么时候进程fork(CPU中运行多个任务)并执行。否则,内核可能会低效管理资源。
+</rich_text><rich_text foreground="#00000000ffff">cpufreq</rich_text><rich_text> - 这些驱动改变CPU的电源能耗。
+</rich_text><rich_text foreground="#00000000ffff">cpuidle</rich_text><rich_text> - 这些驱动用来管理空闲的CPU。一些系统使用多个CPU，其中一个驱动可以让这些CPU负载相当。
+</rich_text><rich_text foreground="#00000000ffff">crypto</rich_text><rich_text> - 这些驱动提供加密功能。
+</rich_text><rich_text foreground="#00000000ffff">dca</rich_text><rich_text> - 直接缓存访问（DCA ： Direct Cache Access）驱动允许内核访问CPU缓存。CPU缓存就像CPU内置的RAM。CPU缓存的速度比RAM更快。然而,CPU缓存的容量比RAM小得多。CPU在这个缓存系统上存储了最重要的和执行的代码。
+</rich_text><rich_text foreground="#00000000ffff">devfreq</rich_text><rich_text> - 这个驱动程序提供了一个通用的动态电压和频率调整(DVFS ： Generic Dynamic Voltage and Frequency Scaling)框架，可以根据需要改变CPU频率来节约能源。这就是所谓的CPU节能。
+</rich_text><rich_text foreground="#00000000ffff">dio</rich_text><rich_text> - 数字输入/输出（DIO ：Digital Input/Output）总线驱动允许内核可以使用DIO总线。
+</rich_text><rich_text foreground="#00000000ffff">dma</rich_text><rich_text> - 直接内存访问(DMA)驱动允许设备无需CPU直接访问内存。这减少了CPU的负载。
+</rich_text><rich_text foreground="#00000000ffff">edac</rich_text><rich_text> - 错误检测和校正（ Error Detection And Correction）驱动帮助减少和纠正错误。
+</rich_text><rich_text foreground="#00000000ffff">eisa </rich_text><rich_text>- 扩展工业标准结构总线（Extended Industry Standard Architecture）驱动提供内核对EISA总线的支持。
+</rich_text><rich_text foreground="#00000000ffff">extcon </rich_text><rich_text>- 外部连接器（EXTernal CONnectors）驱动用于检测设备插入时的变化。例如，extcon会检测用户是否插入了USB驱动器。
+</rich_text><rich_text foreground="#00000000ffff">firewire</rich_text><rich_text> - 这些驱动用于控制苹果制造的类似于USB的火线设备。
+</rich_text><rich_text foreground="#00000000ffff">firmware</rich_text><rich_text> -  这些驱动用于和像BIOS(计算机的基本输入输出系统固件)这样的设备的固件通信。BIOS用于启动操作系统和控制硬件与设备的固件。一些BIOS允许用 户超频CPU。超频是使CPU运行在一个更快的速度。CPU速度以MHz(百万赫兹)或GHz衡量。一个3.7  GHz的CPU的的速度明显快于一个700Mhz的处理器。
+</rich_text><rich_text foreground="#00000000ffff">gpio</rich_text><rich_text> - 通用输入/输出(GPIO ：General Purpose Input/Output)是可由用户控制行为的芯片的管脚。这里的驱动就是控制GPIO。
+</rich_text><rich_text foreground="#00000000ffff">gpu </rich_text><rich_text>- 这些驱动控制VGA、GPU和直接渲染管理(DRM ：Direct Rendering Manager )。VGA是640*480的模拟计算机显示器或是简化的分辨率标准。GPU是图形处理器。DRM是一个Unix渲染系统。
+</rich_text><rich_text foreground="#00000000ffff">hid</rich_text><rich_text> - 这驱动用于对USB人机界面设备的支持。
+</rich_text><rich_text foreground="#00000000ffff">hsi</rich_text><rich_text> - 这个驱动用于内核访问像Nokia N900这样的蜂窝式调制解调器。
+</rich_text><rich_text foreground="#00000000ffff">hv</rich_text><rich_text> - 这个驱动用于提供Linux中的键值对(KVP ：Key Value Pair)功能。
+</rich_text><rich_text foreground="#00000000ffff">hwmon</rich_text><rich_text> - 硬件监控驱动用于内核读取硬件传感器上的信息。比如，CPU上有个温度传感器。那么内核就可以追踪温度的变化并相应地调节风扇的速度。
+</rich_text><rich_text foreground="#00000000ffff">hwspinlock</rich_text><rich_text> - 硬件转锁驱动允许系统同时使用两个或者更多的处理器，或使用一个处理器上的两个或更多的核心。
+</rich_text><rich_text foreground="#00000000ffff">i2c</rich_text><rich_text> - I2C驱动可以使计算机用I2C协议处理主板上的低速外设。系统管理总线(SMBus ：System Management Bus)驱动管理SMBus,这是一种用于轻量级通信的two-wire总线。
+</rich_text><rich_text foreground="#00000000ffff">ide</rich_text><rich_text> - 这些驱动用来处理像CDROM和硬盘这些PATA/IDE设备。
+</rich_text><rich_text foreground="#00000000ffff">idle</rich_text><rich_text> - 这个驱动用来管理Intel处理器的空闲功能。
+</rich_text><rich_text foreground="#00000000ffff">iio</rich_text><rich_text> - 工业I/O核心驱动程序用来处理数模转换器或模数转换器。
+</rich_text><rich_text foreground="#00000000ffff">infiniband</rich_text><rich_text> - Infiniband是在企业数据中心和一些超级计算机中使用的一种高性能的端口。这个目录中的驱动用来支持Infiniband硬件。
+</rich_text><rich_text foreground="#00000000ffff">input</rich_text><rich_text> - 这里包含了很多驱动，这些驱动都用于输入处理，包括游戏杆、鼠标、键盘、游戏端口（旧式的游戏杆接口）、遥控器、触控、耳麦按钮和许多其他的驱动。如今的操纵杆使用USB端口，但是在上世纪80、90年代，操纵杆是插在游戏端口的。
+</rich_text><rich_text foreground="#00000000ffff">iommu</rich_text><rich_text> - 输入/输出内存管理单元(IOMMU ：Input/Output  Memory Management Unit)驱动用来管理内存管理单元中的IOMMU。IOMMU连接DMA  IO总线到内存上。IOMMU是设备在没有CPU帮助下直接访问内存的桥梁。这有助于减少处理器的负载。
+</rich_text><rich_text foreground="#00000000ffff">ipack</rich_text><rich_text> - Ipack代表的是IndustryPack。 这个驱动是一个虚拟总线,允许在载体和夹板之间操作。
+</rich_text><rich_text foreground="#00000000ffff">irqchip</rich_text><rich_text> - 这些驱动程序允许硬件的中断请求(IRQ)发送到处理器，暂时挂起一个正在运行的程序而去运行一个特殊的程序（称为一个中断处理程序）。
+</rich_text><rich_text foreground="#00000000ffff">isdn</rich_text><rich_text> - 这些驱动用于支持综合业务数字网(ISDN)，这是用于同步数字传输语音、视频、数据和其他网络服务使用传统电话网络的电路的通信标准。
+</rich_text><rich_text foreground="#00000000ffff">leds</rich_text><rich_text> - 用于LED的驱动。
+</rich_text><rich_text foreground="#00000000ffff">lguest</rich_text><rich_text> - lguest用于管理客户机系统的中断。中断是CPU被重要任务打断的硬件或软件信号。CPU接着给硬件或软件一些处理资源。
+</rich_text><rich_text foreground="#00000000ffff">macintosh</rich_text><rich_text> - 苹果设备的驱动在这个文件夹里。
+</rich_text><rich_text foreground="#00000000ffff">mailbox</rich_text><rich_text> - 这个文件夹(pl320-pci)中的驱动用于管理邮箱系统的连接。
+</rich_text><rich_text foreground="#00000000ffff">md</rich_text><rich_text> - 多设备驱动用于支持磁盘阵列，一种多块硬盘间共享或复制数据的系统。
+</rich_text><rich_text foreground="#00000000ffff">media</rich_text><rich_text> - 媒体驱动提供了对收音机、调谐器、视频捕捉卡、DVB标准的数字电视等等的支持。驱动还提供了对不同通过USB或火线端口插入的多媒体设备的支持。
+</rich_text><rich_text foreground="#00000000ffff">memory</rich_text><rich_text> - 支持内存的重要驱动。
+</rich_text><rich_text foreground="#00000000ffff">memstick</rich_text><rich_text> - 这个驱动用于支持Sony记忆棒。
+</rich_text><rich_text foreground="#00000000ffff">message</rich_text><rich_text> - 这些驱动用于运行LSI Fusion MPT(一种消息传递技术)固件的LSI PCI芯片/适配器。LSI大规模集成，这代表每片芯片上集成了几万晶体管、
+</rich_text><rich_text foreground="#00000000ffff">mfd</rich_text><rich_text> - 多用途设备(MFD)驱动提供了对可以提供诸如电子邮件、传真、复印机、扫描仪、打印机功能的多用途设备的支持。这里的驱动还给MFD设备提供了一个通用多媒体通信端口(MCP)层。
+</rich_text><rich_text foreground="#00000000ffff">misc</rich_text><rich_text> - 这个目录包含了不适合在其他目录的各种驱动。就像光线传感器驱动。
+</rich_text><rich_text foreground="#00000000ffff">mmc</rich_text><rich_text> - MMC卡驱动用于处理用于MMC标准的闪存卡。
+</rich_text><rich_text foreground="#00000000ffff">mtd</rich_text><rich_text> - 内存技术设备(MTD ：Memory technology  devices)驱动程序用于Linux和闪存的交互，这就就像一层闪存转换层。其他块设备和字符设备的驱动程序不会以闪存设备的操作方式来做映射。尽管 USB记忆卡和SD卡是闪存设备，但它们不使用这个驱动，因为他们隐藏在系统的块设备接口后。这个驱动用于新型闪存设备的通用闪存驱动器驱动。
+</rich_text><rich_text foreground="#00000000ffff">net</rich_text><rich_text> - 网络驱动提供像AppleTalk、TCP和其他的网络协议。这些驱动也提供对调制解调器、USB 2.0的网络设备、和射频设备的支持。
+</rich_text><rich_text foreground="#00000000ffff">nfc</rich_text><rich_text> - 这个驱动是德州仪器的共享传输层之间的接口和NCI核心。
+</rich_text><rich_text foreground="#00000000ffff">ntb</rich_text><rich_text> - 不透明的桥接驱动提供了在PCIe系统的不透明桥接。PCIe是一种高速扩展总线标准。
+</rich_text><rich_text foreground="#00000000ffff">nubus</rich_text><rich_text> - NuBus是一种32位并行计算总线。用于支持苹果设备。
+</rich_text><rich_text foreground="#00000000ffff">of</rich_text><rich_text> - 此驱动程序提供设备树中创建、访问和解释程序的OF助手。设备树是一种数据结构，用于描述硬件。
+</rich_text><rich_text foreground="#00000000ffff">oprofile</rich_text><rich_text> - 这个驱动用于从驱动到用户空间进程(运行在用户态下的应用)评测整个系统。这帮助开发人员找到性能问题
+</rich_text><rich_text foreground="#00000000ffff">parisc</rich_text><rich_text> - 这些驱动用于HP生产的PA-RISC架构设备。PA-RISC是一种特殊指令集的处理器。
+</rich_text><rich_text foreground="#00000000ffff">parport</rich_text><rich_text> - 并口驱动提供了Linux下的并口支持。
+</rich_text><rich_text foreground="#00000000ffff">pci</rich_text><rich_text> - 这些驱动提供了PCI总线服务。
+</rich_text><rich_text foreground="#00000000ffff">pcmcia</rich_text><rich_text> - 这些是笔记本的pc卡驱动
+</rich_text><rich_text foreground="#00000000ffff">pinctrl</rich_text><rich_text> - 这些驱动用来处理引脚控制设备。引脚控制器可以禁用或启用I/O设备。
+</rich_text><rich_text foreground="#00000000ffff">platform</rich_text><rich_text> -这个文件夹包含了不同的计算机平台的驱动像Acer、Dell、Toshiba、IBM、Intel、Chrombooks等等。
+</rich_text><rich_text foreground="#00000000ffff">pnp</rich_text><rich_text> - 即插即用驱动允许用户在插入一个像USB的设备后可以立即使用而不必手动配置设备。
+</rich_text><rich_text foreground="#00000000ffff">power</rich_text><rich_text> - 电源驱动使内核可以测量电池电量，检测充电器和进行电源管理。
+</rich_text><rich_text foreground="#00000000ffff">pps</rich_text><rich_text> - Pulse-Per-Second驱动用来控制电流脉冲速率。这用于计时。
+</rich_text><rich_text foreground="#00000000ffff">ps3</rich_text><rich_text> - 这是Sony的游戏控制台驱动- PlayStation3。
+</rich_text><rich_text foreground="#00000000ffff">ptp</rich_text><rich_text> - 图片传输协议(PTP)驱动支持一种从数码相机中传输图片的协议。
+</rich_text><rich_text foreground="#00000000ffff">pwm</rich_text><rich_text> - 脉宽调制(PWM)驱动用于控制设备的电流脉冲。主要用于控制像CPU风扇。
+</rich_text><rich_text foreground="#00000000ffff">rapidio</rich_text><rich_text> - RapidIO驱动用于管理RapidIO架构，它是一种高性能分组交换，用于电路板上交互芯片的交互技术，也用于互相使用底板的电路板。
+</rich_text><rich_text foreground="#00000000ffff">regulator</rich_text><rich_text> - 校准驱动用于校准电流、温度、或其他可能系统存在的校准硬件。
+</rich_text><rich_text foreground="#00000000ffff">remoteproc</rich_text><rich_text> - 这些驱动用来管理远程处理器。
+</rich_text><rich_text foreground="#00000000ffff">rpmsg</rich_text><rich_text> - 这个驱动用来控制支持大量驱动的远程处理器通讯总线(rpmsg)。这些总线提供消息传递设施,促进客户端驱动程序编写自己的连接协议消息。
+</rich_text><rich_text foreground="#00000000ffff">rtc</rich_text><rich_text> - 实时时钟(RTC)驱动使内核可以读取时钟。
+</rich_text><rich_text foreground="#00000000ffff">s390</rich_text><rich_text> - 用于31/32位的大型机架构的驱动。
+</rich_text><rich_text foreground="#00000000ffff">sbus</rich_text><rich_text> - 用于管理基于SPARC的总线驱动。
+</rich_text><rich_text foreground="#00000000ffff">scsi</rich_text><rich_text> - 允许内核使用SCSI标准外围设备。例如,Linux将在与SCSI硬件传输数据时使用SCSI驱动。
+</rich_text><rich_text foreground="#00000000ffff">sfi</rich_text><rich_text> -简单固件接口(SFI)驱动允许固件发送信息表给操作系统。这些表的数据称为SFI表。
+</rich_text><rich_text foreground="#00000000ffff">sh</rich_text><rich_text> - 该驱动用于支持SuperHway总线。
+</rich_text><rich_text foreground="#00000000ffff">sn</rich_text><rich_text> - 该驱动用于支持IOC3串口。
+</rich_text><rich_text foreground="#00000000ffff">spi</rich_text><rich_text> - 这些驱动处理串行设备接口总线(SPI)，它是一个在在全双工下运行的同步串行数据链路标准,。全双工是指两个设备可以同一时间同时发送和接收信息。双工指的是双向通信。设备在主/从模式下通信(取决于设备配置)。
+</rich_text><rich_text foreground="#00000000ffff">ssb</rich_text><rich_text> - ssb(Sonics Silicon Backplane)驱动提供对在不同博通芯片和嵌入式设备上使用的迷你总线的支持。
+</rich_text><rich_text foreground="#00000000ffff">staging</rich_text><rich_text> - 该目录含有许多子目录。这里所有的驱动还需要在加入主内核前经过更多的开发工作。
+</rich_text><rich_text foreground="#00000000ffff">target</rich_text><rich_text> - SCSI设备驱动
+</rich_text><rich_text foreground="#00000000ffff">tc</rich_text><rich_text> - 这些驱动用于TURBOchannel，TURBOchannel是数字设备公司开发的32位开放总线。这主要用于DEC工作站。
+</rich_text><rich_text foreground="#00000000ffff">thermal</rich_text><rich_text> - thermal驱动使CPU保持较低温度。
+</rich_text><rich_text foreground="#00000000ffff">tty</rich_text><rich_text> - tty驱动用于管理物理终端连接。
+</rich_text><rich_text foreground="#00000000ffff">uio</rich_text><rich_text> - 该驱动允许用户编译运行在用户空间而不是内核空间的驱动。这使用户驱动不会导致内核崩溃。
+</rich_text><rich_text foreground="#00000000ffff">usb</rich_text><rich_text> - USB设备允许内核使用USB端口。闪存驱动和记忆卡已经包含了固件和控制器,所以这些驱动程序允许内核使用USB接口和与USB设备。
+</rich_text><rich_text foreground="#00000000ffff">uwb</rich_text><rich_text> - Ultra-WideBand驱动用来管理短距离，高带宽通信的超低功耗的射频设备
+</rich_text><rich_text foreground="#00000000ffff">vfio</rich_text><rich_text> - 允许设备访问用户空间的VFIO驱动。
+</rich_text><rich_text foreground="#00000000ffff">vhost</rich_text><rich_text> - 这是用于宿主内核中的virtio服务器驱动。用于虚拟化中。
+</rich_text><rich_text foreground="#00000000ffff">video</rich_text><rich_text> - 这是用来管理显卡和监视器的视频驱动。
+</rich_text><rich_text foreground="#00000000ffff">virt</rich_text><rich_text> - 这些驱动用来虚拟化。
+</rich_text><rich_text foreground="#00000000ffff">virtio</rich_text><rich_text> - 这个驱动用来在虚拟PCI设备上使用virtio设备。用于虚拟化中。
+</rich_text><rich_text foreground="#00000000ffff">vlynq</rich_text><rich_text> - 这个驱动控制着由德州仪器开发的专有接口。这些都是宽带产品，像WLAN和调制解调器，VOIP处理器，音频和数字媒体信号处理芯片。
+</rich_text><rich_text foreground="#00000000ffff">vme</rich_text><rich_text> - WMEbus最初是为摩托罗拉68000系列处理器开发的总线标准
+</rich_text><rich_text foreground="#00000000ffff">w1</rich_text><rich_text> - 这些驱动用来控制one-wire总线。
+</rich_text><rich_text foreground="#00000000ffff">watchdog</rich_text><rich_text> - 该驱动管理看门狗定时器，这是一个可以用来检测和恢复异常的定时器。
+</rich_text><rich_text foreground="#00000000ffff">xen</rich_text><rich_text> -  该驱动是Xen管理程序系统。这是个允许用户运行多个操作系统在一台计算机的软件或硬件。这意味着xen的代码将允许用户在同一时间的一台计算机上运行两 个或更多的Linux系统。用户也可以在Linux上运行Windows、Solaris、FreeBSD、或其他操作系统。
+</rich_text><rich_text foreground="#00000000ffff">zorro</rich_text><rich_text> - 该驱动提供Zorro Amiga总线支持。
 </rich_text></node><node name="04 安全" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text>Linux内核是所有Linux系统的核心。如果有任何恶意代码控制或破害了内核的任何一部分，那么系统会严重受损，文件可 能被删除或损坏，私人信息可能被盗等等。很明显，保持内核安全涉及到用户的最大利益。值得庆幸的是，由于Linux内核极其安全，Linux是一个非常安 全的系统。在用户比例上，Linux病毒比Windows病毒更少，并且Linux用户比Windows用户个人更少感染病毒。(这就是为什么许多公司使 用Linux来管理他们的服务器的一个原因。)  然而，我们仍然没有借口去忽视内核的安全。Linux有几个安全特性和程序，但本文只讨论Linux安全模块(LSM)及其它的内核安全特性。
 
 AppArmor（应用盔甲）最初是由Immunix写的安全模块。自从2009年以来，Canonical维护着这些代码 （Novell在Immunix之后，Canonical以前管理这些代码）。这个安全模块已经从2.6.36版本进入Linux主分支之中。 AppArmor限制了程序的能力。AppArmor使用文件路径来跟踪程序限制。许多Linux管理员称AppArmor是最容易配置的安全模块。然 而，而许多Linux用户觉得这个模块与其它的替代品相比很糟糕。
