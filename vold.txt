@@ -1,0 +1,2 @@
+1.system/vold/main.cpp
+	static int process_config(VolumeManager *vm)； 读取vold.fstab文件

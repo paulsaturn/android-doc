@@ -1,0 +1,43 @@
+Linux内核之do_exit 
+
+do_exit(long code)
+
+(1) __exit_mm(tsk): //释放存储空间
+(2) sem_exit();          //释放用户空间的“信号量”
+(3) __exit_files(tsk); //释放已经打开的文件
+(4) __exit_fs(tsk);     //释放用于表示工作目录等结构
+(5) exit_sighand(tsk);//释放信号处理表
+(6) exit_thread();
+(7) tsk->exit_code = code;
+(8) exit_notify();         //通知父进程该“退出”消息，父进程将负责回收这个进程描述符
+(9) schedule();
+
+exit_notify
+
+(1)forget_original_parent：因为当前进程要“去世”，那么首先得把它所有的子进程托付给另外一个进程。如果当前这个进程是个线程（有点混乱，确切地说当前这个task实质上表示的是一个线程），那么就托服给线程组的下一个线程。否则，就托付给init进程。
+(2)current->state = TASK_ZOMBIE
+(3)do_notify_parent：告知父进程其子进程结束的消息
+        send_sig_info(..., tsk->p_pptr)：向父进程发送信号通知其自身结束的消息
+         wake_up_parent(tsk->p_pptr)： 唤醒父进程使之进入可调度队列（状态变为TASK_RUNNING）
+
+forget_original_parent源码
+
+static inline void forget_original_parent(struct task_struct * father)
+{
+    struct task_struct * p, *reaper;
+    read_lock(&tasklist_lock);
+    reaper = next_thread(father);   //这里等价于reaper=father.thread_group->next（循环链表）
+    if (reaper == father)                  //等于的情况说明没有线程组(就自己一个任务)
+        reaper = child_reaper;
+
+    for_each_task(p) {
+        if (p->p_opptr == father) {     //等于的情况说明是自己的子进程
+            p->exit_signal = SIGCHLD;
+            p->self_exec_id++;
+            p->p_opptr = reaper;        //将其托付给reaper
+            if (p->pdeath_signal) send_sig(p->pdeath_signal, p, 0); //告知子进程自己“去世”的消息
+        }
+    }
+    read_unlock(&tasklist_lock);
+}
+
