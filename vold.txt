@@ -1,2 +1,925 @@
-1.system/vold/main.cpp
-	static int process_config(VolumeManager *vm)； 读取vold.fstab文件
+-> system/vold/main.cpp
+int main() {
+
+    VolumeManager *vm;
+    CommandListener *cl;
+    NetlinkManager *nm;
+
+    SLOGI("Vold 2.1 (the revenge) firing up");
+
+    mkdir("/dev/block/vold", 0755);
+
+    /* Create our singleton managers */
+    if (!(vm = VolumeManager::Instance())) {
+        SLOGE("Unable to create VolumeManager");
+        exit(1);
+    };
+
+    if (!(nm = NetlinkManager::Instance())) {
+        SLOGE("Unable to create NetlinkManager");
+        exit(1);
+    };
+
+
+    cl = new CommandListener();
+    vm->setBroadcaster((SocketListener *) cl);
+    nm->setBroadcaster((SocketListener *) cl);
+
+    if (vm->start()) {
+        SLOGE("Unable to start VolumeManager (%s)", strerror(errno));
+        exit(1);
+    }
+
+    if (process_config(vm)) {
+        SLOGE("Error reading configuration (%s)... continuing anyways", strerror(errno));
+    }
+
+    if (nm->start()) {
+        SLOGE("Unable to start NetlinkManager (%s)", strerror(errno));
+        exit(1);
+    }
+
+    coldboot("/sys/block");
+//    coldboot("/sys/class/switch");
+
+    /*
+     * Now that we're up, we can respond to commands
+     */
+    if (cl->startListener()) {
+        SLOGE("Unable to start CommandListener (%s)", strerror(errno));
+        exit(1);
+    }
+
+    // Eventually we'll become the monitoring thread
+    while(1) {
+        sleep(1000);
+    }
+
+    SLOGI("Vold exiting");
+    exit(0);
+}
+
+读取vold.fstab, 并添加DirectVolume* 到VolumeManager的VolumeCollection* mVolumes中
+static int process_config(VolumeManager *vm) {
+    FILE *fp;
+    int n = 0;
+    char line[255];
+
+    if (!(fp = fopen("/etc/vold.fstab", "r"))) {
+        return -1;
+    }
+
+    while(fgets(line, sizeof(line), fp)) {
+        const char *delim = " \t";
+        char *save_ptr;
+        char *type, *label, *mount_point, *mount_flags, *sysfs_path;
+        int flags;
+
+        n++;
+        line[strlen(line)-1] = '\0';
+
+        if (line[0] == '#' || line[0] == '\0')
+            continue;
+
+        if (!(type = strtok_r(line, delim, &save_ptr))) {
+            SLOGE("Error parsing type");
+            goto out_syntax;
+        }
+        if (!(label = strtok_r(NULL, delim, &save_ptr))) {
+            SLOGE("Error parsing label");
+            goto out_syntax;
+        }
+        if (!(mount_point = strtok_r(NULL, delim, &save_ptr))) {
+            SLOGE("Error parsing mount point");
+            goto out_syntax;
+        }
+
+        if (!strcmp(type, "dev_mount")) {
+            DirectVolume *dv = NULL;
+            char *part;
+
+            if (!(part = strtok_r(NULL, delim, &save_ptr))) {
+                SLOGE("Error parsing partition");
+                goto out_syntax;
+            }
+            if (strcmp(part, "auto") && atoi(part) == 0) {
+                SLOGE("Partition must either be 'auto' or 1 based index instead of '%s'", part);
+                goto out_syntax;
+            }
+
+            if (!strcmp(part, "auto")) {
+                dv = new DirectVolume(vm, label, mount_point, -1);
+            } else {
+                dv = new DirectVolume(vm, label, mount_point, atoi(part));
+            }
+
+            while ((sysfs_path = strtok_r(NULL, delim, &save_ptr))) {
+                if (*sysfs_path != '/') {
+                    /* If the first character is not a '/', it must be flags */
+                    break;
+                }
+                if (dv->addPath(sysfs_path)) {
+                    SLOGE("Failed to add devpath %s to volume %s", sysfs_path,
+                         label);
+                    goto out_fail;
+                }
+            }
+
+            /* If sysfs_path is non-null at this point, then it contains
+             * the optional flags for this volume
+             */
+            if (sysfs_path)
+                flags = parse_mount_flags(sysfs_path);
+            else
+                flags = 0;
+            dv->setFlags(flags);
+
+            vm->addVolume(dv);
+        } else if (!strcmp(type, "map_mount")) {
+        } else {
+            SLOGE("Unknown type '%s'", type);
+            goto out_syntax;
+        }
+    }
+
+    fclose(fp);
+    return 0;
+
+out_syntax:
+    SLOGE("Syntax error on config line %d", n);
+    errno = -EINVAL;
+out_fail:
+    fclose(fp);
+    return -1;   
+}
+
+-> system/vold/NetlinkManager.cpp
+初始化netlink socket, 并启动mHandler->start()
+int NetlinkManager::start() {
+    struct sockaddr_nl nladdr;
+    int sz = 64 * 1024;
+    int on = 1;
+
+    memset(&nladdr, 0, sizeof(nladdr));
+    nladdr.nl_family = AF_NETLINK;
+    nladdr.nl_pid = getpid();
+    nladdr.nl_groups = 0xffffffff;
+
+    if ((mSock = socket(PF_NETLINK,
+                        SOCK_DGRAM,NETLINK_KOBJECT_UEVENT)) < 0) {
+        SLOGE("Unable to create uevent socket: %s", strerror(errno));
+        return -1;
+    }
+
+    if (setsockopt(mSock, SOL_SOCKET, SO_RCVBUFFORCE, &sz, sizeof(sz)) < 0) {
+        SLOGE("Unable to set uevent socket SO_RECBUFFORCE option: %s", strerror(errno));
+        return -1;
+    }
+
+    if (setsockopt(mSock, SOL_SOCKET, SO_PASSCRED, &on, sizeof(on)) < 0) {
+        SLOGE("Unable to set uevent socket SO_PASSCRED option: %s", strerror(errno));
+        return -1;
+    }
+
+    if (bind(mSock, (struct sockaddr *) &nladdr, sizeof(nladdr)) < 0) {
+        SLOGE("Unable to bind uevent socket: %s", strerror(errno));
+        return -1;
+    }
+
+    mHandler = new NetlinkHandler(mSock);
+    if (mHandler->start()) {
+        SLOGE("Unable to start NetlinkHandler: %s", strerror(errno));
+        return -1;
+    }
+    return 0;
+}
+
+int NetlinkManager::stop() {
+    if (mHandler->stop()) {
+        SLOGE("Unable to stop NetlinkHandler: %s", strerror(errno));
+        return -1;
+    }
+    delete mHandler;
+    mHandler = NULL;
+
+    close(mSock);
+    mSock = -1;
+
+    return 0;
+}
+
+-> system/vold/NetlinkHandler.cpp
+NetlinkHandler继承NetlinkListener， 而NetlinkListener继承SocketListener
+
+NetlinkHandler::NetlinkHandler(int listenerSocket) :
+                NetlinkListener(listenerSocket) {
+}
+
+NetlinkHandler::~NetlinkHandler() {
+}
+
+int NetlinkHandler::start() {
+    return this->startListener();	//实际调用了SocketListener->startListener
+}
+
+int NetlinkHandler::stop() {
+    return this->stopListener();	//实际调用了SocketListener->stopListener
+}
+
+//在SocketListener::runListener() -> NetlinkListener::onDataAvailable -> NetlinkHandler::onEvent
+void NetlinkHandler::onEvent(NetlinkEvent *evt) {
+    VolumeManager *vm = VolumeManager::Instance();
+    const char *subsys = evt->getSubsystem();
+
+    if (!subsys) {
+        SLOGW("No subsystem found in netlink event");
+        return;
+    }
+
+    if (!strcmp(subsys, "block")) {
+        vm->handleBlockEvent(evt);
+    }
+}
+
+-> system/core/libsysutils/src/NetlinkListener.cpp
+#if 1
+/* temporary version until we can get Motorola to update their
+ * ril.so.  Their prebuilt ril.so is using this private class
+ * so changing the NetlinkListener() constructor breaks their ril.
+ */
+NetlinkListener::NetlinkListener(int socket) :
+                            SocketListener(socket, false) {
+    mFormat = NETLINK_FORMAT_ASCII;
+}
+#endif
+
+NetlinkListener::NetlinkListener(int socket, int format) :
+                            SocketListener(socket, false), mFormat(format) {
+}
+
+bool NetlinkListener::onDataAvailable(SocketClient *cli)
+{
+    int socket = cli->getSocket();
+    ssize_t count;
+    uid_t uid = -1;
+
+    count = TEMP_FAILURE_RETRY(uevent_kernel_multicast_uid_recv(
+                                       socket, mBuffer, sizeof(mBuffer), &uid));
+    if (count < 0) {
+        if (uid > 0)
+            LOG_EVENT_INT(65537, uid);
+        SLOGE("recvmsg failed (%s)", strerror(errno));
+        return false;
+    }
+
+    NetlinkEvent *evt = new NetlinkEvent();
+    if (!evt->decode(mBuffer, count, mFormat)) {
+        SLOGE("Error decoding NetlinkEvent");
+    } else {
+        onEvent(evt);
+    }
+
+    delete evt;
+    return true;
+}
+
+-> system/core/libsysutils/src/SocketListener.cpp
+SocketListener::SocketListener(const char *socketName, bool listen) {
+    init(socketName, -1, listen, false);
+}
+
+SocketListener::SocketListener(int socketFd, bool listen) {
+    init(NULL, socketFd, listen, false);
+}
+
+SocketListener::SocketListener(const char *socketName, bool listen, bool useCmdNum) {
+    init(socketName, -1, listen, useCmdNum);
+}
+
+void SocketListener::init(const char *socketName, int socketFd, bool listen, bool useCmdNum) {
+    mListen = listen;
+    mSocketName = socketName;
+    mSock = socketFd;
+    mUseCmdNum = useCmdNum;
+    pthread_mutex_init(&mClientsLock, NULL);
+    mClients = new SocketClientCollection();
+}
+
+SocketListener::~SocketListener() {
+    if (mSocketName && mSock > -1)
+        close(mSock);
+
+    if (mCtrlPipe[0] != -1) {
+        close(mCtrlPipe[0]);
+        close(mCtrlPipe[1]);
+    }
+    SocketClientCollection::iterator it;
+    for (it = mClients->begin(); it != mClients->end();) {
+        (*it)->decRef();
+        it = mClients->erase(it);
+    }
+    delete mClients;
+}
+
+int SocketListener::startListener() {
+
+    if (!mSocketName && mSock == -1) {
+        SLOGE("Failed to start unbound listener");
+        errno = EINVAL;
+        return -1;
+    } else if (mSocketName) {
+        if ((mSock = android_get_control_socket(mSocketName)) < 0) {
+            SLOGE("Obtaining file descriptor socket '%s' failed: %s",
+                 mSocketName, strerror(errno));
+            return -1;
+        }
+        SLOGV("got mSock = %d for %s", mSock, mSocketName);
+    }
+
+    if (mListen && listen(mSock, 4) < 0) {
+        SLOGE("Unable to listen on socket (%s)", strerror(errno));
+        return -1;
+    } else if (!mListen)
+        mClients->push_back(new SocketClient(mSock, false, mUseCmdNum));
+
+    if (pipe(mCtrlPipe)) {
+        SLOGE("pipe failed (%s)", strerror(errno));
+        return -1;
+    }
+
+    if (pthread_create(&mThread, NULL, SocketListener::threadStart, this)) {
+        SLOGE("pthread_create (%s)", strerror(errno));
+        return -1;
+    }
+
+    return 0;
+}
+
+int SocketListener::stopListener() {
+    char c = 0;
+    int  rc;
+
+    rc = TEMP_FAILURE_RETRY(write(mCtrlPipe[1], &c, 1));
+    if (rc != 1) {
+        SLOGE("Error writing to control pipe (%s)", strerror(errno));
+        return -1;
+    }
+
+    void *ret;
+    if (pthread_join(mThread, &ret)) {
+        SLOGE("Error joining to listener thread (%s)", strerror(errno));
+        return -1;
+    }
+    close(mCtrlPipe[0]);
+    close(mCtrlPipe[1]);
+    mCtrlPipe[0] = -1;
+    mCtrlPipe[1] = -1;
+
+    if (mSocketName && mSock > -1) {
+        close(mSock);
+        mSock = -1;
+    }
+
+    SocketClientCollection::iterator it;
+    for (it = mClients->begin(); it != mClients->end();) {
+        delete (*it);
+        it = mClients->erase(it);
+    }
+    return 0;
+}
+
+void *SocketListener::threadStart(void *obj) {
+    SocketListener *me = reinterpret_cast<SocketListener *>(obj);
+
+    me->runListener();
+    pthread_exit(NULL);
+    return NULL;
+}
+
+void SocketListener::runListener() {
+
+    SocketClientCollection *pendingList = new SocketClientCollection();
+
+    while(1) {
+        SocketClientCollection::iterator it;
+        fd_set read_fds;
+        int rc = 0;
+        int max = -1;
+
+        FD_ZERO(&read_fds);
+
+        if (mListen) {
+            max = mSock;
+            FD_SET(mSock, &read_fds);
+        }
+
+        FD_SET(mCtrlPipe[0], &read_fds);
+        if (mCtrlPipe[0] > max)
+            max = mCtrlPipe[0];
+
+        pthread_mutex_lock(&mClientsLock);
+        for (it = mClients->begin(); it != mClients->end(); ++it) {
+            int fd = (*it)->getSocket();
+            FD_SET(fd, &read_fds);
+            if (fd > max)
+                max = fd;
+        }
+        pthread_mutex_unlock(&mClientsLock);
+        SLOGV("mListen=%d, max=%d, mSocketName=%s", mListen, max, mSocketName);
+        if ((rc = select(max + 1, &read_fds, NULL, NULL, NULL)) < 0) {
+            if (errno == EINTR)
+                continue;
+            SLOGE("select failed (%s) mListen=%d, max=%d", strerror(errno), mListen, max);
+            sleep(1);
+            continue;
+        } else if (!rc)
+            continue;
+
+        if (FD_ISSET(mCtrlPipe[0], &read_fds))
+            break;
+        if (mListen && FD_ISSET(mSock, &read_fds)) {
+            struct sockaddr addr;
+            socklen_t alen;
+            int c;
+
+            do {
+                alen = sizeof(addr);
+                c = accept(mSock, &addr, &alen);
+                SLOGV("%s got %d from accept", mSocketName, c);
+            } while (c < 0 && errno == EINTR);
+            if (c < 0) {
+                SLOGE("accept failed (%s)", strerror(errno));
+                sleep(1);
+                continue;
+            }
+            pthread_mutex_lock(&mClientsLock);
+            mClients->push_back(new SocketClient(c, true, mUseCmdNum));
+            pthread_mutex_unlock(&mClientsLock);
+        }
+
+        /* Add all active clients to the pending list first */
+        pendingList->clear();
+        pthread_mutex_lock(&mClientsLock);
+        for (it = mClients->begin(); it != mClients->end(); ++it) {
+            int fd = (*it)->getSocket();
+            if (FD_ISSET(fd, &read_fds)) {
+                pendingList->push_back(*it);
+            }
+        }
+        pthread_mutex_unlock(&mClientsLock);
+
+        /* Process the pending list, since it is owned by the thread,
+         * there is no need to lock it */
+        while (!pendingList->empty()) {
+            /* Pop the first item from the list */
+            it = pendingList->begin();
+            SocketClient* c = *it;
+            pendingList->erase(it);
+            /* Process it, if false is returned and our sockets are
+             * connection-based, remove and destroy it */
+            if (!onDataAvailable(c) && mListen) {
+                /* Remove the client from our array */
+                SLOGV("going to zap %d for %s", c->getSocket(), mSocketName);
+                pthread_mutex_lock(&mClientsLock);
+                for (it = mClients->begin(); it != mClients->end(); ++it) {
+                    if (*it == c) {
+                        mClients->erase(it);
+                        break;
+                    }
+                }
+                pthread_mutex_unlock(&mClientsLock);
+                /* Remove our reference to the client */
+                c->decRef();
+            }
+        }
+    }
+    delete pendingList;
+}
+
+void SocketListener::sendBroadcast(int code, const char *msg, bool addErrno) {
+    pthread_mutex_lock(&mClientsLock);
+    SocketClientCollection::iterator i;
+
+    for (i = mClients->begin(); i != mClients->end(); ++i) {
+        // broadcasts are unsolicited and should not include a cmd number
+        if ((*i)->sendMsg(code, msg, addErrno, false)) {
+            SLOGW("Error sending broadcast (%s)", strerror(errno));
+        }
+    }
+    pthread_mutex_unlock(&mClientsLock);
+}
+
+-> system/vold/VolumeManager.cpp
+void VolumeManager::handleBlockEvent(NetlinkEvent *evt) {
+    const char *devpath = evt->findParam("DEVPATH");
+
+    /* Lookup a volume to handle this device */
+    VolumeCollection::iterator it;
+    bool hit = false;
+    for (it = mVolumes->begin(); it != mVolumes->end(); ++it) {
+        if (!(*it)->handleBlockEvent(evt)) {
+#ifdef NETLINK_DEBUG
+            SLOGD("Device '%s' event handled by volume %s\n", devpath, (*it)->getLabel());
+#endif
+            hit = true;
+            break;
+        }
+    }
+
+    if (!hit) {
+#ifdef NETLINK_DEBUG
+        SLOGW("No volumes handled block event for '%s'", devpath);
+#endif
+    }
+}
+
+-> system/vold/DirectVolume.cpp
+int DirectVolume::handleBlockEvent(NetlinkEvent *evt) {
+    const char *dp = evt->findParam("DEVPATH");
+
+    PathCollection::iterator  it;
+    for (it = mPaths->begin(); it != mPaths->end(); ++it) {
+        if (!strncmp(dp, *it, strlen(*it))) {
+            /* We can handle this disk */
+            int action = evt->getAction();
+            const char *devtype = evt->findParam("DEVTYPE");
+
+            if (action == NetlinkEvent::NlActionAdd) {
+                int major = atoi(evt->findParam("MAJOR"));
+                int minor = atoi(evt->findParam("MINOR"));
+                char nodepath[255];          
+							
+                snprintf(nodepath,
+                         sizeof(nodepath), "/dev/block/vold/%d:%d",
+                         major, minor);
+                if (createDeviceNode(nodepath, major, minor)) {
+                    SLOGE("Error making device node '%s' (%s)", nodepath,
+                                                               strerror(errno));
+                }
+                if (!strcmp(devtype, "disk")) {
+                    handleDiskAdded(dp, evt);
+                } else {
+                    handlePartitionAdded(dp, evt);
+                }
+                /* Send notification iff disk is ready (ie all partitions found) */
+                if (getState() == Volume::State_Idle) {
+                    char msg[255];
+
+                    snprintf(msg, sizeof(msg),
+                             "Volume %s %s disk inserted (%d:%d)", getLabel(),
+                             getMountpoint(), mDiskMajor, mDiskMinor);
+                    mVm->getBroadcaster()->sendBroadcast(ResponseCode::VolumeDiskInserted,
+                                                         msg, false);
+                }
+            } else if (action == NetlinkEvent::NlActionRemove) {
+                if (!strcmp(devtype, "disk")) {
+                    handleDiskRemoved(dp, evt);
+                } else {
+                    handlePartitionRemoved(dp, evt);
+                }
+            } else if (action == NetlinkEvent::NlActionChange) {
+                if (!strcmp(devtype, "disk")) {
+                    handleDiskChanged(dp, evt);
+                } else {
+                    handlePartitionChanged(dp, evt);
+                }
+            } else {
+                    SLOGW("Ignoring non add/remove/change event");
+            }
+
+            return 0;
+        }
+    }
+    errno = ENODEV;
+    return -1;
+}
+
+void DirectVolume::handleDiskAdded(const char *devpath, NetlinkEvent *evt) {
+    mDiskMajor = atoi(evt->findParam("MAJOR"));
+    mDiskMinor = atoi(evt->findParam("MINOR"));
+
+    const char *tmp = evt->findParam("NPARTS");
+    if (tmp) {
+        mDiskNumParts = atoi(tmp);
+    } else {
+        SLOGW("Kernel block uevent missing 'NPARTS'");
+        mDiskNumParts = 1;
+    }
+    
+     mPartsEventCnt = 0;
+
+    int partmask = 0;
+    int i;
+    for (i = 1; i <= mDiskNumParts; i++) {
+        partmask |= (1 << i);
+    }
+    mPendingPartMap = partmask;
+
+    if (mDiskNumParts == 0) {
+#ifdef PARTITION_DEBUG
+        SLOGD("Dv::diskIns - No partitions - good to go son!");
+#endif
+        setState(Volume::State_Idle);
+    } else {
+#ifdef PARTITION_DEBUG
+        SLOGD("Dv::diskIns - waiting for %d partitions (mask 0x%x)",
+             mDiskNumParts, mPendingPartMap);
+#endif
+        setState(Volume::State_Pending);
+    }
+}
+
+void DirectVolume::handlePartitionAdded(const char *devpath, NetlinkEvent *evt) {
+    int major = atoi(evt->findParam("MAJOR"));
+    int minor = atoi(evt->findParam("MINOR"));
+
+    int part_num;
+
+    const char *tmp = evt->findParam("PARTN");
+    
+    if(mPartsEventCnt > mDiskNumParts){
+        SLOGW("Partition event is to much, mPartsEventCnt=%d, mDiskNumParts=%d\n", mPartsEventCnt, mDiskNumParts);
+        mPartsEventCnt = mDiskNumParts;
+    }else{
+        mPartsEventCnt++;
+    }
+
+
+    if (tmp) {
+        part_num = atoi(tmp);
+    } else {
+        SLOGW("Kernel block uevent missing 'PARTN'");
+        part_num = 1;
+    }
+
+    if (part_num > MAX_PARTITIONS || part_num < 1) {
+        SLOGE("Invalid 'PARTN' value");
+        return;
+    }
+
+    if (part_num > mDiskNumParts) {
+        mDiskNumParts = part_num;
+    }
+
+    if (major != mDiskMajor) {
+        SLOGE("Partition '%s' has a different major than its disk!", devpath);
+        return;
+    }
+#ifdef PARTITION_DEBUG
+    SLOGD("Dv:partAdd: part_num = %d, minor = %d\n", part_num, minor);
+#endif
+    if (part_num >= MAX_PARTITIONS) {
+        SLOGE("Dv:partAdd: ignoring part_num = %d (max: %d)\n", part_num, MAX_PARTITIONS-1);
+    } else {
+        mPartMinors[part_num -1] = minor;
+    }
+   // mPendingPartMap &= ~(1 << part_num);
+   mPendingPartMap &= ~(1 << mPartsEventCnt);
+
+    if (!mPendingPartMap) {
+#ifdef PARTITION_DEBUG
+        SLOGD("Dv:partAdd: Got all partitions - ready to rock!");
+#endif
+        if (getState() != Volume::State_Formatting) {
+            setState(Volume::State_Idle);
+            if (mRetryMount == true) {
+                mRetryMount = false;
+                mountVol();
+            }
+        }
+    } else {
+#ifdef PARTITION_DEBUG
+        SLOGD("Dv:partAdd: pending mask now = 0x%x", mPendingPartMap);
+#endif
+    }
+}
+
+void DirectVolume::handleDiskChanged(const char *devpath, NetlinkEvent *evt) {
+    int major = atoi(evt->findParam("MAJOR"));
+    int minor = atoi(evt->findParam("MINOR"));
+
+    if ((major != mDiskMajor) || (minor != mDiskMinor)) {
+        return;
+    }
+
+    SLOGI("Volume %s disk has changed", getLabel());
+    const char *tmp = evt->findParam("NPARTS");
+    if (tmp) {
+        mDiskNumParts = atoi(tmp);
+    } else {
+        SLOGW("Kernel block uevent missing 'NPARTS'");
+        mDiskNumParts = 1;
+    }
+    
+    mPartsEventCnt = 0;
+
+    int partmask = 0;
+    int i;
+    for (i = 1; i <= mDiskNumParts; i++) {
+        partmask |= (1 << i);
+    }
+    mPendingPartMap = partmask;
+
+    if (getState() != Volume::State_Formatting) {
+        if (mDiskNumParts == 0) {
+            setState(Volume::State_Idle);
+        } else {
+            setState(Volume::State_Pending);
+        }
+    }
+}
+
+void DirectVolume::handlePartitionChanged(const char *devpath, NetlinkEvent *evt) {
+    int major = atoi(evt->findParam("MAJOR"));
+    int minor = atoi(evt->findParam("MINOR"));
+    SLOGD("Volume %s %s partition %d:%d changed\n", getLabel(), getMountpoint(), major, minor);
+}
+
+void DirectVolume::handleDiskRemoved(const char *devpath, NetlinkEvent *evt) {
+    int major = atoi(evt->findParam("MAJOR"));
+    int minor = atoi(evt->findParam("MINOR"));
+    char msg[255];
+    bool enabled;
+
+    if (mVm->shareEnabled(getLabel(), "ums", &enabled) == 0 && enabled) {
+        mVm->unshareVolume(getLabel(), "ums");
+    }
+
+    SLOGD("Volume %s %s disk %d:%d removed\n", getLabel(), getMountpoint(), major, minor);
+    snprintf(msg, sizeof(msg), "Volume %s %s disk removed (%d:%d)",
+             getLabel(), getMountpoint(), major, minor);
+    mVm->getBroadcaster()->sendBroadcast(ResponseCode::VolumeDiskRemoved,
+                                             msg, false);
+                                             
+    /* 2011-4-30 force unmount fs */
+    SLOGD("DirectVolume : handleDiskRemoved : unmountVol");
+    Volume::unmountVol(true,true);
+    setState(Volume::State_NoMedia);
+}
+
+void DirectVolume::handlePartitionRemoved(const char *devpath, NetlinkEvent *evt) {
+    int major = atoi(evt->findParam("MAJOR"));
+    int minor = atoi(evt->findParam("MINOR"));
+    char msg[255];
+    int state;
+
+    SLOGD("Volume %s %s partition %d:%d removed\n", getLabel(), getMountpoint(), major, minor);
+
+    /*
+     * The framework doesn't need to get notified of
+     * partition removal unless it's mounted. Otherwise
+     * the removal notification will be sent on the Disk
+     * itself
+     */
+    state = getState();
+    if (state != Volume::State_Mounted && state != Volume::State_Shared) {
+        return;
+    }
+        
+    if ((dev_t) MKDEV(major, minor) == mCurrentlyMountedKdev) {
+        /*
+         * Yikes, our mounted partition is going away!
+         */
+
+        if(!strstr(getLabel(),"usb")&&!strstr(getLabel(),"extsd")){
+        snprintf(msg, sizeof(msg), "Volume %s %s bad removal (%d:%d)",
+                 getLabel(), getMountpoint(), major, minor);
+        mVm->getBroadcaster()->sendBroadcast(ResponseCode::VolumeBadRemoval,
+                                             msg, false);
+		}		       
+	if (mVm->cleanupAsec(this, true)) {
+            SLOGE("Failed to cleanup ASEC - unmount will probably fail!");
+        }
+
+        if (Volume::unmountVol(true, false)) {
+            SLOGE("Failed to unmount volume on bad removal (%s)", 
+                 strerror(errno));
+            // XXX: At this point we're screwed for now
+        } else {
+            SLOGD("Crisis averted");
+        }
+    } else if (state == Volume::State_Shared) {
+        /* removed during mass storage */
+        snprintf(msg, sizeof(msg), "Volume %s bad removal (%d:%d)",
+                 getLabel(), major, minor);
+        mVm->getBroadcaster()->sendBroadcast(ResponseCode::VolumeBadRemoval,
+                                             msg, false);
+
+        if (mVm->unshareVolume(getLabel(), "ums")) {
+            SLOGE("Failed to unshare volume on bad removal (%s)",
+                strerror(errno));
+        } else {
+            SLOGD("Crisis averted");
+        }
+    }
+}
+
+/*
+ * Called from base to get a list of devicenodes for mounting
+ */
+int DirectVolume::getDeviceNodes(dev_t *devs, int max) {
+    if (mPartIdx == -1) {
+		// If the disk has no partitions, try the disk itself
+		if (!mDiskNumParts) {
+		    devs[0] = MKDEV(mDiskMajor, mDiskMinor);
+		    return 1;
+		}
+
+		int i;
+		for (i = 0; i < mDiskNumParts; i++) {
+		    if (i == max)
+		        break;
+		    devs[i] = MKDEV(mDiskMajor, mPartMinors[i]);
+		}
+		return mDiskNumParts;
+	 }
+
+    devs[0] = MKDEV(mDiskMajor, mPartMinors[mPartIdx -1]);
+    return 1;
+}
+
+/*
+ * Called from base to update device info,
+ * e.g. When setting up an dm-crypt mapping for the sd card.
+ */
+int DirectVolume::updateDeviceInfo(char *new_path, int new_major, int new_minor)
+{
+    PathCollection::iterator it;
+
+    if (mPartIdx == -1) {
+        SLOGE("Can only change device info on a partition\n");
+        return -1;
+    }
+
+    /*
+     * This is to change the sysfs path associated with a partition, in particular,
+     * for an internal SD card partition that is encrypted.  Thus, the list is
+     * expected to be only 1 entry long.  Check that and bail if not.
+     */
+    if (mPaths->size() != 1) {
+        SLOGE("Cannot change path if there are more than one for a volume\n");
+        return -1;
+    }
+
+    it = mPaths->begin();
+    free(*it); /* Free the string storage */
+    mPaths->erase(it); /* Remove it from the list */
+    addPath(new_path); /* Put the new path on the list */
+
+    /* Save away original info so we can restore it when doing factory reset.
+     * Then, when doing the format, it will format the original device in the
+     * clear, otherwise it just formats the encrypted device which is not
+     * readable when the device boots unencrypted after the reset.
+     */
+    mOrigDiskMajor = mDiskMajor;
+    mOrigDiskMinor = mDiskMinor;
+    mOrigPartIdx = mPartIdx;
+    memcpy(mOrigPartMinors, mPartMinors, sizeof(mPartMinors));
+
+    mDiskMajor = new_major;
+    mDiskMinor = new_minor;
+    /* Ugh, virual block devices don't use minor 0 for whole disk and minor > 0 for
+     * partition number.  They don't have partitions, they are just virtual block
+     * devices, and minor number 0 is the first dm-crypt device.  Luckily the first
+     * dm-crypt device is for the userdata partition, which gets minor number 0, and
+     * it is not managed by vold.  So the next device is minor number one, which we
+     * will call partition one.
+     */
+    mPartIdx = new_minor;
+    mPartMinors[new_minor-1] = new_minor;
+
+    mIsDecrypted = 1;
+
+    return 0;
+}
+
+/*
+ * Called from base to revert device info to the way it was before a
+ * crypto mapping was created for it.
+ */
+void DirectVolume::revertDeviceInfo(void)
+{
+    if (mIsDecrypted) {
+        mDiskMajor = mOrigDiskMajor;
+        mDiskMinor = mOrigDiskMinor;
+        mPartIdx = mOrigPartIdx;
+        memcpy(mPartMinors, mOrigPartMinors, sizeof(mPartMinors));
+
+        mIsDecrypted = 0;
+    }
+
+    return;
+}
+
+/*
+ * Called from base to give cryptfs all the info it needs to encrypt eligible volumes
+ */
+int DirectVolume::getVolInfo(struct volume_info *v)
+{
+    strcpy(v->label, mLabel);
+    strcpy(v->mnt_point, mMountpoint);
+    v->flags=mFlags;
+    /* Other fields of struct volume_info are filled in by the caller or cryptfs.c */
+
+    return 0;
+}
