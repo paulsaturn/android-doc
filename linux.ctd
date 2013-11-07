@@ -836,19 +836,23 @@ Linux内核的文件夹结构保持相对稳定。内核开发者会做一些修
 </rich_text><rich_text foreground="#00000000ffff">zorro</rich_text><rich_text> - 该驱动提供Zorro Amiga总线支持。
 </rich_text></node><node name="04 安全" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text>Linux内核是所有Linux系统的核心。如果有任何恶意代码控制或破害了内核的任何一部分，那么系统会严重受损，文件可 能被删除或损坏，私人信息可能被盗等等。很明显，保持内核安全涉及到用户的最大利益。值得庆幸的是，由于Linux内核极其安全，Linux是一个非常安 全的系统。在用户比例上，Linux病毒比Windows病毒更少，并且Linux用户比Windows用户个人更少感染病毒。(这就是为什么许多公司使 用Linux来管理他们的服务器的一个原因。)  然而，我们仍然没有借口去忽视内核的安全。Linux有几个安全特性和程序，但本文只讨论Linux安全模块(LSM)及其它的内核安全特性。
 
-AppArmor（应用盔甲）最初是由Immunix写的安全模块。自从2009年以来，Canonical维护着这些代码 （Novell在Immunix之后，Canonical以前管理这些代码）。这个安全模块已经从2.6.36版本进入Linux主分支之中。 AppArmor限制了程序的能力。AppArmor使用文件路径来跟踪程序限制。许多Linux管理员称AppArmor是最容易配置的安全模块。然 而，而许多Linux用户觉得这个模块与其它的替代品相比很糟糕。
-安全增强Linux(SELinux)是AppArmor的替代品，它最初由美国国家安全局开发（NSA）。SELinux 自从2.6版本就进入内核主分支中。SELinux是限制修改内核和用户空间的工具。SELinux给可执行文件(主要是守护进程和服务端程序)最小特权 去完成它们的任务。SELinux也可以用来控制用户权限。SELinux不像AppArmor那样使用文件路径，而SELinux在追踪权限时使用文件 系统去标记可执行文件。因为SElinux本身使用文件系统管理可执行文件，所以SELinux不能像AppArmor那样对整个文件系统提供保护。
+</rich_text><rich_text foreground="#00000000ffff">AppArmor（应用盔甲）</rich_text><rich_text>最初是由Immunix写的安全模块。自从2009年以来，Canonical维护着这些代码 （Novell在Immunix之后，Canonical以前管理这些代码）。这个安全模块已经从2.6.36版本进入Linux主分支之中。 AppArmor限制了程序的能力。AppArmor使用文件路径来跟踪程序限制。许多Linux管理员称AppArmor是最容易配置的安全模块。然 而，而许多Linux用户觉得这个模块与其它的替代品相比很糟糕。
+
+</rich_text><rich_text foreground="#00000000ffff">安全增强Linux(SELinux)</rich_text><rich_text>是AppArmor的替代品，它最初由美国国家安全局开发（NSA）。SELinux 自从2.6版本就进入内核主分支中。SELinux是限制修改内核和用户空间的工具。SELinux给可执行文件(主要是守护进程和服务端程序)最小特权 去完成它们的任务。SELinux也可以用来控制用户权限。SELinux不像AppArmor那样使用文件路径，而SELinux在追踪权限时使用文件 系统去标记可执行文件。因为SElinux本身使用文件系统管理可执行文件，所以SELinux不能像AppArmor那样对整个文件系统提供保护。
 注意：守护进程是在后台运行的程序
 注意：虽然在内核中有AppArmor、SELinux及其它安全模块，但只能有一个安全模块被激活。
-Smack是安全模块的另一种选择。Smack从2.6.25起进入内核主分支。Smack应能比AppArmor更安全，但比SELinux更容易配置。
-TOMOYO，是另外一个安全模块，在2.6.30进入内核主分支。TOMOYO可以提供安全防护，但是它的主要用途是分析系统安全缺陷。
+
+</rich_text><rich_text foreground="#00000000ffff">Smack</rich_text><rich_text>是安全模块的另一种选择。Smack从2.6.25起进入内核主分支。Smack应能比AppArmor更安全，但比SELinux更容易配置。
+</rich_text><rich_text foreground="#00000000ffff">TOMOYO</rich_text><rich_text>，是另外一个安全模块，在2.6.30进入内核主分支。TOMOYO可以提供安全防护，但是它的主要用途是分析系统安全缺陷。
+
 AppArmor、SELinux、Smack和TOMYO组成了四个标准Linux安全模块。这些都通过使用强制访问控制 (MAC ： mandatory access  control)工作，这种访问控制是通过限制程序或者用户执行一些任务来实现的。安全模块还有某些形式的列表规定了它们可以做什么不可以做什么。
-Yama在Linux内核中一个新安全模块。Yama还没有作为标准的安全模块，但是在将来他会成为第5个标准安全模块。Yama和其他安全模块一样使用相同的机制。
-“grsecurity”是一系列Linux内核安全补丁的集合。多数补丁用于处理远程网络连接和缓冲区溢出的安全问题(以 后讨论)。grsecurity中有一个叫PaX的有趣组件。PaX补丁允许内存里的代码使用最少的所需权限。例如，存储程序的内存段被标为不可写。想想 看，为什么一个可执行的程序需要在内存中是可写的？通过这个补丁，恶意代码就不能修改目前正在执行的程序。缓冲区溢出是一种当程序由于bug或者恶意代码 在内存上写入数据，并让它的内存边界超出到其他程序的内存页上的安全事件。当Pax被激活时，它会帮助阻止这些缓冲区溢出，因为程序没有写到其他内存页上 的权限了。
-Linux入侵检测系统(LIDS)是一个内核安全补丁，提供了强制访问控制(MAC)的特性。这个补丁就像扮演LSM模块的角色。
-Systrace是一个减少和控制应用程序访问系统文件和系统调用的工具。系统调用是对内核的服务请求。比如，当一个文本编辑器写入一个文件到硬盘上时，程序将会发送一个系统请求让内核写入文件到硬盘中。
+
+</rich_text><rich_text foreground="#00000000ffff">Yama</rich_text><rich_text>在Linux内核中一个新安全模块。Yama还没有作为标准的安全模块，但是在将来他会成为第5个标准安全模块。Yama和其他安全模块一样使用相同的机制。
+</rich_text><rich_text foreground="#00000000ffff">“grsecurity”</rich_text><rich_text>是一系列Linux内核安全补丁的集合。多数补丁用于处理远程网络连接和缓冲区溢出的安全问题(以 后讨论)。grsecurity中有一个叫PaX的有趣组件。PaX补丁允许内存里的代码使用最少的所需权限。例如，存储程序的内存段被标为不可写。想想 看，为什么一个可执行的程序需要在内存中是可写的？通过这个补丁，恶意代码就不能修改目前正在执行的程序。缓冲区溢出是一种当程序由于bug或者恶意代码 在内存上写入数据，并让它的内存边界超出到其他程序的内存页上的安全事件。当Pax被激活时，它会帮助阻止这些缓冲区溢出，因为程序没有写到其他内存页上 的权限了。
+</rich_text><rich_text foreground="#00000000ffff">Linux入侵检测系统(LIDS)</rich_text><rich_text>是一个内核安全补丁，提供了强制访问控制(MAC)的特性。这个补丁就像扮演LSM模块的角色。
+</rich_text><rich_text foreground="#00000000ffff">Systrace</rich_text><rich_text>是一个减少和控制应用程序访问系统文件和系统调用的工具。系统调用是对内核的服务请求。比如，当一个文本编辑器写入一个文件到硬盘上时，程序将会发送一个系统请求让内核写入文件到硬盘中。
 这些是在Linux安全系统中非常重要的组件。这些安全模块和补丁使内核免于受到恶意代码的攻击。没有这些特性，Linux系统将会变成一个不安全的操作系统。
-</rich_text></node><node name="05 配置内核 (1)" prog_lang="custom-colors" readonly="False" tags="" unique_id="8"><rich_text>现在我们已经了解了内核，现在我们可以进入主要工作：配置并编译内核代码。配置内核代码并不会花费太长时间。配置工具会询问 许多问题并且允许开发者配置内核的每个方面。如果你有不确定的问题或者特性，你最好使用配置工具提供的默认值。本系列教程会使读者逐步了解配置内核的整个 过程。
+</rich_text></node><node name="05 配置内核 (1)" prog_lang="custom-colors" readonly="False" tags="" unique_id="8"><rich_text>现在我们已经了解了内核，现在我们可以进入主要工作：配置并编译内核代码。配置内核代码并不会花费太长时间。配置工具会询问许多问题并且允许开发者配置内核的每个方面。如果你有不确定的问题或者特性，你最好使用配置工具提供的默认值。本系列教程会使读者逐步了解配置内核的整个过程。
 
 配置代码前需要在源文件的文件夹内打开一个终端。当终端打开后，基于你喜好的配置界面，这里有几种不同的配置方法：
     • make config - 纯文本界面 (最常用的选择)。
@@ -863,7 +867,7 @@ Systrace是一个减少和控制应用程序访问系统文件和系统调用的
     • make ${PLATFORM}defconfig - 创建一份使用arch/$ARCH/configs/${PLATFORM}defconfig中的值的配置文件。
     • make allyesconfig - 这个选项将会创建一份尽可能多的问题回答都为‘yes’的配置文件。
     • make allmodconfig - 这个选项将会创建一份将尽可能多的内核部分配置为模块的配置文件。
-注意：内核代码可以放进内核自身，也可以成为一个模块。例如，用户可以将蓝牙驱动作为一个模块加入(独立于内核)，或者直接 放到内核栗，或者完全不加蓝牙驱动。当代码放到内核本身时，内核将会请求更多的内存并且启动会花费更长的时间。然而，内核会执行的更好。如果代码作为模块 加入，代码将会一直存在于硬盘上直到被需要时加载。接着模块被加载到内存中。这可以减少内核的内存使用并减少启动的时间。然而，因为内核和模块在内存上相 互独立所以会影响内核的性能。另一种选择是不添加一些代码。举例来说，内核开发人员假如知道系统永远都不会使用蓝牙设备，因此这个驱动就可以不加到内核 中。这提升了内核的性能。然而，如果用户之后需要蓝牙设备，那么他么需要安装蓝牙模块或者升级内核才行。
+注意：内核代码可以放进内核自身，也可以成为一个模块。例如，用户可以将蓝牙驱动作为一个模块加入(独立于内核)，或者直接放到内核里，或者完全不加蓝牙驱动。当代码放到内核本身时，内核将会请求更多的内存并且启动会花费更长的时间。然而，内核会执行的更好。如果代码作为模块加入，代码将会一直存在于硬盘上直到被需要时加载。接着模块被加载到内存中。这可以减少内核的内存使用并减少启动的时间。然而，因为内核和模块在内存上相互独立所以会影响内核的性能。另一种选择是不添加一些代码。举例来说，内核开发人员假如知道系统永远都不会使用蓝牙设备，因此这个驱动就可以不加到内核 中。这提升了内核的性能。然而，如果用户之后需要蓝牙设备，那么他么需要安装蓝牙模块或者升级内核才行。
     • make allnoconfig - 这个选项只会生成内核所必要代码的配置文件。它对尽可能多的问题都回答no。这有时会导致内核无法工作在为编译该内核的硬件上。
     • make randconfig - 这个选项会对内核选项随机选择（译注：这是做什么用途的？！）。
     • make localmodconfig - 这个选项会根据当前已加载模块列表和系统配置来生成配置文件。
@@ -871,12 +875,13 @@ Systrace是一个减少和控制应用程序访问系统文件和系统调用的
 贴士：最好使用“make menuconfig”，因为用户可以保存进度。“make config”不会提供这样的便利，因为配置过程会耗费大量时间。
 
 </rich_text><rich_text scale="h3">配置:</rich_text><rich_text>
-大多数开发者选择使用“make  menucongfig”或者其他图形菜单之一。当键入上述配置命令后，第一个问题，是受否将内核编译成64位。选项有“Y”、“n”和“?”。问号用来 解释这个问题，“n”代表这个问题回答否(no),&quot;Y&quot;代表这个问题回答是(yes)。在这个教程里，我选择是。  这里我输入&quot;Y&quot;(这里是大小写敏感的)并输入回车。
+大多数开发者选择使用“make  menucongfig”或者其他图形菜单之一。当键入上述配置命令后，第一个问题，是受否将内核编译成64位。选项有“Y”、“n”和“?”。问号用来 解释这个问题，“n”代表这个问题回答否(no),&quot;Y&quot;代表这个问题回答是(yes)。在这个教程里，我选择是。  
+这里我输入&quot;Y&quot;(这里是大小写敏感的)并输入回车。
 注意：当内核在32位系统上编译时，编译工具会询问内核是否编译成32位。第一个问题在不同的处理器上不一样。
-下一行显示的是&quot;Cross-compiler tool prefix (CROSS_COMPILE)  []&quot;（交叉编译器工具前缀）。如果你不是做交叉编译就直接按下回车。如果你正在交叉编译，对ARM系统输入像&quot;arm-unknown-linux- gnu-&quot;，对64位PC输入像&quot;x86_64-pc-linux-gnu-&quot;的字样。对其他处理器而言还有许多其他可能的命令，但是这个表太大了。一旦 一名开发者知道他们想要支持的处理器，很容易就可研究出处理器需要的命令。
+下一行显示的是&quot;Cross-compiler tool prefix (CROSS_COMPILE)  []&quot;（交叉编译器工具前缀）。如果你不是做交叉编译就直接按下回车。如果你正在交叉编译，对ARM系统输入像&quot;arm-unknown-linux-gnu-&quot;，对64位PC输入像&quot;x86_64-pc-linux-gnu-&quot;的字样。对其他处理器而言还有许多其他可能的命令，但是这个表太大了。一旦一名开发者知道他们想要支持的处理器，很容易就可研究出处理器需要的命令。
 注意：交叉编译是为别的处理器编译代码。比如，一台Intel系统正编译着不在Intel处理器上运行的程序，比如，这个系统可能正在编译着要在ARM或AMD处理器上运行的代码。
 注意：每一项选择会改变接下来显示什么问题及何时显示。我会(在教程里)包含上我的选择让读者可以在他们自己的系统上跟上配置的进度。
-接下来,用户会看到“Local version - append to kernel release  (LOCALVERSION)  []”（本地版本号，附加到内核版本号后面）。这使开发人员可以给定一个特殊版本号或命名他们自定义的内核。我将输入“LinuxDotOrg”，这样， 内核版本会显示为“3.9.4-LinuxDotOrg”。接下来，配置工具会询问“Automatically append version  information to the version string (LOCALVERSION_AUTO)  [N/y/?]”（是否自动添加版本信息到版本号后）。如果本地有一个git版本库，git的修订号会被添加到版本号后面。这个例子中我们没有使用 git，所以我回答&quot;no&quot;。不然git修订号将会追加到版本号中。还记得vmlinuz和几个类似的文件么？好了，下一个问题就是问使用哪一种格式压缩 内核。开发人员可以从五个选项中选择一个。它们是
+接下来,用户会看到“Local version - append to kernel release  (LOCALVERSION)  []”（本地版本号，附加到内核版本号后面）。这使开发人员可以给定一个特殊版本号或命名他们自定义的内核。我将输入“LinuxDotOrg”，这样， 内核版本会显示为“3.9.4-LinuxDotOrg”。接下来，配置工具会询问“Automatically append version  information to the version string (LOCALVERSION_AUTO)  [N/y/?]”（是否自动添加版本信息到版本号后）。如果本地有一个git版本库，git的修订号会被添加到版本号后面。这个例子中我们没有使用 git，所以我回答&quot;no&quot;。不然git修订号将会追加到版本号中。还记得vmlinuz和几个类似的文件么？好了，下一个问题就是问使用哪一种格式压缩内核。开发人员可以从五个选项中选择一个。它们是
     1. Gzip (KERNEL_GZIP)
     2. Bzip2 (KERNEL_BZIP2)
     3. LZMA (KERNEL_LZMA)
@@ -889,6 +894,133 @@ Gzip是默认值，所以我选择&quot;1&quot;并按回车。每种压缩格式
 下一个问题“open by fhandle syscalls (FHANDLE) [Y/n/?]”（是否使用文件句柄系统调用来打开文件）是问当有需要进行文件系统操作的时候，程序是否允许使用文件句柄而不是文件名进行。默认上，这个选择是“Y”。
 有时，开发者在做了一些选择后，某些问题会自动回答。比如，下一个问题“Auditing support (AUDIT)   [Y/?]”（是否支持审计）会在没有提示的情况下自动回答，因为先前的选项需要这个特性。审计支持会记录所有文件的访问和修改。下一个关于审计的问题 “Enable system-call auditing support (AUDITSYSCALL)  [Y/n/?]”（是否启用系统调用审计支持）。如果启用，所有的系统调用都会记录下来。如果开发者想要更好的性能，那么最好尽可能地禁用审计特性并且不 把它加入内核。而另外一些开发者可能为了安全监控而启用审计。这个问题我选择“n”。下一个审计方面的问题“Make audit loginuid  immutable (AUDITLOGINUIDIMMUTABLE)  [N/y/?]”（是否要审计进程身份ID不可变）是询问进程是否可以改变它们的loginuid(LOGIN User  ID)，如果启用，用户空间的进程将无法改变他们的loginuid。为了更好的性能，我们这里禁用这个特性。（译注：对于使用systemd这样的系 统，其是通过中央进程来重启登录服务的，设置为“y”可以避免一些安全问题；而使用较旧的SysVinit和Upstart的系统，其需要管理员手工重启 登录服务，应该设置为“N”）
 注意：当通过“make config”配置时，这些通过配置工具回答的问题会显示出来但是用户无法改变答案。当通过&quot;make menuconfig&quot;配置时，无论用户按任何键都无法改变选项。开发者不需要去改变这些选项，因为之前的选择决定了另外一个问题的选择。
+</rich_text></node><node name="06 内核配置(2)" prog_lang="custom-colors" readonly="False" tags="" unique_id="12"><rich_text>这一部分我们讲配置内核IRQ子系统。中断请求(IRQ)是硬件发给处理器的一个信号，它暂时停止一个正在运行的程序并允许一个特殊的程序占用CPU运行。
+这个目录中的第一个问题属于内核特性(Expose hardware/virtual IRQ mapping via debugfs  (IRQ_DOMAIN_DEBUG))（通过debugfs来显示硬件/虚拟的IRQ映射），它询问是否可以使用虚拟的调试文件系统来映射硬件及 Linux上对应的IRQ中断号。这个用作调试目的，大多数用户不需要用到，所以我选择了&quot;no&quot;。
+下一个标题显示&quot;Timers subsystem&quot;（计时器子系统）。第一个有关定时器子系统的问题是“Tickless System  (Dynamic Ticks)  (NO_HZ)”（无滴答系统）。我选择了“yes”，这会启用一个无滴答系统。这意味着定时器中断将会按需使用，定时器中断允许任务以特定的时间间隔执 行。下一个问题(High Resolution Timer Support  (HIGH_RES_TIMERS))问是否支持高精度定时器。并不是所有的硬件支持这个，通常地说，如果硬件很慢或很旧，那么选择&quot;no&quot;,否则像我一 样选择&quot;yes&quot;。
+下一个标题&quot;CPU/Task time and stats accounting&quot;（CPU/任务用时与状态统计），这个是关于进程的追踪。第一个问题看上去像这样：
+Cputime accounting （CPU用时统计）
+    1. Simple tick based cputime accounting (TICK_CPU_ACCOUNTING) （简单基于滴答的用时统计）
+    2. Full dynticks CPU time accounting (VIRT_CPU_ACCOUNTING_GEN) (NEW) （全动态滴答的用时统计）
+    3. Fine granularity task level IRQ time accounting (IRQ_TIME_ACCOUNTING) （细粒度的任务级IRQ用时统计）
+TICKCPUACCOUNTING会在每个CPU滴答中检测/proc/stat。这是默认的选项，这个记账方法非常简单。
+注意：CPU滴答是抽象测量CPU时间的方式。每个处理器、操作系统和安装的系统都不同，比如说，一个更强大的处理器会比老的处理器拥有更多的 CPU滴答。如果你安装了一个Linux系统，然后接着在同一块磁盘上重新安装了它，你可能会得到一个更快或更慢的CPU滴答时间(至少一些计算机技术书 上这么说)。通常来讲，一个更快的时钟速度意味着更多的CPU滴答。
+如果启用了VIRT_CPU_ACCOUNTING_GEN，任务和CPU时间统计将由监视内核-用户边界实现。这个选择的代价是会增加额外的开销。
+IRQ_TIME_ACCOUNTING记账方式则通过检测IRQ状态间的时间戳工作，这个性能开销很小。
+我选择了&quot;1&quot;并被询问有关BSD记账&quot;BSD Process Accounting (BSD_PROCESS_ACCT)&quot;（BSD进程记账）的问题。这个内核特性会记录每个进程不同的关闭信息。为了得到一个更小和更快的内核，我选择了&quot;no&quot;.
+下一组问题看上去就像下面这样。
+    • Export task/process statistics through netlink (TASKSTATS) （通过netlink导出任务/进程统计数据）
+    • Enable per-task delay accounting (TASK_DELAY_ACCT) （启用针对每个任务的延迟统计）
+    • Enable extended accounting over taskstats (TASK_XACCT) （启用taskstats的扩展统计）
+TASKSTATS使内核可以通过网络套接字导出进程统计。网络套接字是内核和用户空间进程间IPC通信的一种形式。TASKDELAY\ACCT监视进程并注意资源访问的延迟。比如，TASKDELAYACCT可以看到X进程正在为了CPU时间而等待，如果TASK_DELAY_ACCT观察到进程已经等待了太长时间，这个进程接着就会被给予一些CPU时间。TASK_XACCT会收集额外的统计数据，为了更小的内核负载我会禁用这个。
+现在接下来的目录就会显示RCU子系统：读取-复制-更新子系统是一种低负载的同步机制，它允许程序查看到正在被修改/更新的文件。配置工具已经回答了第一个问题。
+RCU Implementation （RCU 实现方式）
+&gt; 1. Tree-based hierarchical RCU (TREE_RCU) （树形分层结构的RCU）
+choice[1]: 1
+这里就选择“1”。除了TREE_RCU，还有classic RCU(更老的实现)。下一个问题(Consider userspace as  in RCU extended quiescent state (RCU_USER_QS)  [N/y/?])（是否在用户空间记录扩展的quiescent状态）问RCU是否可以在CPU运行在用户空间时设置一个特殊的quiescent状态。 这个选项通常被禁用，因为这会增加太多消耗。下面是另一个RCU问题(Tree-based hierarchical RCU fanout  value (RCU_FANOUT) [64])（树形分层结构的RCU端点数），问的是关于端点数。下一个问题(Tree-based  hierarchical RCU leaf-level fanout value (RCU_FANOUT_LEAF)  [16])（树形分层结构的RCU叶级端点数），是另外一个关于端点数的问题，但它只处理叶级。还有另外一个RCU问题(Disable  tree-based hierarchical RCU auto-balancing (RCU_FANOUT_EXACT)  [N/y/?])（是否禁用树形分层结构的RCU的自动平衡），询问是否禁用RCU自动平衡树，而采用上述的端点数。
+接下来，配置脚本将会询问&quot;Accelerate last non-dyntick-idle CPU's grace periods  (RCU_FAST_NO_HZ)&quot;（加速最后的非dyntick-idle CPU的RCU宽限期）。在这之后会显示&quot;Offload RCU  callback processing from boot-selected CPUs  (RCU_NOCB_CPU)&quot;（从选择引导的CPU里面卸载RCU回调）。（译注：此处作者没做解释。前一个能够节省电力，但是降低了性能；后一个用于 调试。）
+下一个问题非常重要(Kernel .config support  (IKCONFIG))（内核的.config支持）。开发人员可以选择保存由这个配置工具生成的设置到一个文件中。这个文件可以放在内核中，也可在一个 模块中，或者完全不保存。这个文件可以被想要编译一个完全跟某人相同内核的开发者使用。这个文件还可以帮助开发人员使用一个更新的编译器重新编译一个内 核。举例来说，开发人员配置并编译了一个内核，然而编译器有一些bug，但开发人员仍然需要一个使用这些设置的内核。而值得庆幸的是，开发人员可以升级他 们的编译器，并使用设置文件来节省他们重新配置内核的时间。开发人员也可以在另一台计算机上保存源代码和配置文件并编译内核。至于另一个目的，开发人员可 以加载该文件，并根据需要调整设置。我选择保存配置文件在一个模块中，这个问题 &quot;Enable access to .config through  /proc/config.gz  (IKCONFIG_PROC)&quot;（启用通过/proc/config.gz来访问.config的功能）是询问这个文件是否是可以通过这次方式访问的， 我选择了&quot;yes&quot;。
+下一个问题是内核使用多大的log缓冲区(Kernel log buffer size (16 =&gt; 64KB, 17 =&gt;  128KB) (LOG_BUF_SHIFT)  [17])（内核日志缓冲区大小）。小的缓冲区意味着它无法像更大的缓冲区那样保持日志更长的时间。这个选择取决于开发者想要日志保持的时间，我选择的 是&quot;12&quot;。
+接着，出现了另外一个问题。该问题询问关于是否启用NUMA(非一致性内存访问)的内存/任务的均衡(Automatically enable  NUMA aware memory/task placement  (NUMA_BALANCING_DEFAULT_ENABLED))（自动启用NUMA的内存/任务均衡）。如果在NUMA的机器上设置了该选项，那么 NUMA自动平衡就会启用。在NUMA下，处理器可以比非本地内存(内存分配给另外一个处理器或在处理器之间共享的内存)更快地访问它的本地内存。如果上 面启用了(我启用了)，那么最好对这个问题&quot;Memory placement aware NUMA scheduler  (NUMA_BALANCING)&quot;（由NUMA调度器进行内存分配）回答&quot;yes&quot;，这是一个NUMA调度器。
+在新的标题&quot;Control Group support&quot;（Cgroup支持）下，因为先前的选择，&quot;Control Group support (CGROUPS)&quot;（Cgroup支持）被自动地回答了&quot;yes&quot;。
+以下设定(Example debug cgroup subsystem  (CGROUP_DEBUG))（导出Cgroup子系统的调试信息）是启用一个用于调试cgroup框架的一个简单cgroup子系统。下一个选项 (Freezer cgroup subsystem  (CGROUP_FREEZER))（冻结Cgroup子系统）可以让程序员可以冻结或解冻cgroup内的任务。
+注意：cgroup是一组进程。
+下面我们要求回答&quot;Device controller for cgroups  (CGROUP_DEVICE)&quot;(Cgroup的设备控制器)。cgroup(控制组)是一种用来控制资源使用的特性。回答&quot;yes&quot;可以允许设备 cgroup的白名单可以使用open和mknod系统调用(用来创建文件系统节点的系统调用)。
+下一个问题(Cpuset support  (CPUSETS))（CPU分组支持）询问的是内核是否可以创建和管理CPU分组。这允许管理员可以在一个系统上动态分配各组内存节点，并分配任务在这 些内存上运行。这通常用于SMP和NUMA系统中。我这个问题回答的是&quot;no&quot;。
+注意：请记住，如果我没有指定我选的是什么，那么我选的就是默认选项。
+启用cgroup统计子系统(Simple CPU accounting cgroup subsystem  (CGROUP_CPUACCT))（Cgroup子系统的简单CPU统计）会生成一个资源控制器来监控在一个cgroup组内的独立任务的CPU使用情 况。我选择了&quot;no&quot;。
+资源计数器(Resource counters (RESOURCE_COUNTERS))使控制器的独立资源统计功能能够统计cgroup。我选择了&quot;no&quot;。
+下一个问题(Enable perf_event per-cpu per-container group (cgroup)  monitoring  (CGROUP_PERF))（启用每个CPU、每个容器组的pref_event监控）允许开发者扩展每个CPU的模式，使它可以只监控运行在特定 CPU上的一个特别的cgroup组的线程。
+下一章节是&quot;Group CPU Scheduler&quot;（CPU分组调度器）。前两个已经回答的问题包括：
+Group CPU scheduler (CGROUPSCHED)（CPU分组调度器） Group scheduling for SCHEDOTHER (FAIRGROUP\SCHED)（SCHED_OTHER分组调度）
+第一个已回答的问题(CPU bandwidth provisioning for FAIR_GROUP_SCHED  (CFS_BANDWIDTH))（CPU带宽分配）询问的是内核是否允许用户设置在公平组调度器内执行的任务的CPU带宽限制。没有限制的组会被认为不 受约束，并会没有限制地运行。
+注意：并不是所有内核选项都在这里。我这里提到的组只是为了便于阅读，并挑出那些新的和大的部分。并不需要了解所有的分组。分组有助于使用图形工具配置内核，这样开发者可以在搜索特定的设置时，直接通过分组菜单找到。
+开发者可以通过回答&quot;Group scheduling for SCHED_RR/FIFO (RT_GROUP_SCHED)&quot;（SCHED_RR/FIFO分组调度）这个问题为&quot;yes&quot;来让用户可以分配CPU带宽到任务组中。
+下一个问题是&quot;Block IO controller (BLK_CGROUP)&quot;（块IO控制器）。任务组可以被识别，并且它们的磁盘带宽是由使用块IO控制器实现的CFQ IO调度器分配的。BIO在块级的限制逻辑使用块IO控制器来提供设备上的IO速率上限。
+这里有一个调试问题(Enable Block IO controller debugging (DEBUGBLKCGROUP) [N/y/?])（启用阻塞IO控制器的调试）询问是否启用块IO控制器的调试。为了制作一个精简的内核，最好禁用这个特性。
+为了启用内核中的检查点和还原特性。这个问题“Checkpoint/restore support  (CHECKPOINT_RESTORE)”（检查点及还原支持）可以选择“yes”，不过为了更低的负载这里我选择了“n”。启用这个特性会增加辅助的 进程控制代码来设置进程的代码段、数据段和堆的大小，并增加了一些额外的程序入口。
+下面我们就要配置命名空间的支持了。命名空间是一组标识符的容器。比如，/usr/lib/python3/dist-packages /re.py就是一个标识符，/usr/lib/python3/dist-packages/就是一个命名空间。而re.py是这个命名空间下的本地名 称。
+第一个命名空间问题(Namespaces support  (NAMESPACES))询问的是是否启用命名空间。这允许可以使用相同的PID但在不同的命名空间内(译注：原文为&quot; This will  allow the same PIDs (Process ID) to be used but indifferent  namespaces&quot;,这里indiffernt根据上下文应该是少了空格)，否则PID永远不会重复。
+下一个问题(UTS namespace (UTS_NS))询问是否可以让UTS命名空间内的任务可以在uname()系统调用中看到不同的信息。uname()系统调用提供查看机器和操作系统的信息。
+启用IPC命名空间(IPC namespace (IPC_NS))将允许在这个命名空间内的任务与其他命名空间内相对应IPC ID的对象协同工作。
+PID命名空间(PID Namespaces (PID_NS))就是进程ID命名空间。这可以使不同的进程在不同的PID命名空间使用相同的PID。这是一个容器的构建块。
+接下来，启用网络命名空间(Network namespace (NET_NS))可以使用户创建一个拥有多个实例的网络栈。
+当启用后,自动进程分组调度(SCHED_AUTOGROUP)会填充并创建任务组来优化桌面程序的调度。它将把占用大量资源的应用程序放在它们自己的任务组，这有助于性能提升。
+这里是一个调试特性，除非你有特别的需求否则应该禁用它。这个问题(Enable deprecated sysfs features to  support old userspace tools  (SYSFS_DEPRECATED))（启用不推荐的sysfs功能来支持旧式的用户空间工具）询问是否启用sysfs，这是调试内核时用的虚拟文件系 统。
+接下来，因为当前的配置需要它，所以&quot;Kernel-&gt;user space relay support (formerly  relayfs)  (RELAY)&quot;（内核-&gt;用户空间的中继支持，即relayfs）已经被设成&quot;yes&quot;了。最好启用initrd支持(Initial RAM  filesystem and RAM disk (initramfs/initrd) support  (BLK_DEV_INITRD))（初始化内存文件系统和内存盘(initramfs/initrd)）。
+用户会被问及哪里放置initramfs源文件。如果没有需要，请留空。
+接下来,开发人员会被询问关于初始虚拟磁盘(Linux的内核映像文件)所支持的压缩格式。你可以启用所有支持的压缩格式。
+    • Support initial ramdisks compressed using gzip (RD_GZIP)
+    • Support initial ramdisks compressed using bzip2 (RD_BZIP2)
+    • Support initial ramdisks compressed using LZMA (RD_LZMA)
+    • Support initial ramdisks compressed using XZ (RD_XZ)
+    • Support initial ramdisks compressed using LZO (RD_LZO)
+这里设置了内核的编译内核编译选项(Optimize for size (CC_OPTIMIZE_FOR_SIZE))（优化大小）。开发者可以让编译器在编译时优化代码。我选择了&quot;yes&quot;。
+用户想要配置更多的内核特性，那么下个问题就回答&quot;yes&quot;(Configure standard kernel features (expert users) (EXPERT))（配置标准内核特性（专家级用户））。
+要启用过时的16位UID系统调用封装器，这个问题设成&quot;yes&quot;(Enable 16-bit UID system calls (UID16))。系统调用就会使用16位UID。
+推荐启用&quot;sysctl syscall&quot;(Sysctl syscall support (SYSCTL_SYSCALL))支持。这使/proc/sys成为二进制路径的接口。
+接下来的两个问题已经被预先回答了&quot;yes&quot;,它们是&quot;Load all symbols for debugging/ksymoops  (KALLSYMS)&quot;（载入所以的调试符号）和&quot;“Include all symbols in kallsyms  (KALLSYMS_ALL)&quot;（包括所有的kallsyms符号）。这些都是启用调试标志。
+下一步，开发者应该启用printk支持( (Enable support for printk  (PRINTK)))，这会输出内核消息到内核日志中。这在内核出错时是很重要的。编译一个&quot;哑巴&quot;内核并不是一个好主意。然而，如果我们启用了这个支 持，就会被一些开发者看到这些出错，要么就不要启用。
+除非有必要，开发者可以禁用bug支持(BUG() support (BUG))。禁用这项将会不支持WARN信息和BUG信息。这会减小内核的体积。
+</rich_text></node><node name="07 配置内核 (3)" prog_lang="custom-colors" readonly="False" tags="" unique_id="13"><rich_text>下一个问题(Enable ELF core dumps (ELF_CORE))询问的是内核是否可以生成内核转储文件。这会使内核变大4KB。所以我选择了&quot;no&quot;。
+注意：内核转储文件(内存或者系统的转储)是程序崩溃前已记录的状态。内核转储是用来调试问题的。这个转储文件的格式是ELF(Executable and Linkable Format )。
+下面可以启用PC扬声器(Enable PC-Speaker support (PCSPKR_PLATFORM))。大多数计算机用户拥有并使用扬声器，所以这个启用它。
+虽然下面的特性会增加内核的大小(Enable full-sized data structures for core (BASE_FULL))（启用完全大小的内核数据结构），但性能也随之增加。所以我选择&quot;yes&quot;。
+为了使内核可以运行基于glibc的程序，必须启用FUTEX(Enable futex support (FUTEX))。这个特性启用了快速用户空间互斥锁(Fast Userspace muTEXes)。
+注意：glibc(GNU C Library)是由GNU实现的标准C库。
+注意：FUTEX (fast userspace mutex)是用来防止两个线程访问同一个不能被多个线程使用的共享资源。
+下一个问题(Enable eventpoll support (EPOLL))可以通过回答&quot;no&quot;来禁用epoll系统调用。然而，为了含有epoll系统调用，我选择了&quot;yes&quot;。epoll是一种I/O事件通知系统。
+为了收到来自文件描述符的信号，我们启用signalfd系统调用(Enable signalfd() system call (SIGNALFD)。
+如果启用这个特性(Enable timerfd() system call (TIMERFD))，它允许程序使用定时器事件获取文件描述符。
+我们现在的配置必须启用eventfd系统调用(Enable eventfd() system call  (EVENTFD))。它默认启用访问共享内存文件系统(Use full shmem filesystem  (SHMEM)。共享内存文件系统是一种虚拟内存文件系统。
+下一个问题是&quot;Enable AIO support (AIO)&quot;。这个特性启用了线程化程序使用的POSIX异步I/O。
+注意：异步I/O用来处理输入/输出，它允许线程在传输完成前就完成处理。
+如果你正在给一个嵌入式系统配置一个内核，那么问题“Embedded system (EMBEDDED)”可以选择&quot;yes&quot;。否则就像我一样选择&quot;no&quot;。
+注意：嵌入式系统是运行在一个更大的电子系统的实时计算机。
+现在，我们可以配置内核性能事件和计时器了。配置工具没有给开发者选择，直接启用了事件和计数器(Kernel performance events and counters (PERF_EVENTS))（内核性能事件和计数器）。这是一个重要特性。
+接下来，我们可以禁用另外一个调试特性(ebug: use vmalloc to back perf mmap() buffers (DEBUG_PERF_USE_VMALLOC))。
+如果启用了VM事件计数器，那么事件计数就会显示在/proc/vmstat(Enable VM event counters for  /proc/vmstat (VM_EVENT_COUNTERS))。如果禁用了事件计数就不会显示，/proc/vmstat只会显示内存页计数。
+为了更好地支持PCI芯片，(Enable PCI quirk workarounds (PCI_QUIRKS))回答yes。这会启用对PCI芯片的怪异行为和bug的临时解决方案。
+下面一个调试特性可以像我一样禁用掉(Enable SLUB debugging support  (SLUB_DEBUG))。这个特性会耗费很多空间并且会禁用用于调试内核的SLB  sysfs。如果这个特性被禁用，那么/sys/slab就不会存在并且系统上也不再支持缓冲验证。
+堆随机化是一个让利用堆漏洞更加困难的特性(Disable heap randomization  (COMPAT_BRK))。然而我们不应该去启用它，因为任何基于libc5的软件都无法工作在这个系统上！只有我们有特别的理由这么做或者如果你不会 使用基于libc5的软件时才去启用它。我禁用了这个特性。当编译一个通用的内核时，开发这会希望禁用这个特性。
+接下来必须选择一个SLAB分配器。SLAB分配器是一个没有碎片且有效率地将内核对象放置在内存中的内存管理系统。默认选择是&quot;2&quot;。
+Choose SLAB allocator
+1. SLAB (SLAB)
+&gt; 2. SLUB (Unqueued Allocator) (SLUB)
+3. SLOB (Simple Allocator) (SLOB)
+choice[1-3?]: 2
+为了支持扩展性能支持，(Profiling support (PROFILING))回答&quot;yes&quot;。
+下一个问题让开发者选择是否启用OProfile系统。它可以禁用、启用或者添加为一个模块在需要时载入。我选择禁用这个特性。
+Kprobes允许用户捕捉几乎任意的内核地址去启动一个回调函数。这是一个可以像我一样禁用的调试工具(Kprobes (KPROBES))。
+这个优化特性可以启用(Optimize very unlikely/likely branches (JUMP_LABEL))（优化非常近似/不近似的分支）。这使分支预判更加简单并可以减小开销。
+配置工具启用了一个实验性特性&quot;透明用户空间探针&quot;(Transparent user-space probes (EXPERIMENTAL) (UPROBES))。不过不要担心，系统可以很好工作，并不是所有的实验性特性是不稳定或者坏的。
+接下来，我们会被询问基于gcov的内核分析(Enable gcov-based kernel profiling (GCOV_KERNEL))。这可以被禁用。
+为了允许内核加载模块，需要启用可加载模块支持(Enable loadable module support (MODULES))。
+内核一般只能加载有版本号的模块。如果想允许内核加载没有版本号的模块，就启用这个特性(Forced module loading  (MODULE_FORCE_LOAD))（强制模块载入）。这么做是一个很糟糕的注意，所以我已经禁用了它，除非你有特定的需求需要这个特性。
+如果启用了这个特性(Module unloading  (MODULE_UNLOAD))，Linux内核也能卸载模块，最好启用。如果内核判断你要卸载的模块不应该被卸载，那么用户则无法卸载模块。启用强制 卸载也行，但是不建议(Forced module unloading (MODULE_FORCE_UNLOAD)。
+为了使用不是为你的内核开发的或者并不适用你的版本号的模块，可以启用版本支持(Module versioning support (MODVERSIONS))。最好不要混用不同版本号的模块，所以我禁用了这个特性。
+模块在它们的modinfo(模块信息)里有一个字段名为&quot;srcverion&quot;。这个字段允许开发者知道使用什么源码版本来编译模块。启用这个选 项可以在编译模块的时候加入这个字段。这个并不必要，所以我禁用了它(Source checksum for all modules  (MODULE_SRCVERSION_ALL))。如果启用了先前的选项，开发者可以将校验和加入到模块中(Source checksum for  all modules (MODULE_SRCVERSION_ALL))。
+为了启用模块签名验证(Module signature verification (MODULE_SIG))，这个选项回答&quot;yes&quot;。因为这个并不必要，我选择了&quot;no&quot;，否则内核在加载模块前会检查并验证签名。
+为了启用块级支持(Enable the block layer (BLOCK)),像我一样选择&quot;yes&quot;。禁用这个将会使块设备无法使用并且无法启用某些文件系统。
+下面，SG支持已经默认启用(Block layer SG support v4  (BLK_DEV_BSG))（块级SG支持V4版），并且辅助库也启用了(Block layer SG support v4 helper lib  (BLK_DEV_BSGLIB))。
+下面回答的问题是关于对块设备的数据完整性支持(Block layer data integrity support (BLK_DEV_INTEGRITY))。这个特性允许拥有更好的数据完整性来提供设备数据保护特性。许多设备不支持这个特性，所以我禁用了它。
+如果启用了块级bio带宽限制(Block layer bio throttling support (BLK_DEV_THROTTLING))那就可以限制设备的IO速率。
+为了启用外部分区方案的支持，这个问题就回答&quot;yes&quot;(Advanced partition selection (PARTITION_ADVANCED))。我禁用了这个特性。
+为了启用CSCAN(译注：循环扫描)和FIFO过期请求，那就启用最后期限IO调度器(Deadline I/O scheduler (IOSCHED_DEADLINE))。
+CFQ IO调度器在处理器之间平均地分配带宽。因此启用这个特性feature (CFQ I/O scheduler (IOSCHED_CFQ))是个好主意。
+下面，开发者可以启用或禁用CFQ组支持(CFQ Group Scheduling support (CFQ_GROUP_IOSCHED))。接下来，开发者可以选择默认的IO调度器，最好选择DEFAULT_DEADLINE。
+对于小于32位寻址的设备，下面的特性会分配16MB的寻址空间(DMA memory allocation support (ZONE_DMA))。如果你不使用这些设备，那么这个是可以禁用的，所以我禁用了它。
+对于有多个CPU的系统，最好启用SMP(Symmetric multi-processing support (SMP))。对于只有单个处理器的设备，内核会在禁用这个特性后执行得更快。我启用了这个特性。
+对于支持x2apic的CPU，启用x2apic支持support (Support x2apic (X86_X2APIC))。如果你的系统缺乏这个特性就像我一样禁用它。
+接下来我们可以启用对那些缺乏合适的ACPI支持的旧式SMP系统的MPS表(Enable MPS table (X86_MPPARSE))。一些拥有ACPI、DSDT、MADT支持的更新的系统不需要这个特性。我禁用了它。
+下面的问题允许我们启用扩展x86平台的支持(Support for extended (non-PC) x86 platforms  (X86_EXTENDED_PLATFORM))。只有在你需要一个通用内核或者内核运行在某个特定的需要扩展支持的处理器上时才启用它。我禁用了这个 特性。
+为了支持Intel低功耗子系统，就启用这个特性(Intel Low Power Subsystem Support (X86_INTEL_LPSS))。
+单一深度WCHAN输出(Single-depth WCHAN output (SCHED_OMIT_FRAME_POINTER))是用来计算电量(/proc//wchan)，然而这会导致更多的功耗。
+下面，我们启用虚拟客户系统支持(Paravirtualized guest support (PARAVIRT_GUEST))。这允许一个Guest操作系统与主操作系统一起运行。我会禁用这个特性。
+Memtest是一个在系统启动时检测内存的软件。Memtest可以配置为每次或者有时开机运行。Memtest并不必要，所以我禁用了它。
+这里我们可以选择一个内核应该支持的处理器家族。我选择了5 – Generic-x86-64。这是一个64位的系统，x86是32系统。
+下面我们能选择也支持x86(32位)处理器 (Supported processor vendors (PROCESSOR_SELECT))。
+为了发现机器异常，我们可以启用DMI扫描(Enable DMI scanning (DMI))，这可以检测异常。
+要启用DMA访问系统上32位内存的3GB以上的内存，下一个问题(GART IOMMU support (GART_IOMMU))我们回答&quot;yes&quot;。
 </rich_text></node></node><node name="linux wifi工具" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>Wireless tools for Linux介绍 
 Wireless tools for  Linux是一个Linux命令行工具包，用来设置支持Linux Wireless Extension的无线设备。Wireless tools  for Linux 和 Linux Wireless Extension 由 Jean  Tourrilhes在维护，由Hewlett-Packard（HP惠普）赞助。
 大多数基于Linux内核的操作系统都包含Wireless tools。在许多GNU/Linux 发行版中，都缺省安装这个工具包，即使是没有自动安装，也能很容易地找到其二进制代码安装包。
