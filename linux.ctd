@@ -5589,7 +5589,7 @@ choice[1-2?]: 2
 
   Device Mapper 是 Linux2.6 内核中支持逻辑卷管理的通用设备映射机制，它为实现用于存储资源管理的块设备驱动提供了一个高度模块化的内核架构，如图 1。
 </rich_text><rich_text weight="heavy">图1 Device Mapper的内核体系架构</rich_text><rich_text>
-    
+    </rich_text><rich_text justification="left"></rich_text><rich_text>
     在内核中它通过一个一个模块化的 target driver 插件实现对 IO 请求的过滤或者重新定向等工作，当前已经实现的 target  driver 插件包括软 raid、软加密、逻辑卷条带、多路径、镜像、快照等，图中  linear、mirror、snapshot、multipath 表示的就是这些 target driver。Device mapper  进一步体现了在 Linux  内核设计中策略和机制分离的原则，将所有与策略相关的工作放到用户空间完成，内核中主要提供完成这些策略所需要的机制。Device mapper  用户空间相关部分主要负责配置具体的策略和控制逻辑，比如逻辑设备和哪些物理设备建立映射，怎么建立这些映射关系等等，而具体过滤和重定向 IO  请求的工作由内核中相关代码完成。因此整个 device mapper 机制由两部分组成--内核空间的 device mapper  驱动、用户空间的device mapper 库以及它提供的 dmsetup 工具。在下文中，我们分内核和用户空间两部分进行介绍。
 
 </rich_text><rich_text scale="h1" weight="heavy">内核部分</rich_text><rich_text>
@@ -5597,7 +5597,7 @@ choice[1-2?]: 2
 重要概念
     Device  mapper 在内核中作为一个块设备驱动被注册的，它包含三个重要的对象概念，mapped device、映射表、target  device。Mapped device 是一个逻辑抽象，可以理解成为内核向外提供的逻辑设备，它通过映射表描述的映射关系和 target  device 建立映射。从 Mapped device 到一个 target device 的映射表由一个多元组表示，该多元组由表示  mapped device 逻辑的起始地址、范围、和表示在 target device 所在物理设备的地址偏移量以及target  类型等变量组成（这些地址和偏移量都是以磁盘的扇区为单位的，即 512 个字节大小）。Target device 表示的是 mapped  device 所映射的物理空间段，对 mapped device 所表示的逻辑设备来说，就是该逻辑设备映射到的一个物理设备。Device  mapper 中这三个对象和 target driver  插件一起构成了一个可迭代的设备树。在该树型结构中的顶层根节点是最终作为逻辑设备向外提供的 mapped device，叶子节点是 target  device 所表示的底层物理设备。最小的设备树由单个 mapped device 和 target device 组成。每个 target  device 都是被mapped device 独占的，只能被一个 mapped device 使用。一个 mapped device  可以映射到一个或者多个 target device 上，而一个 mapped device 又可以作为它上层 mapped device的  target device 被使用，该层次在理论上可以在 device mapper 架构下无限迭代下去。
 </rich_text><rich_text weight="heavy">图2 Device mapper 内核中各对象的层次关系</rich_text><rich_text>
-        
+        </rich_text><rich_text justification="left"></rich_text><rich_text>
     在 图2 中我们可以看到 mapped device1 通过映射表和 a、b、c 三个 target device 建立了映射关系，而 target  device a 又是通过 mapped device 2 演化过来，mapped device 2 通过映射表和 target device  d 建立映射关系。
     我们进一步看一下上述三个对象在代码中的具体实现，dm.c 文件定义的 mapped_device 结构用于表示  mapped device，它主要包括该 mapped device  相关的锁，注册的请求队列和一些内存池以及指向它所对应映射表的指针等域。Mapped device 对应的映射表是由 dm_table.c  文件中定义的 dm_table 结构表示的，该结构中包含一个 dm_target结构数组，dm_target 结构具体描述了  mapped_device 到它某个 target device 的映射关系。而在 dm_table 结构中将这些 dm_target 按照 B  树的方式组织起来方便 IO 请求映射时的查找操作。Dm_target 结构具体记录该结构对应 target device 所映射的  mapped device 逻辑区域的开始地址和范围，同时还包含指向具体 target device 相关操作的 target_type  结构的指针。Target_type 结构主要包含了 target device 对应的 target driver  插件的名字、定义的构建和删除该类型target device的方法、该类target  device对应的IO请求重映射和结束IO的方法等。而表示具体的target  device的域是dm_target中的private域，该指针指向mapped device所映射的具体target  device对应的结构。表示target device的具体结构由于不同的target  类型而不同，比如最简单的线性映射target类型对应target  device的结构是dm-linear.c文件中定义的linear_c结构。其定义如下：
     struct linear_c {
@@ -5606,7 +5606,7 @@ choice[1-2?]: 2
     };
     </rich_text><rich_text foreground="#00000000ffff">该target device的定义相当简单，就只包括了表示对应物理设备的dm_dev结构指针和在该物理设备中以扇区为单位的偏移地址start。上述几个数据结构关系如图3所示：</rich_text><rich_text>
 </rich_text><rich_text weight="heavy">图3  device mapper中几个重要数据结构的关系内核中建立过程</rich_text><rich_text>
-    
+    </rich_text><rich_text justification="left"></rich_text><rich_text>
 </rich_text><rich_text scale="h3">    </rich_text><rich_text scale="h3" weight="heavy">内核中建立过程</rich_text><rich_text scale="h3">    </rich_text><rich_text>
     在下面我们结合具体的代码简要介绍下在内核中创建一个mapped device的过程：
     1、  根据内核向用户空间提供的ioctl 接口传来的参数，用dm-ioctl.c文件中的dev_create函数创建相应的mapped  device结构。这个过程很简单，主要是向内核申请必要的内存资源，包括mapped  device和为进行IO操作预申请的内存池，通过内核提供的blk_queue_make_request函数注册该mapped  device对应的请求队列dm_request。并将该mapped device作为磁盘块设备注册到内核中。
@@ -5653,7 +5653,7 @@ Device  mapper在用户空间相对简单，主要包括device mapper库和dmset
     dmsetup remove 设备名  /* 删除指定的逻辑设备 */
     
    </rich_text><rich_text weight="heavy"> 图4 根据例子1中映射表在内核中建立的逻辑设备</rich_text><rich_text>
-    
+    </rich_text><rich_text justification="left"></rich_text><rich_text>
     当用户空间根据映射表下达创建逻辑设备命令后，device  mapper在内核中就根据传入的参数和映射关系建立逻辑地址到物理地址的映射关系。根据映射表例子1中的映射关系建立的设备如图4所示，图中的下半部分就抽象地描绘出了按照该映射表在内核中建立的逻辑地址到物理地址的映射关系。
     Device  mapper的用户空间部分对开发者要实现自己的存储管理工具来说是可选的，事实上，很多我们常见的逻辑卷管理器，比如LVM2、dmraid等工具都利用device mapper的提供的device  mapper用户空间库，根据自己的管理需求建立独立的一套管理工具，而并没有使用它提供的dmsetup工具，甚至IBM的开源项目企业级的逻辑卷管理系统-EVMS，在实现中都没有采用device mapper的用户空间库，完全根据内核中的ioctl定义实现了一套自己的函数库。
 
@@ -5952,4 +5952,246 @@ CC = arm-linux-gcc</rich_text><rich_text>
 iwconfig wlan0 key 123456
 iwconfig wlan0 essid &quot;rat-linux&quot;
 iwconfig wlan0 ap auto
-ifconfig wlan0 192.168.1.30 netmask 255.255.255.0</rich_text></node></cherrytree>
+ifconfig wlan0 192.168.1.30 netmask 255.255.255.0</rich_text></node><node name="常用命令" prog_lang="custom-colors" readonly="False" tags="" unique_id="33"><rich_text>###############################################################################
+</rich_text><rich_text scale="h3" weight="heavy">从指定类型文件中查找</rich_text><rich_text>
+find . -name '*.c' | awk '{print &quot;grep -i -nH keyword &quot;$1}' | /bin/bash
+find . -name '*.c' -exec grep -i -nH &quot;keyword&quot; {} \;
+</rich_text><rich_text scale="h3" weight="heavy">更好的搜索方法：</rich_text><rich_text>
+grep -i &quot;search_string&quot; . -r --include=*.txt
+grep &quot;search_string&quot; . -r --include=*.txt --include=*.cpp --include=*.h
+
+</rich_text><rich_text scale="h3" weight="heavy">只显示目录名</rich_text><rich_text>
+ls -l | grep ^d
+或
+ls -d */
+
+</rich_text><rich_text scale="h3" weight="heavy">只显示文件</rich_text><rich_text>
+ls -l | grep ^-
+
+</rich_text><rich_text scale="h3" weight="heavy">分别设置子目录和文件不同权限</rich_text><rich_text>
+find . -type d -exec chmod 755 {} \;
+find . -type f -exec chmod 644 {} \;
+
+</rich_text><rich_text scale="h3" weight="heavy">为指定文件设置可执行权限</rich_text><rich_text>
+</rich_text><rich_text scale="h3">find . -name 'commit-msg' -type f -exec chmod +x {} \;</rich_text><rich_text>
+find . -name '*.sh' -type f -exec chmod +x {} \;
+
+
+###############################################################################
+</rich_text><rich_text scale="h2" weight="heavy">kernel patch</rich_text><rich_text>
+###############################################################################
+	(1).产生补丁
+	生成patch命令用diff命令，该命令的基本用法是：
+	diff [选项] 旧文件或目录 新文件或目录
+	该命令根据选项产生新旧文件或目录之间的patch，并把该patch输出到标准输出上。
+	选项用来指定输出的patch文件格式，如果比较的是目录是否需要递归，对只在一边目录中存在的文件的处理方法，如何处理空格、制表符、小写等；常用选项有
+	-c 表示产生context格式的patch
+	-u 表示产生unified格式的patch
+	-r 表示对目录进行递归操作，用于产生整个代码树的patch
+	-N 表示如果文件不存在则将其等价为空文件，这个用于产生有文件增加或删除的patch
+
+	接下来，需要指定比较的对象，它们可以是文件，也可以时目录。旧版本列在前面，新版本列在后面。当然，文件或目录也可以从标准输入获得。此时，文件或目录名称用减号&quot;-&quot;表示。实例：
+
+	cat build.xml | diff -y -W 100 - build-1.10.xml
+	以每列100个字符的宽度并排对比输出build.xml和build-1.10.xml之间的差异到屏幕(标准输出)
+
+	diff -c web.xml web2.xml &gt; web.xml.diff
+	产生web2.xml相对于web.xml的修改的上下文格式补丁文件到web.xml.diff中去
+
+	diff -crN src src_XFIRE &gt; xfire-patch.diff
+	产生代码树src_XIRE相对于代码树src的上下文补丁文件到xfire-patch.diff中去，在src_XFIRE中新增的文件的内容也会被包含在补丁中。
+
+	来自Linux内核patch的一个简短的引用可以这样实现：
+　 diff -u ——recursive ——new-file v2.1.118//mm/swapfile.c /mm/swapfile. c
+   --- v2.1.118/linux/mm/swapfile.c Wed Aug 26 11:37:45 1998
+   +++ linux/mm/swapfile.c Wed Aug 26 16:01:57 1998 
+   @@ -489,7 +489,7 @@
+　　int swap_header_version;
+　　int lock_map_size = PAGE_SIZE;
+　　int nr_good_pages = 0; 
+  - char tmp_lock_map = 0; 
+  + unsigned long tmp_lock_map = 0;
+　　应用来自本段中使用-p1开关拷贝的patch可以有效地减短patch定位的路径；patch会查找当前目录下一个名为/mm的子目录，接着应该会在这儿发现swapfile.c文件，然后等待打补丁。在这个过程中，以破折号（“-”号，译者注）开始的行会被一个以加号（“+”号，译者注）开始的行代替。一个典型的patch会包含对多个文件的更新，每个部分中都由对两个版本的文件运行diff -u命令的输出结果组成。
+
+	(2).打补丁
+	打补丁可以使用命令行工具patch。它的基本用法是：patch -pnum &lt; 补丁文件。
+	打补丁时将工作目录改到需要打补丁源代码顶层目录，然后确定p后面的数字，该数字表示需要去掉的补丁文件中目录的层数，该数字和补丁创建时候工作目录和代码目录的相对位置有关，一般补丁的作者为在补丁文档中指明。如果没有指定，可以通过观察补丁文件中列出的文件完整路径和代码树中该文件所在相对路径得出。
+
+	例子：
+	cd src
+	patch -p1 &lt; xfire-patch.diff
+
+    (3).技巧
+    如果你准备查看命令的输出，或者可能你希望保留*.orig文件直到你确定打过补丁的源程序编译已经通过，按照我的经验，直接运行patch（正如前面介绍的一样，patch位于内核源程序的最高目录）是很可靠的。为了避免对patch进行解压，在使用之前，可以使用这样一个技巧：
+　　gzip -cd patchXX.gz | patch -p1
+　　或者
+　　bzip2 -dc patchXX.bz2 | patch -p1
+　　在使用patch之后，可以使用find程序来检测被拒绝的文件：
+　　find . -name *.rej
+　　第一次使用这个命令，语法可能有些不清楚。点号（“.”）说明find应该查找当前目录并递规查找当前目录之下的所有子目录。记住，点号前后都应该有一个空格。通配符&quot;*&quot;号前面的反斜线把星号转义出来，以免shell会搞混，星号是有其它意义的。如果find找到了任何的*.rej文件，它就会把文件名打印到屏幕上。如果没有任何输出find就退出了，那么就差不多能确定patch正确发挥作用了。
+　　find的另外一个工作是删除*.orig文件：
+　　find . -name *.orig -print0 | xargs -0r rm -f
+
+
+###############################################################################
+###############################################################################
+</rich_text><rich_text foreground="#ffff00000000" weight="heavy">patch</rich_text><rich_text weight="heavy"> [-bceEflnNRstTuvZ][-B &lt;备份字首字符串&gt;][-d &lt;工作目录&gt;][-D &lt;标示符号&gt;][-F &lt;监别列数&gt;][-g &lt;控制数值&gt;][-i &lt;修补文件&gt;][-o &lt;输出文件&gt;][-p &lt;剥离层级&gt;][-r &lt;拒绝文件&gt;][-V &lt;备份方式&gt;][-Y &lt;备份字首字符串&gt;][-z &lt;备份字尾字符串&gt;][--backup-if　　 -mismatch][--binary][--help][--nobackup-if-mismatch][--verbose][原始文件 &lt;修补文件&gt;] 或 path [-p &lt;剥离层级&gt;] &lt; [修补文件]</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">补充说明：</rich_text><rich_text>patch指令让用户利用设置修补文件的方式，修改，更新原始文件。倘若一次仅修改一个文件，可直接在指令列中下达指令依序执行。如果配合修补文件的方式则能一次修补大批文件，这也是Linux系统核心的升级方法之一。
+
+</rich_text><rich_text weight="heavy">参　　数：</rich_text><rich_text>
+　-b或--backup 　备份每一个原始文件。 
+　-B&lt;备份字首字符串&gt;或--prefix=&lt;备份字首字符串&gt; 　设置文件备份时，附加在文件名称前面的字首字符串，该字符串可以是路径名称。 
+　-c或--context 　把修补数据解译成关联性的差异。 
+　-d&lt;工作目录&gt;或--directory=&lt;工作目录&gt; 　设置工作目录。 
+　-D&lt;标示符号&gt;或--ifdef=&lt;标示符号&gt; 　用指定的符号把改变的地方标示出来。 
+　-e或--ed 　把修补数据解译成ed指令可用的叙述文件。 
+　-E或--remove-empty-files 　若修补过后输出的文件其内容是一片空白，则移除该文件。 
+　-f或--force 　此参数的效果和指定&quot;-t&quot;参数类似，但会假设修补数据的版本为新　版本。 
+　-F&lt;监别列数&gt;或--fuzz&lt;监别列数&gt; 　设置监别列数的最大值。 
+　-g&lt;控制数值&gt;或--get=&lt;控制数值&gt; 　设置以RSC或SCCS控制修补作业。 
+　-i&lt;修补文件&gt;或--input=&lt;修补文件&gt; 　读取指定的修补问家你。 
+　-l或--ignore-whitespace 　忽略修补数据与输入数据的跳格，空格字符。 
+　-n或--normal 　把修补数据解译成一般性的差异。 
+　-N或--forward 　忽略修补的数据较原始文件的版本更旧，或该版本的修补数据已使　用过。 
+　-o&lt;输出文件&gt;或--output=&lt;输出文件&gt; 　设置输出文件的名称，修补过的文件会以该名称存放。 
+　-p&lt;剥离层级&gt;或--strip=&lt;剥离层级&gt; 　设置欲剥离几层路径(第几个斜杠(slash))名称。 
+
+</rich_text><rich_text foreground="#00000000ffff">        例子：
+              </rich_text><rich_text foreground="#a5a52a2a2a2a">/u/howard/src/blurfl/blurfl.c</rich_text><rich_text foreground="#00000000ffff">
+                
+          setting </rich_text><rich_text foreground="#ffff00000000">-p0</rich_text><rich_text foreground="#00000000ffff"> gives the entire file name unmodified, </rich_text><rich_text foreground="#ffff00000000">-p1</rich_text><rich_text foreground="#00000000ffff"> gives
+             </rich_text><rich_text foreground="#a5a52a2a2a2a">u/howard/src/blurfl/blurfl.c</rich_text><rich_text foreground="#00000000ffff">
+
+          without the leading slash, </rich_text><rich_text foreground="#ffff00000000">-p4</rich_text><rich_text foreground="#00000000ffff"> gives
+             </rich_text><rich_text foreground="#a5a52a2a2a2a">blurfl/blurfl.c</rich_text><rich_text>
+
+　-f&lt;拒绝文件&gt;或--reject-file=&lt;拒绝文件&gt; 　设置保存拒绝修补相关信息的文件名称，预设的文件名称为.rej。 
+　-R或--reverse 　假设修补数据是由新旧文件交换位置而产生。 
+　-s或--quiet或--silent 　不显示指令执行过程，除非发生错误。 
+　-t或--batch 　自动略过错误，不询问任何问题。 
+　-T或--set-time 　此参数的效果和指定&quot;-Z&quot;参数类似，但以本地时间为主。 
+　-u或--unified 　把修补数据解译成一致化的差异。 
+　-v或--version 　显示版本信息。 
+　-V&lt;备份方式&gt;或--version-control=&lt;备份方式&gt; 　用&quot;-b&quot;参数备份目标文件后，备份文件的字尾会被加上一个备份字符串，这个字符串不仅可用&quot;-z&quot;参数变更，当使用&quot;-V&quot;参数指定不同备份方式时，也会产生不同字尾的备份字符串。
+　-Y&lt;备份字首字符串&gt;或--basename-prefix=--&lt;备份字首字符串&gt; 　设置文件备份时，附加在文件基本名称开头的字首字符串。
+　-z&lt;备份字尾字符串&gt;或--suffix=&lt;备份字尾字符串&gt; 　此参数的效果和指定&quot;-B&quot;参数类似，差别在于修补作业使用的路径与文件名若为src/linux/fs/super.c，加上&quot;backup/&quot;字符串后，文件super.c会备份于/src/linux/fs/backup目录里。 
+　-Z或--set-utc 　把修补过的文件更改，存取时间设为UTC。 
+　--backup-if-mismatch 　在修补数据不完全吻合，且没有刻意指定要备份文件时，才备份文件。 
+　--binary 　以二进制模式读写数据，而不通过标准输出设备。 
+　--help 　在线帮助。 
+　--nobackup-if-mismatch 　在修补数据不完全吻合，且没有刻意指定要备份文件时，不要备份文件。 
+　--verbose 　详细显示指令的执行过程。     
+
+###############################################################################
+</rich_text><rich_text scale="h1" weight="heavy">chroot和schroot的安装使用</rich_text><rich_text>
+###############################################################################
+</rich_text><rich_text link="webs https://help.ubuntu.com/community/DebootstrapChroot">https://help.ubuntu.com/community/DebootstrapChroot</rich_text><rich_text>
+</rich_text><rich_text link="webs http://jacky.aiwaly.com/wp/schroot-chroot-for-any-users.html">http://jacky.aiwaly.com/wp/schroot-chro ... users.html</rich_text><rich_text>
+</rich_text><rich_text link="webs https://help.ubuntu.com/community/BasicChroot">https://help.ubuntu.com/community/BasicChroot</rich_text><rich_text>
+</rich_text><rich_text link="webs http://wiki.debian.org/Schroot">http://wiki.debian.org/Schroot</rich_text><rich_text>
+
+
+</rich_text><rich_text scale="h2" weight="heavy">一、基本工具及配置、用法</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. 安装工具</rich_text><rich_text>
+$ sudo apt-get install debootstrap schroot
+
+</rich_text><rich_text scale="h3" weight="heavy">2. 提高安全性及避免用户配置混淆</rich_text><rich_text>
+$ sudo editor /etc/schroot/mount-defaults
+注释掉/home的挂载
+
+</rich_text><rich_text scale="h3" weight="heavy">3. 进入系统的方法</rich_text><rich_text>
+普通用户：schroot -c XXX
+管理权限：sudo schroot -c XXX 或 schroot -c XXX -u root
+
+</rich_text><rich_text scale="h3" weight="heavy">4. 另一种安装软件的方法</rich_text><rich_text>
+$ sudo schroot -c XXX apt-get install YYY
+例如：
+$ sudo schroot -c lucid apt-get install nano
+$ sudo schroot -c precise apt-get install nano
+
+</rich_text><rich_text scale="h2" weight="heavy">二、安装32位 Ubuntu Precise</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. 编辑配置：sudo editor /etc/schroot/chroot.d/precise.conf,添加如下内容</rich_text><rich_text>
+[precise]
+description=Ubuntu Precise 32Bit
+type=directory
+directory=/srv/chroot/precise
+users=loaden
+groups=users
+root-groups=root
+personality=linux32
+
+</rich_text><rich_text scale="h3" weight="heavy">2. 在/32目录安装32位系统</rich_text><rich_text>
+$ sudo debootstrap --arch i386 precise /srv/chroot/precise </rich_text><rich_text link="webs http://mirrors.163.com/ubuntu/">http://mirrors.163.com/ubuntu/</rich_text><rich_text>
+$ sudo chmod 777 /srv/chroot/precise/home
+$ mkdir /srv/chroot/precise/home/loaden
+
+</rich_text><rich_text scale="h3" weight="heavy">3. 执行：sudo schroot -c precise 进入系统</rich_text><rich_text>
+a. 更新源
+# echo &quot;deb </rich_text><rich_text link="webs http://mirrors.163.com/ubuntu">http://mirrors.163.com/ubuntu</rich_text><rich_text> precise main universe&quot; &gt; /etc/apt/sources.list
+# apt-get update
+b. 语言支持
+# locale-gen en_US.UTF-8 zh_CN.UTF-8
+c. 时区
+# dpkg-reconfigure tzdata
+d. 自动完成
+# apt-get install bash-completion
+e. 字体
+# apt-get install ttf-wqy-*
+f. 图形界面
+# apt-get install libgtk2.0-0 libgtk-3-0 appmenu-gtk appmenu-gtk3
+# echo &quot;export DISPLAY=:0.0&quot; &gt; /etc/profile.d/gui_support.sh
+
+6. 以普通权限进入32位系统
+a. 安装FoxReader
+$ sudo dpkg -i FoxitReader_1.1.0_i386.deb
+$ sudo apt-get install libcanberra-gtk-module
+b. 安装glGo
+$ sudo dpkg -i glGo-1.4.1.deb
+$ sudo apt-get install libsm6 libjpeg62 libsdl-image1.2 libsdl-ttf2.0-0 libsdl-mixer1.2 libglu1-mesa libpython2.7 gnugo
+$ sudo ln -s /usr/lib/libpython2.7.so.1.0 /usr/lib/libpython2.5.so.1.0
+
+
+</rich_text><rich_text scale="h2" weight="heavy">二、安装32位 Ubuntu Lucid</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. 编辑配置：sudo editor /etc/schroot/chroot.d/lucid.conf,添加如下内容</rich_text><rich_text>
+[lucid]
+description=Ubuntu Lucid 32Bit
+type=directory
+directory=/srv/chroot/lucid
+users=loaden
+groups=users
+root-groups=root
+personality=linux32
+
+</rich_text><rich_text scale="h3" weight="heavy">2. 在/32目录安装32位系统</rich_text><rich_text>
+$ sudo debootstrap --arch i386 lucid /srv/chroot/lucid </rich_text><rich_text link="webs http://mirrors.163.com/ubuntu/">http://mirrors.163.com/ubuntu/</rich_text><rich_text>
+$ sudo chmod 777 /srv/chroot/lucid/home
+$ mkdir /srv/chroot/lucid/home/loaden
+$ ln -s ~ /srv/chroot/lucid/home/loaden/.host
+
+</rich_text><rich_text scale="h3" weight="heavy">3. 执行：sudo schroot -c lucid 进入系统</rich_text><rich_text>
+a. 更新源
+# echo &quot;deb </rich_text><rich_text link="webs http://mirrors.163.com/ubuntu">http://mirrors.163.com/ubuntu</rich_text><rich_text> lucid main universe&quot; &gt; /etc/apt/sources.list
+# apt-get update
+b. 语言支持
+# locale-gen en_US.UTF-8 zh_CN.UTF-8
+c. 时区
+# dpkg-reconfigure tzdata
+d. 自动完成
+# apt-get install bash-completion
+e. 字体
+# apt-get install ttf-wqy-*
+f. 图形界面
+# apt-get install libgtk2.0-0
+# echo &quot;export DISPLAY=:0.0&quot; &gt; /etc/profile.d/gui_support.sh
+
+</rich_text><rich_text scale="h3" weight="heavy">4. 以普通权限进入32位系统</rich_text><rich_text>
+a. 安装FoxReader
+$ sudo dpkg -i FoxitReader_1.1.0_i386.deb
+$ sudo apt-get install libcanberra-gtk-module
+b. 安装glGo
+$ sudo dpkg -i glGo-1.4.1.deb
+$ sudo apt-get install libsm6 libjpeg62 libsdl-image1.2 libsdl-ttf2.0-0 libsdl-mixer1.2 libglu1-mesa libpython2.6 gnugo
+$ sudo ln -s /usr/lib/libpython2.6.so.1.0 /usr/lib/libpython2.5.so.1.0           
+
+</rich_text></node></cherrytree>
