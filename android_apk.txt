@@ -79,3 +79,8 @@ GoogleBuzzWidget.apk GOOGLE纵横的桌面插件
 googlevoice.apk GOOGLE语音服务
 Twitter.apk 都知道的
 YouTube.apk 都知道的
+SpeechRecorder.apk 语音录制
+PhaseBeam.apk 雷光壁纸
+Galaxy4.apk   Galaxy壁纸
+NoiseField.apk 壁纸
+BasicDreams.apk 基本互动屏保
