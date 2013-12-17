@@ -1,0 +1,47 @@
+<?xml version="1.0" ?><cherrytree><node name="集合" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text></rich_text><node name="集合概念" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text scale="h1" weight="heavy">集合的概念</rich_text><rich_text>
+一定范围的，确定的，可以区别的事物，当作一个整体来看待，就叫做集合，简称集，其中各事物叫做集合的元素或简称元。如
+    （1）阿Q正传中出现的不同汉字
+    （2）全体英文大写字母。
+    任何集合是它自身的子集.
+
+</rich_text><rich_text scale="h2" weight="heavy">元素与集合的关系</rich_text><rich_text scale="h2">：</rich_text><rich_text>
+元素与集合的关系有“属于”与“不属于”两种。
+
+</rich_text><rich_text scale="h2" weight="heavy">集合的分类:</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">并集：</rich_text><rich_text>
+    以属于A或属于B的元素为元素的集合称为A与B的并（集），记作A∪B（或B∪A），读作“A并B”（或“B并A”），即A∪B={x|x∈A,或x∈B}
+</rich_text><rich_text scale="h3" weight="heavy">交集： </rich_text><rich_text>
+    以属于A且属于B的元素为元素的集合称为A与B的交（集），记作A∩B（或B∩A），读作“A交B”（或“B交A”），即A∩B={x|x∈A,且x∈B}，简作AB
+</rich_text><rich_text scale="h3" weight="heavy">差：</rich_text><rich_text>
+    以属于A而不属于B的元素为元素的集合称为A与B的差（集）
+注:空集包含于任何集合，但不能说“空集属于任何集合”.
+
+某些指定的对象集在一起就成为一个集合，含有有限个元素叫有限集，含有无限个元素叫无限集，空集是不含任何元素的集，记做Φ。空集是任何集合的子集，是任何非空集的真子集，任何集合是它本身的子集，子集，真子集都具有传递性。
+『说明一下：如果集合 A 的所有元素同时都是集合 B 的元素，则 A 称作是 B 的子集，写作 A ⊆ B。若 A 是 B 的子集，且 A 不等於 B，则 A 称作是 B 的真子集，写作 A ⊂ B。 
+所有男人的集合是所有人的集合的真子集。』
+
+</rich_text><rich_text scale="h2" weight="heavy">集合的性质：</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">确定性：</rich_text><rich_text>
+    每一个对象都能确定是不是某一集合的元素，没有确定性就不能成为集合，例如“个子高的同学”“很小的数”都不能构成集合。
+</rich_text><rich_text scale="h3" weight="heavy">互异性：</rich_text><rich_text>
+    集合中任意两个元素都是不同的对象。不能写成{1，1，2}，应写成{1，2}。
+</rich_text><rich_text scale="h3" weight="heavy">无序性：</rich_text><rich_text>
+    {a,b,c}{c,b,a}是同一个集合。
+    
+集合有以下性质：若A包含于B，则A∩B=A，A∪B=B
+
+</rich_text><rich_text scale="h2" weight="heavy">集合的表示方法：常用的有列举法和描述法。</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1.列举法：</rich_text><rich_text>
+    常用于表示有限集合，把集合中的所有元素一一列举出来，写在大括号内，这种表示集合的方法叫做列举法。{1，2，3，……}
+</rich_text><rich_text scale="h3" weight="heavy">2.描述法：</rich_text><rich_text>
+    常用于表示无限集合，把集合中元素的公共属性用文字，符号或式子等描述出来，写在大括号内，这种表示集合的方法叫做描述法。{x|P}（x为该集合的元素的一般形式，P为这个集合的元素的共同属性）如：小于π的正实数组成的集合表示为：{x|0&lt;x&lt;π}
+</rich_text><rich_text scale="h3" weight="heavy">3.图式法：</rich_text><rich_text>
+    为了形象表示集合，我们常常画一条封闭的曲线（或者说圆圈），用它的内部表示一个集合。
+
+</rich_text><rich_text scale="h2" weight="heavy">常用数集的符号：</rich_text><rich_text>
+（1）全体非负整数的集合通常简称非负整数集（或自然数集），记作N
+（2）非负整数集内排除0的集，也称正整数集，记作N+（或N*）
+（3）全体整数的集合通常称作整数集，记作Z
+（4）全体有理数的集合通常简称有理数集，记作Q
+（5）全体实数的集合通常简称实数集，级做R
+</rich_text></node></node></cherrytree>
