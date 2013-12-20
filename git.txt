@@ -95,6 +95,24 @@ git branch --merge 查看哪些分支已被并入当前分支
 git branch --no-merged  还没有合并的分支
 合并前也必须保证主分支也已经提交了合并时必须回到主分支，然后进行合并; 在进行分支切换时必须保证文件已经提交完如果合并有冲突则进行，解决并提交;
 
+git切换到另外一个branch (本例是develop分支):
+git checkout develop
+
+git删除一个branch(本例是myfeature):
+git branch -d myfeature
+
+git删除一个远程branch:
+git push origin :branchName
+
+git push 新的branch到远程:
+git push -u origin mynewfeature
+
+设置git email:
+git config --global user.email "me@example.com"
+
+如果你有未提交的commit，与master同步:
+git pull --rebase origin master
+
 
 ================================================================================
 git revert 是撤销某次操作，此次操作之前的commit都会被保留

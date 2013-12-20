@@ -6415,6 +6415,57 @@ find . -type f -exec chmod 644 {} \;
 </rich_text><rich_text scale="h3">find . -name 'commit-msg' -type f -exec chmod +x {} \;</rich_text><rich_text>
 find . -name '*.sh' -type f -exec chmod +x {} \;
 
+找出在/home/user中的所有空子目录:
+find /home/user -maxdepth 1 -type d -empty
+
+得到test.txt中50到60行的文本:
+&lt; test.txt sed -n '50,60p'
+
+以sudo权限重新运行上一个执行的命令 (如果是: mkdir /root/test, 下面会运行: sudo mkdir /root/tes
+sudo !!
+
+创建临时RAM文件系统 - ramdisk (请先创建 /tmpram 目录):
+mount -t tmpfs tmpfs /tmpram -o size=512m
+
+Grep完整的单词（译注：而不是其它单词的一部分）:
+grep -w &quot;name&quot; test.txt
+
+提升权限后在一个文件后追加文本:
+echo &quot;some text&quot; | sudo tee -a /path/file
+
+列出所有支持的kill信号:
+kill -l
+
+生成随机密码 (本例中16个字符长):
+openssl rand -base64 16
+
+在bash历史中不记录最后的会话:
+kill -9 $$
+
+扫描网络来找出开放的端口:
+nmap -p 8081 172.20.0.0/16
+
+将文件名中含有txt的所有文件移动到/home/user:
+find -iname &quot;*txt*&quot; -exec mv -v {} /home/user \;
+
+按行将两个文件中的对应行合并显示:
+paste test.txt test1.txt
+
+shell中的进度条:
+pv data.log
+
+转换tab为空格:
+expand test.txt &gt; test1.txt
+
+找出文件中带有末尾空格的文件:
+find . -type f -exec egrep -l &quot; +$&quot; &quot;{}&quot; \;
+
+找出用tab缩进的文件:
+find . -type f -exec egrep -l $'\t' &quot;{}&quot; \;
+
+用&quot;=&quot;打印水平行
+printf '%100s\n' | tr ' ' =
+
 
 ###############################################################################
 </rich_text><rich_text scale="h2" weight="heavy">kernel patch</rich_text><rich_text>
