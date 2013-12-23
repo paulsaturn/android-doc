@@ -114,6 +114,21 @@ git config --global user.email "me@example.com"
 git pull --rebase origin master
 
 
+如果你要把你的分支合并到主干分支，从主干（master）分支上发送：
+git branch -d new_feature
+
+假如修改已经合并了，它只会删除分支。假如分支没有合并，你会得到一个错误信息。删除一个未合并的分支（通常你不想保留的修改），你需要发送一样的命令附带一个大写D。意思是“强制删除分支，无论如何我不想要它了。”：
+git branch -D new_feature
+
+简单地用提交的ID做签出（checkout）（我通常只用到ID开头的9个字符）
+git checkout 085bb3bcb
+
+你也可以签出到一个新的分支，像这样：
+git checkout -b my_previous_version 085bb3bcb
+
+
+
+
 ================================================================================
 git revert 是撤销某次操作，此次操作之前的commit都会被保留
 git reset 是撤销某次提交，但是此次之后的修改都会被退回到暂存区
