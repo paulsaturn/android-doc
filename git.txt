@@ -126,11 +126,23 @@ git checkout 085bb3bcb
 你也可以签出到一个新的分支，像这样：
 git checkout -b my_previous_version 085bb3bcb
 
+						 checkout -- files		  	reset -- files
+						  <------------			   	 <-----------
+		Working Directory ------------> Stage(index) -----------> History 
+							add	files				    commit 
 
+git add files 
+	把当前文件放入暂存区域。
+git commit 
+	给暂存区域生成快照并提交。
+git reset -- files 
+	用来撤销最后一次git add files，你也可以用git reset 撤销所有暂存区域文件。
+git checkout -- files 
+	把文件从暂存区域复制到工作目录，用来丢弃本地修改。
 
 
 ================================================================================
-git revert 是撤销某次操作，此次操作之前的commit都会被保留
+git revert 是撤销某次操作，此次操作之前的commit都会被保留, 并要作为最新一次commit
 git reset 是撤销某次提交，但是此次之后的修改都会被退回到暂存区
 ================================================================================
 具体一个例子，假设有三个commit， git st:
@@ -151,8 +163,41 @@ commit1: add test1.c
 commit2: add test2.c
 commit1: add test1.c
 运行git st， 没有任何变化
-另外：
-git revert <commit log string>是撤消该commit，作为一个新的commit。
+
+ ----------------------------------------------------------------------------------------------
+
+另外，说一下git revert ，git reset --hard和 --soft的区别
+
+git reset --mixed id ，是将git的HEAD变了（也就是提交记录变了），但文件并没有改变，（也就是working tree并没有改变）。
+git reset --soft id. 实际上，是git reset --mixed id 后，又做了一次git add
+git reset --hard id.是将git的HEAD变了，文件也变了。
+
+git revert与git reset最大的不同是，git revert 仅仅是撤销某次提交。
+比如git revert HEAD~1  ,那么会撤销倒数第二次的提交结果。而倒数第一次的提交记录，仍然在。
+如果git reset --hard HEAD~1,那么，commit退回到倒数第三次的状态中。
+总体来讲，还是git revert 好啊，雁过留声嘛。
+
+其实，通过git reset --soft id的方法，可以将原来多次的git提交记录合并为一个。
+
+git reset是指将当前head的内容重置，不会留log信息。
+
+    git reset HEAD filename  从暂存区中移除文件
+    git reset --hard HEAD~3  会将最新的3次提交全部重置，就像没有提交过一样。
+    git reset --hard commit (38679ed709fd0a3767b79b93d0fba5bb8dd235f8) 回退到 38679ed709fd0a3767b79b93d0fba5bb8dd235f8 版本
+
+----------------------------------------------------------------------------------------------
+
+根据--soft --mixed --hard，会对working tree和index和HEAD进行重置:
+
+    git reset --mixed：此为默认方式，不带任何参数的git reset，即时这种方式，它回退到某个版本，只保留源码，回退commit和index信息
+    git reset --soft：回退到某个版本，只回退了commit的信息，不会恢复到index file一级。如果还要提交，直接commit即可
+    git reset --hard：彻底回退到某个版本，本地的源码也会变为上一个版本的内容
+
+git reset --soft :取消了commit  
+
+git reset --mixed（默认） :取消了commit ，取消了add
+
+git reset --hard :取消了commit ，取消了add，取消源文件修改 
 
 ================================================================================
 Git fetch和git pull的区别
