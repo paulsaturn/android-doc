@@ -48,7 +48,124 @@
 业务不熟练害死人啊，所以只要多看看源码，一般问题都能搞定。
 【最近新添加 -R】
 对于 -R参数，其实也很重要，在关闭udhcpc时，可以向dhcpserver发送release取消租约。
-</rich_text></node><node name="更改用户ID和组ID -- setuid、setgid、seteuid、setegid" prog_lang="custom-colors" readonly="False" tags="" unique_id="40"><rich_text scale="h1" weight="heavy">一、概述</rich_text><rich_text>
+</rich_text></node><node name="工具" prog_lang="custom-colors" readonly="False" tags="" unique_id="43"><rich_text></rich_text><node name="pahole" prog_lang="custom-colors" readonly="False" tags="" unique_id="44"><rich_text>新的git地址：git://git.kernel.org/pub/scm/devel/pahole/pahole.git
+From: </rich_text><rich_text link="webs http://lwn.net/Articles/206805/">http://lwn.net/Articles/206805/</rich_text><rich_text>
+
+Hi,
+
+        I've been working on some DWARF2 utilities and thought that it
+is about time I announce it to the community, so that what is already
+available can be used by people interested in reducing structure sizes
+and otherwise taking advantage of the information available in the elf
+sections of files compiled with 'gcc -g' or in the case of the kernel
+with CONFIG_DEBUG_INFO enabled, so here it goes the description of said
+tools:
+
+pahole: Poke-a-Hole is a tool to find out holes in structures, holes
+being defined as the space between members of functions due to alignemnt
+rules that could be used for new struct entries or to reorganize
+existing structures to reduce its size, without more ado lets see what
+that means:
+
+[acme@newtoy net-2.6]$ pahole kernel/sched.o task_struct
+/* include2/asm/system.h:11 */
+struct task_struct {
+        volatile long int       state;          /*     0     4 */
+        struct thread_info *    thread_info;    /*     4     4 */
+        atomic_t                usage;          /*     8     4 */
+        long unsigned int       flags;          /*    12     4 */
+
+        &lt;SNIP&gt;
+
+        short unsigned int         ioprio;      /*    52     2 */
+
+        /* XXX 2 bytes hole, try to pack */
+
+        long unsigned int          sleep_avg;   /*    56     4 */ */
+        unsigned char              fpu_counter; /*   388     1 */
+
+        /* XXX 3 bytes hole, try to pack */
+
+        int                        oomkilladj;  /*   392     4 */
+
+        &lt;SNIP&gt;
+
+}; /* size: 1312, sum members: 1287, holes: 3, sum holes: 13, padding: 12 */
+
+        It doesn't uses any source code files, just the DWARF2
+information in ELF sections, inserted by 'gcc -g', to print out the
+above information, current goodies being just to show where are holes
+that can be used to reduce the struct size, which is even more useful as
+we transition to 64bit architectures, where such holes are more
+frequent, as we can see in this example:
+
+[acme@newtoy ~]$ file kdump.debug
+kdump.debug: ELF 64-bit LSB executable, AMD x86-64, version 1 (SYSV),
+dynamically linked (uses shared libs), not stripped
+[acme@newtoy ~]$ pahole kdump.debug _IO_FILE | head -7
+/* /usr/include/stdio.h:46 */
+struct _IO_FILE {
+        int   _flags;               /*     0     4 */
+
+        /* XXX 4 bytes hole, try to pack */
+
+        char *_IO_read_ptr;         /*     8     8 */
+[acme@newtoy ~]$
+
+
+        The columns in the comments are (offset, sizeof(member).
+
+        Tons more information is available in the DWARF2 ELF sections,
+making it possible to use it for other purposes, and thats where the
+next dwarf comes in, pfunct:
+
+[acme@newtoy net-2.6]$ pfunct net/ipv4/tcp_ipv4.o tcp_v4_rcv
+/* /pub/scm/linux/kernel/git/acme/net-2.6/net/ipv4/tcp_ipv4.c:1054 */
+int tcp_v4_rcv(struct sk_buff * skb);
+/* size: 2175 */
+
+        pfunct uses the DWARF2 information to get function details, such
+as its full prototype and function size, that allows us to do some more
+interesting queries, such as:
+
+[acme@newtoy net-2.6]$ pfunct --size net/ipv4/netfilter/ip_conntrack.ko
+| sort -k 2 -nr | head -10
+tcp_packet: 3349
+ip_conntrack_in: 1146
+icmp_error: 874
+ip_conntrack_expect_related: 804
+__ip_conntrack_confirm: 586
+tcp_new: 527
+ip_conntrack_init: 525
+tcp_error: 508
+ip_conntrack_helper_unregister: 482
+ip_conntrack_alloc: 469
+[acme@newtoy net-2.6]$
+
+        The top ten functions by size (in bytes) in any ELF file with
+debugging information!
+
+        The code is available in a git repository at:
+
+git://git.kernel.org/pub/scm/linux/kernel/git/acme/pahole.git
+
+        Just for browsing the cset comments that may well provide hints
+on how this thingy can be useful:
+
+</rich_text><rich_text link="webs http://www.kernel.org/git/?p=linux/kernel/git/acme/pahole...">http://www.kernel.org/git/?p=linux/kernel/git/acme/pahole...</rich_text><rich_text>
+
+        Further ideas on how to use the DWARF2 information include tools
+that will show where inlines are being used, how much code is added by
+inline functions, possibly rewriting asm-offsets.c, converting ostra
+(callgraph tool) to use this information, correlate valgrind's
+cachegrind information to suggest struct member reorganization to
+exploit cacheline locality and more.
+
+        Documentation is very much a disaster, but I guess the current
+state of things is useful for interested hackers, so that I thought it
+was time got announce this.
+
+        Ideas for additional tools are more than welcome!</rich_text></node></node><node name="更改用户ID和组ID -- setuid、setgid、seteuid、setegid" prog_lang="custom-colors" readonly="False" tags="" unique_id="40"><rich_text scale="h1" weight="heavy">一、概述</rich_text><rich_text>
 
 在UNIX系统中， 特权（如更改日期时间及访问控制等）是基于用户ID和组ID的，当程序需要增加特权，或许要访问当前并不允许访问的资源时，我们需要更换自己的用户ID或 组ID，使得新ID具有合适的特权或访问权限，当程序需要降低其特权或阻止对某些资源的访问时，也需要更换用户ID或组ID，从而使ID不具有相应的特权 或访问这些资源的能力
 一般而言，在设计应用程序时，我们总是试图使用“最小特权”模型，程序应该只具有给定任务所需的最小特权，这减小了安全性受到损害的可能
