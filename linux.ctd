@@ -5926,7 +5926,310 @@ the kernel via the sysfs interface. The exact filename is hardcoded in the
 kernel, so look there if you need to want to know what to name the file in
 </rich_text><rich_text foreground="#0000ff">如有必要，你必须知道如何在用户空间命名这个文件。</rich_text><rich_text>
 userspace.
-</rich_text></node><node name="戴文linux内核" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text></rich_text><node name="01 介绍" prog_lang="custom-colors" readonly="False" tags="" unique_id="5"><rich_text>本文作者戴文.科利尔.约翰逊(Devyn Collier Johnson)今年才19岁，但是他在Linux内核、人工智能、编程语言方面拥有丰富的经验，本文是其在</rich_text><rich_text link="webs http://www.linux.org/threads/%EF%BB%BFthe-linux-kernel-introduction.4203/">linux.org上连载的一系列关于内核的文章</rich_text><rich_text>。文章写的深入浅出，本站不揣浅陋，由LCTT成员geekpi进行了系列翻译，以分享给广大Linux爱好者。
+</rich_text></node><node name="使用ptrace跟踪进程" prog_lang="custom-colors" readonly="False" tags="" unique_id="45"><rich_text>    系统调用ptrace对gdb这种调试器来说是非常重要的,杯具的是,相关的文档却残缺不详–除非你觉得最好的文档就是内核源码!!下面,我会试着向大家展示ptrace在gdb这类工具中的作用.
+
+</rich_text><rich_text scale="h1" weight="heavy">1. 介绍</rich_text><rich_text>
+ptrace()是一个系统调用,它允许一个进程控制另外一个进程的执行.不仅如此,我们还可以借助于ptrace修改某个进程的空间(内存或寄存 器),任何传递给一个进程(即被跟踪进程)的信号(除了会直接杀死进程的SIGKILL信号)都会使得这个进程进入暂停状态,这时系统通过wait()通 知跟踪进程,这样,跟踪进程就可以修改被跟踪进程的行为了.
+如果跟踪进程在被跟踪进程的内存中设置了相关的事件标志位,那么运行中被跟踪进程也可能因为特殊的事件而暂停.跟踪结束后,跟踪进程甚至可以通过设置被跟踪进程的退出码(exit code)来杀死它,当然也可以让它继续运行.
+注意: ptrace()是高度依赖于底层硬件的.使用ptrace的程序通常不容易在个钟体系结构间移植.
+
+</rich_text><rich_text scale="h1" weight="heavy">2. 细节</rich_text><rich_text>
+ptrace的原型如下:
+    #include &lt;sys/ptrace.h&gt;
+    long int ptrace(enum __ptrace_request request, pid_t pid, void * addr, void * data)
+    我们可以看到,ptrace有4个参数,其中,request决定ptrace做什么,pid是被跟踪进程的ID,data存储从进程空间偏移量为addr的地方开始将被读取/写入的数据.
+父进程可以通过将request设置为PTRACE_TRACEME,以此跟踪被fork出来的子进程,它同样可以通过使用PTRACE_ATTACH来跟踪一个已经在运行的进程.
+
+</rich_text><rich_text scale="h2" weight="heavy">2.1 ptrace如何工作</rich_text><rich_text>
+    不管ptrace是什么时候被调用的,它首先做的就是锁住内核.在ptrace返回前,内核会被解锁.在这个过程中,ptrace是如何工作的呢, 我们看看request值(译注: request的可选值值是定义在/usr/include/sys/ptrace.h中的宏)代表的含义吧.
+
+PTRACE_TRACEME:
+    PTRACE_TRACEME是被父进程用来跟踪子进程的.正如前面所说的,任何信号(除了SIGKILL),不管是从外来的还是由exec系统调 用产生的,都将使得子进程被暂停,由父进程决定子进程的行为.在request为PTRACE_TRACEME情况下,ptrace()只干一件事,它检 查当前进程的ptrace标志是否已经被设置,没有的话就设置ptrace标志,除了request的任何参数(pid,addr,data)都将被忽 略.
+
+PTRACE_ATTACH:
+    request为PTRACE_ATTACH也就意味着,一个进程想要控制另外一个进程.需要注意的是,任何进程都不能跟踪控制起始进程init, 一个进程也不能跟踪自己.某种意义上,调用ptrace的进程就成为了ID为pid的进程的’父’进程.但是,被跟踪进程的真正父进程是ID为 getpid()的进程.
+
+PTRACE_DETACH:
+    用来停止跟踪一个进程.跟踪进程决定被跟踪进程的生死.PTRACE_DETACH会恢复PTRACE_ATTACH和 PTRACE_TRACEME的所有改变.父进程通过data参数设置子进程的退出状态(exit  code).子进程的ptrace标志就被复位,然后子进程被移到它原来所在的任务队列中.这时候,子进程的父进程的ID被重新写回子进程的父进程标志 位.可能被修改了的single-step标志位也会被复位.最后,子进程被唤醒,貌似神马都没有发生过;参数addr会被忽略.
+
+PTRACE_PEEKTEXT, PTRACE_PEEKDATA, PTRACE_PEEKUSER:
+    这些宏用来读取子进程的内存和用户态空间(user  space).PTRACE_PEEKTEXT和PTRACE_PEEKDATA从子进程内存读取数据,两者功能是相同 的.PTRACE_PEEKUSER从子进程的user  space读取数据.它们读一个字节的数据,保存在临时的数据结构中,然后使用put_user()(它从内核态空间读一个字符串到用户态空间)将需要的 数据写入参数data,返回0表示成功.
+    对PTRACE_PEEKTEXT和PTRACE_PEEKDATA而言,参数addr是子进程内存中将被读取的数据的地址.对PTRACE_PEEKUSER来说,参数addr是子进程用户态空间的偏移量,此时data被无视.
+
+PTRACE_POKETEXT, PTRACE_POKEDATA, PTRACE_POKEUSER:
+    这些宏行为与上面的几个是类似的.唯一的不同是它们用来写入data.(译注: 这段文字与上面的描述差不多,为免繁复,不译.)
+PTRACE_SYSCALL, PTRACE_CONT:
+    这些宏用来唤醒暂停的子进程.在每次系统调用之后,PTRACE_SYSCALL使子进程暂停,而PTRACE_CONT让子进程继续运行.子进程 的返回状态都是由ptrace()参数data设置的.但是,这只限于返回状态是有效的情况.ptrace()重置子进程的single-step位,设 置/复位syscall-trace位,然后唤醒子进程;参数addr被无视.
+
+PTRACE_SINGLESTEP:
+    PTRACE_SINGLESTEP的行为与PTRACE_SYSCALL无异,除了子进程在每次机器指令后都被暂停 (PTRACE_SYSCALL是使子进程每次在系统调用后被暂停).single-step会被设置,跟PTRACE_SYSCALL一样,参数 data包含返回状态,参数addr被无视.
+
+PTRACE_KILL:
+    PTRACE_KILL被用来终止子进程.”谋杀”是这样进行的: 首先ptrace() 查看子进程是不是已经死了.如果不是, 子进程的返回码被设置为sigkill. single-step位被复位.然后子进程被唤醒,运行到返回码时子进程就死掉了.
+
+</rich_text><rich_text scale="h2" weight="heavy">2.2 更加依赖于硬件的调用.</rich_text><rich_text>
+    上面讨论的request可选值是依赖于操作系统所在的体系结构和实现的.下面讨论的request可选值可以用来get/set子进程的寄存器,这更加依赖于系统架构.对寄存器的设置包括通用寄存器,浮点寄存器和扩展的浮点寄存器.
+
+PTRACE_GETREGS, PTRACE_GETFPREGS, PTRACE_GETFPXREGS:
+    这些宏用来读子进程的寄存器.寄存器的值通过getreg()和__put_user()被读入data中;参数addr被无视.
+
+PTRACE_SETREGS, PTRACE_SETFPREGS, PTRACE_SETFPXREGS:
+    跟上面的描述相反,这些宏被用来设置寄存器.
+
+</rich_text><rich_text scale="h2" weight="heavy">2.3 ptrace()的返回值</rich_text><rich_text>
+    成功的,ptrace()调用返回0.如果出错,将返回-1，errno也将被设置.PEEKDATA/PEEKTEXT,即使ptrace()调用成功,返回值也可能是-1,所以我们最好检查一下errno,它的可能值如下:
+EPERM: 权限错误,进程无法被跟踪.
+ESRCH: 目标进程不存在或者已经被跟踪.
+EIO: 参数request的值无效,或者从非法的内存读/写数据.
+EFAULT: 需要读/写数据的内存未被映射.
+EIO和EFAULT真的很难区分,它们代表很严重的错误.
+
+</rich_text><rich_text scale="h1" weight="heavy">3. 小例子</rich_text><rich_text>
+    如果你觉得上面的说明太枯燥了,好吧,我保证再也不这么干了.下面举个小例子,演示一下吧.
+这是第一个,父进程对子进程中发生的每一次机器指令计数.
+#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;signal.h&gt;
+#include &lt;syscall.h&gt;
+#include &lt;sys/ptrace.h&gt;
+#include &lt;sys/types.h&gt;
+#include &lt;sys/wait.h&gt;
+#include &lt;unistd.h&gt;
+#include &lt;errno.h&gt;
+
+int main(void)
+{
+        long long counter = 0;  /*  machine instruction counter */
+        int wait_val;           /*  child's return value        */
+        int pid;                /*  child's process id          */
+
+        puts(&quot;Please wait&quot;);
+
+        switch (pid = fork()) {
+        case -1:
+                perror(&quot;fork&quot;);
+                break;
+        case 0: /*  child process starts        */
+                ptrace(PTRACE_TRACEME, 0, 0, 0);
+                /* 
+                 *  must be called in order to allow the
+                 *  control over the child process
+                 */ 
+                execl(&quot;/bin/ls&quot;, &quot;ls&quot;, NULL);
+                /*
+                 *  executes the program and causes
+                 *  the child to stop and send a signal 
+                 *  to the parent, the parent can now
+                 *  switch to PTRACE_SINGLESTEP   
+                 */ 
+                break;
+                /*  child process ends  */
+        default:/*  parent process starts       */
+                wait(&amp;wait_val); 
+                /*   
+                 *   parent waits for child to stop at next 
+                 *   instruction (execl()) 
+                 */
+                while (wait_val == 1407 ) {
+                        counter++;
+                        if (ptrace(PTRACE_SINGLESTEP, pid, 0, 0) != 0)
+                                perror(&quot;ptrace&quot;);
+                        /* 
+                         *   switch to singlestep tracing and 
+                         *   release child
+                         *   if unable call error.
+                         */
+                        wait(&amp;wait_val);
+                        /*   wait for next instruction to complete  */
+                }
+                /*
+                 * continue to stop, wait and release until
+                 * the child is finished; wait_val != 1407
+                 * Low=0177L and High=05 (SIGTRAP)
+                 */
+        }
+        printf(&quot;Number of machine instructions : %lld\n&quot;, counter);
+        return 0;
+}
+
+    运行一下代码吧(可能程序会很慢,哈哈.).
+    
+    </rich_text><rich_text foreground="#999999">译注:  小小的解释下吧,子进程开始运行,调用exec后移花栽木,这时子进程的原进程(未调用exec之前的进程)因为要死了,会向父进程发送SIGTRAP信 号.父进程一直阻塞等待(第一条wait(&amp;wait_val);语句).父进程捕获到SIGTRAP信号,由此知道子进程已经结束了.接下来发 生的就是最有趣的事情了,父进程通过request值为PTRACE_SINGLESTEP的ptrace调用,告诉操作系统,重新唤醒子进程,但是在每 条机器指令运行之后暂停.再一次的,父进程阻塞等待子进程暂停(wait_val == 1407等价于WIFSTOPPED(wait_val)  (个人看法,我还没有查到子进程状态的编码资料,求~))并计数,子进程结束(非暂停,对应的是WIFEXITED)后,父进程跳出loop循环.</rich_text><rich_text>
+
+</rich_text><rich_text scale="h1" weight="heavy">4. 结论</rich_text><rich_text>
+    ptrace()在调试器中是被用得很多的,它也可以被用来跟踪系统调用.调试器fork一个子进程并跟踪它,然后子进程exec调用要被调试的目 标程序,在目标程序的每一次机器指令之后父进程都可以查看它的寄存器的值.在下一篇文章中,我会尽情展示ptrace的牛逼之处,春节快乐.
+
+作者: Sandeep S
+    I am a final year student of Government Engineering College in   Thrissur, Kerala, India. My areas of interests include FreeBSD,  Networking and  also Theoretical Computer Science.
+                                           
+</rich_text><rich_text scale="h1" weight="heavy">5. 补充</rich_text><rich_text scale="h1">                                           </rich_text><rich_text>
+用法： 
+#include &lt;sys/ptrace.h&gt;
+long ptrace(enum __ptrace_request request, pid_t pid, void *addr, void *data);  
+ 
+参数： 
+request：请求执行的行为，可能选择有
+PTRACE_TRACEME   //指示父进程跟踪某个子进程的执行。任何传给子进程的信号将导致其停止执行，同时父进程调用wait()时会得到通告。之后，子进程调用exec() 时，核心会给它传送SIGTRAP信号，在新程序开始执行前，给予父进程控制的机会。pid, addr, 和 data参数被忽略。
+以上是唯一由子进程使用的请求，剩下部分将由父进程使用的请求。
+PTRACE_PEEKTEXT, PTRACE_PEEKDATA //从子进程内存空间addr指向的位置读取一个字，并作为调用的结果返回。Linux内部对文本段和数据段不加区分，所以目前这两个请求相等。data参数被忽略。
+PTRACE_PEEKUSR //从子进程的用户区addr指向的位置读取一个字，并作为调用的结果返回。
+PTRACE_POKETEXT, PTRACE_POKEDATA //将data指向的字拷贝到子进程内存空间由addr指向的位置。
+PTRACE_POKEUSR //将data指向的字拷贝到子进程用户区由addr指向的位置。
+PTRACE_GETREGS, PTRACE_GETFPREGS //将子进程通用和浮点寄存器的值拷贝到父进程内由data指向的位置。addr参数被忽略。
+PTRACE_GETSIGINFO //获取导致子进程停止执行的信号信息，并将其存放在父进程内由data指向的位置。addr参数被忽略。
+PTRACE_SETREGS, PTRACE_SETFPREGS //从父进程内将data指向的数据拷贝到子进程的通用和浮点寄存器。addr参数被忽略。
+PTRACE_SETSIGINFO //将父进程内由data指向的数据作为siginfo_t结构体拷贝到子进程。addr参数被忽略。
+PTRACE_SETOPTIONS //将父进程内由data指向的值设定为ptrace选项，data作为位掩码来解释，由下面的标志指定
+ PTRACE_O_TRACESYSGOOD //当转发syscall陷阱(traps)时，在信号编码中设置位7，即第一个字节的最高位。例如：SIGTRAP | 0x80。这有利于追踪者识别一般的陷阱和那些由syscall引起的陷阱。
+  PTRACE_O_TRACEFORK //通过 (SIGTRAP | PTRACE_EVENT_FORK &lt;&lt; 8)  使子进程下次调用fork()时停止其执行，并自动跟踪开始执行时就已设置SIGSTOP信号的新进程。新进程的PID可以通过 PTRACE_GETEVENTMSG获取。 
+ PTRACE_O_TRACEVFORK //通过 (SIGTRAP |  PTRACE_EVENT_VFORK &lt;&lt; 8)  使子进程下次调用vfork()时停止其执行，并自动跟踪开始执行时就已设置SIGSTOP信号的新进程。新进程的PID可以通过 PTRACE_GETEVENTMSG获取。
+ PTRACE_O_TRACECLONE //通过 (SIGTRAP |  PTRACE_EVENT_CLONE &lt;&lt; 8)  使子进程下次调用clone()时停止其执行，并自动跟踪开始执行时就已设置SIGSTOP信号的新进程。新进程的PID可以通过 PTRACE_GETEVENTMSG获取。
+ PTRACE_O_TRACEEXEC //通过 (IGTRAP | PTRACE_EVENT_EXEC &lt;&lt; 8) 使子进程下次调用exec()时停止其执行。
+ PTRACE_O_TRACEVFORKDONE //通过 (SIGTRAP | PTRACE_EVENT_VFORK_DONE &lt;&lt; 8) 使子进程下次调用exec()并完成时停止其执行。
+ PTRACE_O_TRACEEXIT //通过 (SIGTRAP | PTRACE_EVENT_EXIT &lt;&lt; 8) 使子进程退出时停止其执行。子进程的退出状态可通过PTRACE_GETEVENTMSG。
+PTRACE_GETEVENTMSG //获取刚发生的ptrace事件消息，并存放在父进程内由data指向的位置。addr参数被忽略。
+PTRACE_CONT //重启动已停止的进程。如果data指向的数据并非0，同时也不是SIGSTOP信号，将会作为传递给子进程的信号来解释。那样，父进程可以控制是否将一个信号发送给子进程。 addr参数被忽略。
+PTRACE_SYSCALL, PTRACE_SINGLESTEP //如同PTRACE_CONT一样重启子进程的执行，但指定子进程在下个入口或从系统调用退出时，或者执行单个指令后停止执行，这可用于实现单步调试。addr参数被忽略。
+PTRACE_SYSEMU, PTRACE_SYSEMU_SINGLESTEP //用于用户模式的程序仿真子进程的所有系统调用。
+PTRACE_KILL //给子进程发送SIGKILL信号，从而终止其执行。data，addr参数被忽略。
+PTRACE_ATTACH //衔接到pid指定的进程，从而使其成为当前进程的追踪目标。
+PTRACE_DETACH //PTRACE_ATTACH的反向操作。 
+pid：目标进程标识。
+addr：执行peek和poke操作的目标地址。 
+data：对于poke操作，存放数据的地方。对于peek操作，获取数据的地方。
+ 
+返回说明： 
+成功执行时，PTRACE_PEEK*请求返回所请求的数据，其它返回0。失败返回-1，errno被设为以下的某个值。由于一个成功的PTRACE_PEEK*请求可能返回-1，决定错误是否发生前，调用者应检查errno。
+EBUSY：分配和释放调试寄存器时出错
+EFAULT：读写不可访问的内存空间
+EINVAL：尝试设置无效选项
+EIO：请求无效，或者尝试读写父子进程不可访问的空间
+EPERM：没有权限追踪指定的进程
+ESRCH：指定的子进程不存在，或者当前正由调用者追踪
+                                           
+</rich_text><node name="
+Linux中使用ptrace获取pthread线程的寄存器信息 " prog_lang="custom-colors" readonly="False" tags="" unique_id="46"><rich_text scale="h2" weight="heavy">1.与本文相关的有这几个重要的函数：</rich_text><rich_text>
+pthread_create：创建线程
+pthread_self：获取当前运行的线程的线程ID (The pthread_self() function returns the ID of the calling thread.)
+getpid：获取当前进程ID
+gettid：获取当前运行的线程的线程ID(gettid() returns the caller’s thread ID (TID) )
+ptrace：跟踪一个指定的进程
+
+ 
+</rich_text><rich_text scale="h2" weight="heavy">2.getpid、gettid和pthread_self的区别：</rich_text><rich_text>
+ pthread_self属于POSIX线程库的函数，Linux下POSIX的pthread线程库是用进程来实现的，pthread_create是通过系统调用
+ clone创建一个子进程作为线程的。下面是这两个函数的声明：
+ 
+
+1. #include &lt;sys/types.h&gt;  
+2. #include &lt;unistd.h&gt;  
+3. pid_t getpid(void);  
+4.   
+5. #include &lt;sys/types.h&gt;  
+6. pid_t gettid(void);  
+7.   
+8. #include &lt;pthread.h&gt;  
+9. pthread_t pthread_self(void);  
+    可以很容易发现pthread_self获取的是pthread_t（占用8Byte），而其他两个函数返回的都是pid_t（占用4Byte），上面我
+们讲了，pthread_create创建的线程实际上是一个子进程，而这个子进程的Handle的地址为pthread_t，子进程ID通过gettid
+获取，该子进程的父进程ID通过getpid获取。
+
+</rich_text><rich_text scale="h2" weight="heavy">3.ptrace函数：</rich_text><rich_text>
+    1. #include &lt;sys/ptrace.h&gt;  
+    2. long ptrace(enum __ptrace_request request, pid_t pid, void *addr, void *data);  
+这个函数比较复杂，具体的一些介绍，大家可以看这个：
+
+</rich_text><rich_text link="webs http://linux.die.net/man/2/ptrace">man ptrace</rich_text><rich_text>
+ 
+</rich_text><rich_text link="webs http://www.cnblogs.com/wangkangluo1/archive/2012/06/05/2535484.html">ptrace用法</rich_text><rich_text>
+ 
+
+ 
+</rich_text><rich_text scale="h2" weight="heavy">4.通过ptrace获取指定pthread线程的寄存器信息：</rich_text><rich_text>
+ 这个是被跟踪的进程的程序：
+ 
+
+1. #include &lt;stdio.h&gt;  
+2. #include &lt;unistd.h&gt; //for sleep  
+3. #include &lt;stdlib.h&gt; //for exit  
+4. #include &lt;pthread.h&gt;//for pthread  
+5. #include &lt;errno.h&gt;  //for errno  
+6. #include &lt;sys/syscall.h&gt; //for gettid  
+7. #define gettid() syscall(__NR_gettid)  
+8.   
+9. void *func(void *para)  
+10. {  
+11.     printf(&quot;Hello world.\n&quot;);  
+12.     printf(&quot;child process tid: %u\n&quot;, gettid());  
+13.     sleep(-1);  // 该进程一直sleep，等待  
+14.     return NULL;  
+15. }  
+16.   
+17. int main()  
+18. {   
+19.     pthread_t tid;  
+20.     int ret = pthread_create(&amp;tid, NULL, func, NULL);  
+21.     if(ret != 0)  
+22.     {     
+23.         exit(errno);  
+24.     }     
+25.     printf(&quot;parent process pid: %u\n&quot;, getpid());  
+26.   
+27.     pthread_join(tid, NULL);  
+28.     return 0;  
+29. }  
+输出为（注意不要结束此进程，不然没办法跟踪）：
+
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/cjfeii/article/details/9314927#">view plaincopyprint?</rich_text><rich_text>1. [biz@localhost test]$ g++ main.cpp -lpthread  
+2. [biz@localhost test]$ ./a.out   
+3. parent process pid: 14396  
+4. child process tid: 14397  
+5. sleep ...  
+
+下面是跟踪程序：
+
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/cjfeii/article/details/9314927#">view plaincopyprint?</rich_text><rich_text>1. #include &lt;sys/ptrace.h&gt;  
+2. #include &lt;stdlib.h&gt;     // for atoi  
+3. #include &lt;stdio.h&gt;  
+4. #include &lt;sys/types.h&gt;  
+5. #include &lt;sys/wait.h&gt;  
+6. #include &lt;unistd.h&gt;  
+7. #include &lt;sys/user.h&gt; /* For user_regs_struct */  
+8. int main(int argc, char *argv[])  
+9. {   
+10.     pid_t traced_process;  
+11.     struct user_regs_struct regs;  
+12.     long ins;  
+13.     if(argc != 2) {  
+14.         printf(&quot;Usage: %s &lt;pid to be traced&gt; &quot;,  
+15.                argv[0], argv[1]);  
+16.         exit(1);  
+17.     }     
+18.     traced_process = atoi(argv[1]);  
+19.     ptrace(PTRACE_ATTACH, traced_process,   
+20.            NULL, NULL);  
+21.     wait(NULL);  
+22.     ptrace(PTRACE_GETREGS, traced_process,   
+23.            NULL, ®s);  
+24.     ins = ptrace(PTRACE_PEEKTEXT, traced_process,   
+25.                  regs.rip, NULL);  
+26.     printf(&quot;EIP: %lx Instruction executed: %lx \n&quot;,   
+27.            regs.rip, ins);  
+28.     ptrace(PTRACE_DETACH, traced_process,   
+29.            NULL, NULL);  
+30.     return 0;  
+31. }  
+
+输出为：
+
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/cjfeii/article/details/9314927#">view plaincopyprint?</rich_text><rich_text>1. [biz@localhost test]$ g++ attach.cpp -o attach  
+2. [biz@localhost test]$ ./attach 14397  
+3. EIP: 33d98ab91d Instruction executed: e8c28948243c8b48  
+
+</rich_text></node></node><node name="戴文linux内核" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text></rich_text><node name="01 介绍" prog_lang="custom-colors" readonly="False" tags="" unique_id="5"><rich_text>本文作者戴文.科利尔.约翰逊(Devyn Collier Johnson)今年才19岁，但是他在Linux内核、人工智能、编程语言方面拥有丰富的经验，本文是其在</rich_text><rich_text link="webs http://www.linux.org/threads/%EF%BB%BFthe-linux-kernel-introduction.4203/">linux.org上连载的一系列关于内核的文章</rich_text><rich_text>。文章写的深入浅出，本站不揣浅陋，由LCTT成员geekpi进行了系列翻译，以分享给广大Linux爱好者。
  
 在1991年，一个叫林纳斯·本纳第克特·托瓦兹的芬兰学生制作了一个现在非常流行的操作系统的内核。他于1991年9月发 布了Linux  0.01，并且于1992年以GPL许可证的方式授权了该内核。GNU通用许可证(GPL)允许人们使用、拥有、修改，以及合法和免费的分发源代码。这使 得内核变得非常流行，因为任何人都可以免费地下载。现在任何人都可以生成他们自己的内核，这有助于人们学习如何获取、编辑、配置、编译并安装Linux内 核。
 内核是操作系统的核心。操作系统是一系列的管理硬件并允许用户在电脑上运行应用的程序。内核控制着硬件和应用。应用并不直接和硬件打交道，而是首先和内核交互。总之，软件运行在内核上，而内核操作着硬件。没有内核，电脑就是一个没用的物件。
