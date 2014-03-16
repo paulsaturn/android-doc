@@ -1,0 +1,69 @@
+<?xml version="1.0" ?><cherrytree><node name="char和byte的转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. 显示shell打印
+        StringBuilder strBuilder = new StringBuilder();
+        String text1 = &quot;hello\tworld\bwubao\n1234566\r645390\n&quot;;
+        int len1 = text1.length();
+        int len = 0;
+        int last_return = -1;
+        char[] data = text1.toCharArray();
+        for (int i=0; i&lt;len1; i++) {
+            if (data[i] == '\b') {
+                len--;
+                strBuilder.setLength(len);
+            } else if (data[i] == '\r') {    
+                if (data[i+1] == '\n') {
+                    i++;
+                    strBuilder.append(data[i]);
+                    last_return = len;
+                    len++;
+                } else {
+                    len = last_return + 1;
+                    strBuilder.setLength(len);
+                }
+            } else {
+                if (data[i] == '\n') {
+                    last_return = len;
+                }
+                strBuilder.append(data[i]);
+                len++;
+            }
+            Log.v(TAG, &quot;&quot;+data[i]);
+        }
+        String text = strBuilder.toString();
+
+2. char和byte的转换
+首先，byte[]是字节数组类型，和int[]类似，只是一个是字节型的，一个是整型的；
+ char是UNICOEDE字符,为16位的整数；
+ String是个类，一般用来表示字符串的；
+ hello.getBytes()意思就是把hello这个字符串转化为字节流（byte型）；一般前面加个byte[]型的变量，就是把转化后的字节流放到这个变量里，如下：
+byte[] bt=hello.getBytes();
+</rich_text><rich_text foreground="#008000">// char转byte</rich_text><rich_text>
+private byte[] getBytes (char[] chars) {
+   Charset cs = Charset.forName (&quot;UTF-8&quot;);
+   CharBuffer cb = CharBuffer.allocate (chars.length);
+   cb.put (chars);
+                 cb.flip ();
+   ByteBuffer bb = cs.encode (cb);
+  
+   return bb.array();
+ }
+</rich_text><rich_text foreground="#008000">// byte转char</rich_text><rich_text>
+private char[] getChars (byte[] bytes) {
+      Charset cs = Charset.forName (&quot;UTF-8&quot;);
+      ByteBuffer bb = ByteBuffer.allocate (bytes.length);
+      bb.put (bytes);
+                 bb.flip ();
+       CharBuffer cb = cs.decode (bb);
+  
+   return cb.array();
+}
+
+3. 读写二进制文件
+FileInputStream fis=new FileInputStream(&quot;文件路径&quot;);
+byte[] b1=new byte[fis.available()];
+fis.read(b1);
+FileOutputStream out=new FileOutputStream(&quot;文件路径&quot;);
+out.write(b1);
+
+fis.close();
+out.close();
+</rich_text></node></cherrytree>
