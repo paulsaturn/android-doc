@@ -66,4 +66,223 @@ out.write(b1);
 
 fis.close();
 out.close();
-</rich_text></node></cherrytree>
+</rich_text></node><node name="java基本类型" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>	1).
+	byte   : 8bit
+	short  : 16bit
+	int    : 32bit
+	long   : 64bit
+	char   : 16bit unicode, 默认值u0000.
+	boolean: 1bit
+
+	2).类型转换:
+		//将字节数组转换为整型
+		public static int byte2int(byte b[], int offset) {
+		   return b[offset + 3] &amp; 0xff | (b[offset + 2] &amp; 0xff) &lt;&lt; 8 | (b[offset + 1] &amp; 0xff) &lt;&lt; 16 | (b[offset] &amp; 0xff) &lt;&lt; 24;
+		}
+
+		//将整型转换为字节数组
+
+		public static void int2byte(int n, byte buf[], int offset) {
+		   buf[offset] = (byte) (n &gt;&gt; 24);
+		   buf[offset + 1] = (byte) (n &gt;&gt; 16);
+		   buf[offset + 2] = (byte) (n &gt;&gt; 8);
+		   buf[offset + 3] = (byte) n;
+		}
+
+		//将短整型转换为字节数组
+
+		public static void short2byte(int n, byte buf[], int offset) {
+		   buf[offset] = (byte) (n &gt;&gt; 8);
+		   buf[offset + 1] = (byte) n;
+		}
+
+		//将字节数组转换为十六进制形式字符串
+
+		public static String byte2Hex(byte[] buf) {
+		   StringBuffer sb = new StringBuffer();
+		   sb.append(&quot;{&quot;);
+		   for (byte b : buf) {
+			if (b == 0) {
+			 sb.append(&quot;00&quot;);
+			} else if (b == -1) {
+			 sb.append(&quot;FF&quot;);
+			} else {
+			 String str = Integer.toHexString(b).toUpperCase();
+			 // sb.append(a);
+			 if (str.length() == 8) {
+			  str = str.substring(6, 8);
+			 } else if (str.length() &lt; 2) {
+			  str = &quot;0&quot; + str;
+			 }
+			 sb.append(str);
+
+			}
+			sb.append(&quot; &quot;);
+		   }
+		   sb.append(&quot;}&quot;);
+		   return sb.toString();
+		}
+
+		//将字节转换为整型
+
+		public static int unsignedByteToInt(byte b) {
+		   return (int) b &amp; 0xFF;
+		}
+
+		//将字节转换为十六进制形式字符串
+
+		public static String byteToHex(byte b) {
+		   int i = b &amp; 0xFF;
+		   return Integer.toHexString(i);
+		}
+
+		/**
+		* convert signed 4 bytes into a 32-bit integer
+		*
+		* @param buf
+		*            bytes buffer
+		* @param pos
+		*            beginning &lt;code&gt;byte&lt;/code&gt;&gt; for converting
+		* @return convert result
+		*/
+		public static long unsigned4BytesToInt(byte[] buf, int pos) {
+		   int firstByte = 0;
+		   int secondByte = 0;
+		   int thirdByte = 0;
+		   int fourthByte = 0;
+		   int index = pos;
+		   firstByte = (0x000000FF &amp; ((int) buf[index]));
+		   secondByte = (0x000000FF &amp; ((int) buf[index + 1]));
+		   thirdByte = (0x000000FF &amp; ((int) buf[index + 2]));
+		   fourthByte = (0x000000FF &amp; ((int) buf[index + 3]));
+		   index = index + 4;
+		   return ((long) (firstByte &lt;&lt; 24 | secondByte &lt;&lt; 16 | thirdByte &lt;&lt; 8 | fourthByte)) &amp; 0xFFFFFFFFL;
+		}
+
+		public static long bytes2long(byte[] b) {
+
+		   int mask = 0xff;
+		   int temp = 0;
+		   int res = 0;
+		   for (int i = 0; i &lt; 8; i++) {
+			res &lt;&lt;= 8;
+			temp = b[i] &amp; mask;
+			res |= temp;
+		   }
+		   return res;
+		}
+
+		public static byte[] long2bytes(long num) {
+		   byte[] b = new byte[8];
+		   for (int i = 0; i &lt; 8; i++) {
+			b[i] = (byte) (num &gt;&gt;&gt; (56 - i * 8));
+		   }
+		   return b;
+		}
+
+		public static long getLong(byte[] bb, int index) {
+		   return ((((long) bb[index + 0] &amp; 0xff) &lt;&lt; 56)
+			 | (((long) bb[index + 1] &amp; 0xff) &lt;&lt; 48)
+			 | (((long) bb[index + 2] &amp; 0xff) &lt;&lt; 40)
+			 | (((long) bb[index + 3] &amp; 0xff) &lt;&lt; 32)
+			 | (((long) bb[index + 4] &amp; 0xff) &lt;&lt; 24)
+			 | (((long) bb[index + 5] &amp; 0xff) &lt;&lt; 16)
+			 | (((long) bb[index + 6] &amp; 0xff) &lt;&lt; 8) | (((long) bb[index + 7] &amp; 0xff) &lt;&lt; 0));
+		}
+
+		public static void putLong(byte[] bb, long x, int index) {
+		   bb[index + 0] = (byte) (x &gt;&gt; 56);
+		   bb[index + 1] = (byte) (x &gt;&gt; 48);
+		   bb[index + 2] = (byte) (x &gt;&gt; 40);
+		   bb[index + 3] = (byte) (x &gt;&gt; 32);
+		   bb[index + 4] = (byte) (x &gt;&gt; 24);
+		   bb[index + 5] = (byte) (x &gt;&gt; 16);
+		   bb[index + 6] = (byte) (x &gt;&gt; 8);
+		   bb[index + 7] = (byte) (x &gt;&gt; 0);
+		}
+
+		public static void putShort(byte b[], short s, int index) {
+		   b[index] = (byte) (s &gt;&gt; 8);
+		   b[index + 1] = (byte) (s &gt;&gt; 0);
+		}
+
+		public static short getShort(byte[] b, int index) {
+		   return (short) (((b[index] &lt;&lt; 8) | b[index + 1] &amp; 0xff));
+		}
+
+		public static byte[] str2Bcd(String asc) {
+			int len = asc.length();
+			int mod = len % 2;
+			if (mod != 0) {
+			 asc = &quot;0&quot; + asc;
+			 len = asc.length();
+			}
+			byte abt[] = new byte[len];
+			if (len &gt;= 2) {
+			 len = len / 2;
+			}
+			byte bbt[] = new byte[len];
+			abt = asc.getBytes();
+			int j, k;
+			for (int p = 0; p &lt; asc.length()/2; p++) {
+			 if ( (abt[2 * p] &gt;= '0') &amp;&amp; (abt[2 * p] &lt;= '9')) {
+			  j = abt[2 * p] - '0';
+			 } else if ( (abt[2 * p] &gt;= 'a') &amp;&amp; (abt[2 * p] &lt;= 'z')) {
+			  j = abt[2 * p] - 'a' + 0x0a;
+			 } else {
+			  j = abt[2 * p] - 'A' + 0x0a;
+			 }
+			 if ( (abt[2 * p + 1] &gt;= '0') &amp;&amp; (abt[2 * p + 1] &lt;= '9')) {
+			  k = abt[2 * p + 1] - '0';
+			 } else if ( (abt[2 * p + 1] &gt;= 'a') &amp;&amp; (abt[2 * p + 1] &lt;= 'z')) {
+			  k = abt[2 * p + 1] - 'a' + 0x0a;
+			 }else {
+			  k = abt[2 * p + 1] - 'A' + 0x0a;
+			 }
+			 int a = (j &lt;&lt; 4) + k;
+			 byte b = (byte) a;
+			 bbt[p] = b;
+			}     return bbt;
+		}</rich_text></node><node name="String、Integer、int相互间的转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>1.Integer转换成int的方法
+Integer i; 
+int k = i.intValue();
+即Integer.intValue();
+
+2.int转换成Integer
+int i;
+Integer it = new Integer(i);
+
+3.String转换成int的方法
+String str = &quot;10&quot;;  
+Integer it = new Integer(str);  
+
+int i = it.intValue();  
+即：int i = Integer.intValue(string);
+ 
+4.int转换成String
+int i;
+(1)String s = String.valueOf(i);
+(2)String s = Integer.toString(i);
+(3)String s = &quot;&quot; + i;
+ 
+5.String转换成Integer
+String str = &quot;10&quot;
+Integer it = Integer.valueOf(str);
+
+6.Integer转换成String
+Integer it;
+String str = it.toString();
+
+7.String转换成BigDecimal
+BigDecimal bd = new BigDecimal(str);
+
+8.日期
+Calendar calendar = Calendar.getInstance();
+int year = calendar.get(Calendar.YEAR);
+int month = calendar.get(Calendar.MONTH)+1;
+int day = calendar.get(Calendar.DATE);
+
+//获取今天的日期字符串
+String today = java.text.DateFormat.getDateInstance().format(new java.util.Date());
+//获取今天的日期
+new java.sql.Date(System.currentTimeMillis());</rich_text></node></cherrytree>
