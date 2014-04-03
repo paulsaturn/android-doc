@@ -340,3 +340,18 @@ Fix!!!
     版本库信息：由于git format-patch生成的补丁中含有这个补丁开发者的名字，因此在应用补丁时，这个名字会被记录进版本库，
 		显然，这样做是恰当的。因此，目前使用Git的开源社区往往建议大家使用format-patch生成补丁。
 
+================================================================================
+git源码发布
+================================================================================
+1.tar.gz包
+$ git archive master --prefix='project/' | gzip > `git describe master`.tar.gz
+$ ls *.tar.gz
+v1.6.2-rc1-20-g8c5b85c.tar.gz
+
+	其中:
+	  git describe master
+	  获得最近生成的tag
+
+2.zip包
+$ git archive master --prefix='project/' --format=zip > `git describe master`.zip
+
