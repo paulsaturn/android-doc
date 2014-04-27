@@ -1,4 +1,289 @@
-<?xml version="1.0" ?><cherrytree><node name="char和byte的转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. 显示shell打印
+<?xml version="1.0" ?><cherrytree><node name="Java本地接口(JNI)编程指南和规范" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text></rich_text><node name="第五章局部和全局引用" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text>参考 ：
+ 
+</rich_text><rich_text link="webs http://java.sun.com/docs/books/jni/html/jniTOC.html">The Java Native InterfaceProgrammer's Guide and Specification
+ </rich_text><rich_text>
+http://java.sun.com/docs/books/jni/html/jniTOC.html
+ </rich_text><rich_text link="webs http://unity3d.com/support/documentation/ScriptReference/AndroidJNI.html">AndroidJNI</rich_text><rich_text>
+ 
+http://unity3d.com/support/documentation/ScriptReference/AndroidJNI.html
+ 
+&quot;JNI&quot;公开了实例和数组类型(such as jobject,jclass, jstring,  andjarray)作为不透明的应用。本地代码不能直接地查看一个不透明引用的指针的内容。作为替代，使用&quot;JNI&quot;函数来访问被一个不透明引用指向的 数据结构。通过处理不透明的引用，你不必担心内部对象(object)布置，这布置是依赖于一个特定的Java虚拟机的实现。然而，你做的是需要了解 在&quot;JNI&quot;中不同类别的引用:
+ .&quot;JNI&quot;支持三种类型不透明引用:局部引用，全局引用和弱全局引用。
+ .局部和全局引用有不同的生命周期(lifetimes)。局部引用会自动释放，然而全局和弱全局引用保持有效一直到它们被程序员释放。
+ .一个局部或全局的引用保持了引用的对象(referencedobject)不被垃圾收集掉。另一方面，一个弱全局引用允许引用的对象被垃圾收集。
+ .不是所有的引用能被用在所有地方的(in allcontexts).例如，在创建引用返回值的本地方法后，使用一个局部引用是不合法的。
+ 
+在这章中，我们将详细的讨论这些问题。恰当地管理&quot;JNI&quot;引用对于写可靠和节省空间的代码是至关重要的。
+ 
+</rich_text><rich_text scale="h1" weight="heavy">5.1 局部和全局引用(Local andGlobal References)</rich_text><rich_text>
+ 什么是局部和全局引用? 它们有什么不同?我们将用一系列的例子来说明局部和全局引用。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">5.1.1 局部引用(LocalReference)</rich_text><rich_text>
+ 大多数&quot;JNI&quot;函数都创建局部引用。例如，&quot;JNI&quot;函数&quot;NewObject&quot;创建一个新的实例，同时返回一个局部引用到那个实例。
+ 
+一个局部引用，只在创建它的本地方法的动态上下文中，同时只在本地方法的一个调用中，是有效的。所有的在一个本地方法执行期间创建的局部引用将被释放，一旦本地方法返回。
+ 
+你不必写本地方法，在一个静态变量中存储的一个局部引用的，和期望在后来的调用中使用一样的引用。例如，下面的程序，是在4.4.1部分中的&quot;MyNewString&quot;函数的修改版本，不正确的使用了局部引用。
+ 
+ jstring MyNewString(JNIEnv *env, jchar *chars, jint len)
+ {
+  static  jclass stringClass =NULL ;
+  jmethodID cid ;
+  jcharArray elemArr ;
+  jstring result;
+ if( stringClass == NULL ){
+   stringClass =(*env)-&gt;FindClass(env, &quot;java/lagn/String&quot;) ;
+   if ( stringClass == NULL){
+    return NULL;
+   }
+  }
+  
+  cid = (*env)-&gt;GetMethodID(env,stringClass, &quot;&lt;init&gt;&quot;, &quot;([C)V&quot;);
+  ...
+  elemArr =(*env)-&gt;NewCharArray(env, len) ;
+  ...
+  result = (*env)-&gt;NewObject(env,stringClass, cid, elemArr) ;
+  (*env)-&gt;DeleteLocalRef(env,elemArr) ;
+  return result ; 
+ }
+ 
+这儿我们已经省略和我们讨论不直接相关的代码行。在一个静态变量中缓冲&quot;stringClass&quot;的目的可能是为了消除再次调用下面函数的开销:
+ FindClass(env, &quot;java/lang/String&quot;) ;
+ 
+这是一个不正确的方法，因为&quot;FindClass&quot;返回的是&quot;java.lang.String&quot;类对象的一个局部引用。为了了解这是一个什么问题，假设&quot;C.f&quot;的本地方法的实现调用了&quot;MyNewString&quot;：
+ JNIEXPORT jstring JNICALL
+ Java_C_f(JNIEnv *env, jobject this)
+ {
+  char *c_str = ... ;
+  ....
+  return MyNewString(c_str) ;
+ }
+ 
+在本地方法&quot;C.f&quot;返回后，虚拟机释放所有在&quot;Java_C_f&quot;执行期间创建的局部引用。这些被释放的局部引用包含存储 在&quot;stringClass&quot;变量中的类对象的局部引用。然后将来，&quot;MyNewString&quot;调用将尝试使用一个无效局部应用，可能导致内存的破坏或系 统奔溃。例如，一个如下(suchas the  following)代码片段，做两个&quot;C.f&quot;的调用，引起&quot;MyNewString&quot;使用了无效的局部引用:
+ ...
+ ...= C.f() // The first call is perhaps OK
+ ...= C.f() // This would use an invalid local reference.
+ ...
+ 
+有两种方法能使一个局部引用无效。像前面解释的，虚拟器在本地方法返回后，自动地释放在本地方法执行期间创建的所有的局部引用。另外 (Inaddition),程序员可以明确地管理局部引用的生命周期(lifetime),使用例如&quot;DeleteLocalRef&quot;的&quot;JNI&quot;函数。
+ 
+如果虚拟器在本地方法返回后，能自动地释放局部引用，为什么你还需要明确地删除局部引用?一个局部引用保持一个引用对象阻止垃圾收集，直到局部引用 是无效的。例如，在&quot;MyNewString&quot;中的&quot;DeleteLoacalRef&quot;调用，允许中间的&quot;array&quot;对象elemArr能立即被垃圾收 集。否则虚拟机将只能在调用&quot;MyNewString&quot;的本地方法(例如上面C.f)返回后，释放&quot;elemArr&quot;对象。
+ 
+一个局部引用在它销毁前，可以通过多个本地函数本传递。例如，&quot;MyNewString&quot;返回的一个通过&quot;NewObject&quot;创建 的&quot;string&quot;引用。然后它将上传到&quot;MyNewString&quot;的调用者来决定是否释放&quot;MyNewString&quot;返回的局部引用。 在&quot;Java_C_f&quot;例子中，C.f又返回&quot;MyNewString&quot;的结果作为本地方法的返回值。虚拟机从&quot;Java_C_f&quot;函数得到局部引用后， 它传递底层的&quot;string&quot;对象到&quot;C.f&quot;的调用者，然后销毁了通过&quot;JNI&quot;函数&quot;NewObject&quot;原始创建的局部引用。
+ 
+局部应用也只在创建它们的线程中有效。一个在一个线程中创建的局部引用不能在另一线程中被使用。对于一个本地方法，存储一个局部引用在一个全局变量中同时期望另一线程使用这个局部引用，是一个编程错误。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">5.1.2 全局引用(GlobalReferences)</rich_text><rich_text>
+ 你能在一个本地方法的多次调用中使用一个全局引用。一个全局引用能在多个线程中(across muliplethreads)被使用,同时保持有效直到编程者释放它。像一个局部引用，一个全局引用确保了引用对象将不被垃圾收集。
+ 
+和被大部分&quot;JNI&quot;函数创建的局部引用不一样，全局引用只被一个&quot;JNI&quot;函数&quot;NewGlobalRef&quot;创建。&quot;MyNewString&quot;的下面的版本说明怎样使用一个全局引用。我们高亮在下面代码和在上一部分中错误缓冲一个局部引用的代码之间的不同:
+ 
+ jstring MyNewString(JNIEnv *env, jchar *chars, jint len)
+ {
+  static jclass stringClass = NULL ;
+  if ( stringClass == NULL ){
+   jclass LocalRefCls =(*env)-&gt;FindClass(env, &quot;java/lang/String&quot;) ;
+   if (localRefCls == NULL){
+    return NULL;
+   }
+   
+ </rich_text><rich_text foreground="#ff0000">  stringClass =(*env)-&gt;NewGlobalRef(env, localRefCls) ;</rich_text><rich_text>
+   
+   
+   (*env)-&gt;DeleteLocalRef(env,localRefClas) ;
+  
+   if( stringclass == NULL){
+    return NULL;
+   }
+  }
+  ...
+ }
+ 
+这个修改版本传递来自&quot;FindClass&quot;的局部引用到&quot;NewGlobalRef&quot;,来创建一个&quot;Java.lang.String&quot;类对象的 的全局引用。我们在删除&quot;localRefCls&quot;后，检查&quot;NewGlobalRef&quot;是否成功地创建&quot;string类(stringClass)&quot;， 因为无论那种情况局部引用&quot;localRefCls&quot;需要被删除。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">5.1.3 弱全局引用(Weak GlobalReference)</rich_text><rich_text>
+ 弱全局引用是在&quot;Java 2 SDK  release1.2&quot;中新出现的。它们使用&quot;NewGlobalWeakRef&quot;来创建和使用&quot;DeleteGlobalWeakRef&quot;来释放。像全 局引用一样，弱全局引用在本地方法调用中和在不同的线程中，保持有效。但和全局引用不一样，弱全局引用不能保持底层对象不被垃圾收集。
+ 
+&quot;MyNewString&quot;例子显示怎样缓冲一个&quot;java.lang.String&quot;类的全局引用。&quot;MyNewString&quot;例子也可以选择使 用一个弱全局引用来存储缓冲的&quot;java.lang.String&quot;类。无论我们使用的是一个全局引用还是一个弱全局引用，因 为&quot;java.lang.String&quot;是一个系统类，所以将不会被垃圾收集。
+ 
+当本地方法代码缓冲了一个引用不必保持底层的对象不被垃圾收集，弱全局引用变的十分有用。例如，假设一个本地方法&quot;mypkg.MyCls.f&quot;需 要缓冲一个&quot;mypkg.MyCls2&quot;类的引用。在一个弱全局引用中，缓冲了这个类仍然允许&quot;mypkg.MyCls2&quot;类被载出:
+ JNIEXPORT void JNICALL
+ Java_mypkg_MyCls_f(JNIEnv *env, jobject self)
+ {
+  static jclass myCls2 = NULL；
+  if( myCls2 == NULL ){
+   jclass myCls2Local =(*env)-&gt;FindClass(env, &quot;mypkg/MyCls2&quot;) ;
+   if( myCls2Local == NULL){
+    return;
+   }
+   myCls2 = NewWeakGlobalRef(env,myCls2Local) ;
+   if( myCls2 == NULL ){
+    reurn ;
+   }
+  }
+  ...
+ }
+ 
+我假设&quot;MyCls&quot;和&quot;MyCls2&quot;有一样的生命周期。(例如，它们可以被同样的类载入器载入。)因此我们不用思考这种情况， 当&quot;MyCls2&quot;被载出而后再载入时，然而MyCls和他的本地方法实现&quot;Java_mypkg_MyCls&quot;一直保持使用。如果这发生，我们必须检查 缓冲的弱全局引用是否任然指向一个活着的类对象，或指向一个已经被垃圾回收的类对象。下一部分将解释怎样在弱全局引用上执行如此检查。
+ 
+5.1.4 比较引用(ComparingReference)
+ 给出两个局部，全局，弱全局引用，你使用&quot;IsSameObject&quot;函数，能检查它们是否参考一样使对象。例如:
+ (*env)-&gt;IsSameObject(env, obj1, obj2)
+ 
+如果obj1和obj2参考了一样对象，返回&quot;JNI_TRUE&quot;(或1)；否则返回&quot;JNI_FALSE&quot;(或0)。
+ 
+在Java虚拟机中，一个在&quot;JNI&quot;中的&quot;NULL&quot;引用参考&quot;null&quot;对象。如果&quot;obj&quot;是一个局部或一个全局的参考，你可以使用
+ (*env)-&gt;IsSameObject(env, obj, NULL)
+ 或
+ obj == NULL
+
+ 来决定是否&quot;obj&quot;参考&quot;null&quot;对象。
+ 
+对于弱全局引用的规则则有所不同。&quot;NULL&quot;弱引用参考&quot;null&quot;对象。然而，&quot;IsSameObject&quot;为弱全局引用有指定用途。你能使 用&quot;IsSameObject&quot;来确定一个&quot;non-NULL&quot;弱全局引用是否指向一个活着的对象(object)。假设&quot;wobj&quot;是一个&quot;non- NULL&quot;弱全局引用。下面调用:
+ </rich_text><rich_text foreground="#ff0000">(*env)-&gt;IsSameObject(env, wobj, NULL)</rich_text><rich_text>
+
+ 如果&quot;wobj&quot;指向已经被收集的对象，返回&quot;JNI_TRUE&quot;，然而如果&quot;wobj&quot;指向一个活着的对象，返回&quot;JNI_FALSE&quot;。
+ 
+</rich_text><rich_text scale="h1" weight="heavy">5.2 释放引用(FreeingReferences)</rich_text><rich_text>
+ 每个&quot;JNI&quot;引用都自己消耗一定量的内存，除了被引用对象使用的内存外。做为一个&quot;JNI&quot;程序员，你应该知道你的程 序在某个时间使用的引用的数目。特别地，你应该知道你的程序在她的执行期间的任何时候创建的局部引用的个数上限，即使这些局部引用最终将被虚拟机自动地释 放。然而短暂地，过分的引用创建，可能导致内存的耗尽。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">5.2.1 释放局部引用(Freeing LocalReferences)</rich_text><rich_text>
+ 在大多数情况，当执行一个本地方法时，你不必担心释放局部引用。当本地方法放回到调用者时，Java虚拟器为你释放它们。然而，有些时候，你，&quot;JNI&quot;编程者，应该明确地释放局部引用为避免过分的内存使用。考虑一下下面的情况:
+ .你需要创建大量的局部引用在一个单独的本地方法调用中。这可能导致&quot;JNI&quot;内部的局部引用表的一个溢出。好的方法是适当地删除些将不需要的局部引用。 例如，在下面程序片段中，本地代码遍历(iteratethrough)了一个潜在的大量的&quot;string&quot;数组。每次迭代后，本地代码应该明确释放对字 符元素的局部引用，想下面:
+ for ( i = 0 ; i &lt; len ; i++){
+  jstring jstr =（*env)-&gt;GetObjectArrayElement(env, arr, i) ;
+  ...
+  (*env)-&gt;DeleteLocalRef(env, jstr);
+ }
+ .你需要写个工具函数被从不清楚的上下文中调用。在4.3部分中显示&quot;MyNewString&quot;例子说明&quot;DeleteMyNewSring&quot;使用为了删除恰当局部引用在一个工具函数中。否则，在&quot;MyNewString&quot;函数的每次调用后，两个局部引用将保持被分配。
+ .你的本地方法不再返回。例如，一个本地方法也可进入一个无终止的事件派遣循环。释放在循环中创建的局部引用至关重要(crucial),所以他们不会无限期的积累，导致内存泄漏。
+ .你本地方法访问一个很大的对象，因此(thereby)创建了一个这个对象局部引用。然而本地方法在返回调用者前，执行额外的计算。即使对象在本地方法 剩余处不再本使用，这个很大对象的局部引用将阻止垃圾搜集这对象，直到本地方法返回。例如，在下面的程序片段中，因为事前(beforehand),这有 个清楚的&quot;DeleteLocalRef&quot;的调用,垃圾收集器可以释放被&quot;lref&quot;指向的对象，在函数内部执行一个很长的计算时:
+ 
+ JNIEXPORT void JNICALL
+ Java_pkg_Cls_func(JNIEnv *env, jobject this )
+ {
+  lref =...                   
+  ...                          
+  (*env)-&gt;DeleteLocalRef(env, lref);
+  lengthyComputation();        
+  return;                     
+ }
+ 
+</rich_text><rich_text scale="h2" weight="heavy">5.2.2 管理局部引用在&quot;Java 2 SDKRelease 1.2&quot;（Managing Local References in Java 2 SDK Release1.2)</rich_text><rich_text>
+ &quot;Java 2 SDK Release1.2&quot;提供另外一套函数来管理局部引用的生命周期。这些函数是&quot;EnsureLocalCapacity&quot;,&quot;NewLocalRef&quot;,&quot;PushLocalFrame&quot;,和&quot;PopLocalFrame&quot;。
+ 
+&quot;JNI&quot;说明指示虚拟器自动地确保每个本地方法能创建至少16个局部引用。经验显示这提供了足够容量用于在Java虚拟器中对象，为大部分主要不 包含复杂指令的本地方法。然而，如果这儿需要创建额外的局部引用，一个本地方法可以使用一个&quot;EnsureLocalCapacity&quot;调用来确保满足局 部引用数目的空间是用的(available)。例如，前面例子的一个小的变化，预留足够的容量为在循环处理期间创建的所有局部引用，如果有充足内存可 用:
+ 
+ if ((*env)-&gt;EnsureLocalCapacity(env,len))&lt;0 ){
+  ...
+ }
+ for ( i = 0 ; i &lt; len ; i++ ){
+  jstring jstr =(*env)-&gt;GetObjectArrayElement(env, arr, i) ;
+  ...
+  
+ }
+ 
+当然，上面的版本和适当删除局部引用的前面的版本消耗大量内存很像。
+ 
+可选则地，&quot;Push/PopLocalFrame&quot;函数允许程序员来创建嵌入域的局部引用。例如，我们也可以重写一样的例子，如下:
+ #define N_REFS ...
+ for ( i = 0 ; i &lt; len ; i++ )｛
+  if((*env)-&gt;PushLocalFrame(env,N_REFS) &lt;0){
+   ...
+  }
+  jstr =（*env)-&gt;GetObjectArrayElement(env, arr，i) ;
+  ...
+  (*env)-&gt;PopLocalFrame(env, NULL);
+ ｝
+ 
+&quot;PushLocalFrame&quot;为指定数目的局部引用创建一个新的域。&quot;PopLocalFrame&quot;销毁最顶层的域，释放在这个域的所有局部引用。
+ 
+使用&quot;Push/PopLocalFrame&quot;函数的好处是他们可以管理局部引用的生命周期，而不必担心在执行期间被创建的每个单独的局部引用。在上面例子中，如果处理&quot;jstr&quot;的计算创建额外的局部引用，这些局部引用将在&quot;PopLocalFrame&quot;返回时被释放。
+ 
+在你写希望返回一个局部引用的有效函数时，&quot;NewLocalRef&quot;函数是有用的。我们将在5.3部分中示范&quot;NewLocalRef&quot;函数的使用。
+ 
+本地代码可以创建局部引用超过默认的16的容量或在&quot;PushLocalFrame&quot;或&quot;EnsureLocalCapacity&quot;调用中保留的容 量。虚拟器实现将尝试分配局部引用需要的内存。然而，不保证(noguaratee）内存将可用。若果分配内存失败，虚拟器退出。你应该为局部引用来保留 足够的内存，同时恰当地释放局部引用来避免这种不期望虚拟器退出。
+ 
+&quot;Java 2 SDK release1.2&quot;支持一个行命令选项&quot;-verbose:jni&quot;。当这个选项使能时，虚拟器实现报告过多的局部引用创建，超过保留的容量。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">5.2.3 释放全局引用(FreeingGlobal References)</rich_text><rich_text>
+ 当你的本地代码不再需要访问全局引用时，你应该调用&quot;DeleteGlobalRef&quot;。如果你调用这个函数失败，&quot;Java&quot;虚拟器将不能垃圾收集这对应的对象，即使在系统的任何地方当对象不再使用的时候。
+ 
+当你的本地代码不再需要访问一个弱全局引用，你应该调用&quot;DeleteWeakGlobalRef&quot;。如果你调用这个函数失败，&quot;Java&quot;虚拟器任然将能垃圾收回底层对象，但将不能收回(reclaim)被弱全局应用自己消耗的内存。
+ 
+</rich_text><rich_text scale="h1" weight="heavy">5.3 管理引用的规则(Rules forManaging References)</rich_text><rich_text>
+ 基于在前面部分我们已经涵盖的，我们现在准备通过规则去管理在本地代码中的&quot;JNI&quot;引用。目标(objective)是消除(eliminate)不必内存使用和对象保持(objectretention）。
+ 
+通常(in general),这有两种类型的本地代码:直接实现本地代码的函数和在任意背景(arbitrarycontexts)中使用的有效函数(utility functions)。
+ 
+当写直接地实现本地方法的函数时，你需要小心过多局部引用在循环中被创建和不需要局部引用被在本地方法没有返回时创建。对于虚拟器，能接受 (acceptable）预留达16个局部引用使用，在本地方法返回后被删除。本地方法调用必须不引起全局或弱全局引用的累积，因为全局和弱全局引用在本 地方法返回后，不自动地被释放。
+ 
+当写本地有效函数，你必须在任何执行过程上通过函数，小心不泄漏任何局部引用。因为一个有效的函数可以在一个不可预计情况（unanticipatedcontext)中被重复调用，任何不必的应用创建可以引起内存的溢出。
+
+ .当调用一个返回一个基本类型的有效函数时，它必定对累积额外的局部，全局或弱全局引用没有副作用(hava the side effectof)。
+ .当调用一个返回一个应用类型的有效函数时，它必须不累积额外的局部，全局或弱全局引用，除作为结果返回的引用。
+ 
+对于一个有效的函数，创建一些全局或弱全局引用为缓冲的目的是能接受的，因为只在第一次调用创建这些引用。
+ 
+</rich_text><rich_text foreground="#ffff00000000">如果一个有效的函数返回一个引用，你应该说明这个函数的返回引用部分的类型。在有些时候不应该返回一个局部引用，和不应该在任何时候返回一个全局引用</rich_text><rich_text foreground="#00000000ffff">(返回它的局部引用)</rich_text><rich_text>。调用者需要知道被有效函数返回的引用类型，为了正确地管理它自己JNI引用。例如，下面的代码重复地调用一个有效函 数&quot;GetInfoString&quot;。我们必须知道被&quot;GetInfoString&quot;返回的引用的类型，为在每个迭代后能够正确地释放返回的&quot;JNI&quot;引 用。
+ while(JNI_TRUE){
+  jstring infoString = GetInfoString(info) ;
+  ...
+  ???
+ }
+ 
+在&quot;Java 2 SDK  release1.2&quot;中，&quot;NewLocalRef&quot;函数某些时候，对于确保一个有效函数总是返回一个局部引用很有用。为了说明，让我 对&quot;MyNewString&quot;函数做另外的改变(有些人为(somewhatcontrived))。下面的版本缓冲一个濒繁被请求的字串 (叫&quot;CommonString&quot;）在全局引用中:
+ jstring
+ MyNewString(JNIEnv *env, jchar *chars, jint len)
+ {
+  static jstring result ;
+ 
+  if( wstrncmp(&quot;CommonString&quot;, chars, len) ==){
+   
+   static jstring cachedString =NULL；
+   if ( cachedString == NULL){
+    
+    jstringcachedStringLocal = ... ;
+    
+    cachedString=
+     (*env)-&gt;NewGlobalRef(env,cachedStringLocal) ;
+   }
+   </rich_text><rich_text foreground="#ffff00000000">return (*env)-&gt;NewLocalRef(env, cachedString) ;</rich_text><rich_text>
+  }
+ ...
+ return result ;
+ }
+ 
+</rich_text><rich_text foreground="#ffff00000000">一般路径返回一个作为一个局部引用的字符串。想前面解释的，我们必须保存缓冲字符串到一个全局引用中，为了它在多个本地方法调用中和来自多个线程调 用能被访问。高亮行创建了一个新的局部引用，来指向和缓冲全局引用一样的对象</rich_text><rich_text>。对于它的调用者做为协议的一部分，&quot;MyNewString&quot;总是返回一个 局部引用。
+ 
+&quot;Push/PopLocalFrame&quot;函数对于管理局部引用的生命周期特别便利(especiallyconvenient)。如果你调 用&quot;PushLocalFrame&quot;在一个本地函数的入口上，在本地函数返回前，调用&quot;PopLocalFrame&quot;确保在本地方法执行中创建的所有局部 引用将被释放。&quot;Push/PopLocalFrame&quot;函数是高效的(effcient)。强烈鼓励你使用他们。
+ 
+如果你在你的函数入口上调用&quot;PushLocalFrame&quot;，记住在所有的函数退出路径上调用&quot;PopLocalFrame&quot;。例如，下面函数有一个&quot;PushLocalFrame&quot;调用，但需要多个&quot;PopLocalFrame&quot;调用:
+ jobject f(JNIEnv *env, ...)
+ {
+  jobject result;
+  if( (*env)-&gt;PushLocalFrame(env,10) &lt; 0 ){
+   
+   return NULL ;
+  }
+  ...
+  result = ... ;
+  if (...){
+   
+   result =(*env)-&gt;PopLocalFrame(env, result) ;
+   return result ;
+  }
+  ...
+  result =(*env)-&gt;PopLocalFrame(env, result) ;
+  
+  return result ;
+ }
+ 
+没有正确的调用&quot;PopLocalFrame&quot;可能导致一个未定义行为，例如虚拟器的奔溃。
+ 
+上面例子也说明指定的&quot;PopLocalFrame&quot;的第二个参数为什么有时有用。&quot;result&quot;局部引用在通 过&quot;PushLocalFrame&quot;来构建新的&quot;Frame&quot;中被初始创建。&quot;PopLocalFrame&quot;转换他的第二个参数&quot;result&quot;为一个在 前一个&quot;frame&quot;中的新的局部引用，在弹出最顶层的&quot;frame&quot;前。
+
+</rich_text></node></node><node name="char和byte的转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. 显示shell打印
         StringBuilder strBuilder = new StringBuilder();
         String text1 = &quot;hello\tworld\bwubao\n1234566\r645390\n&quot;;
         int len1 = text1.length();

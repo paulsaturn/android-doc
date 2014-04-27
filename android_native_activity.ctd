@@ -1,0 +1,302 @@
+<?xml version="1.0" ?><cherrytree><node name="NativeActivity分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="144"><rich_text>1.
+    在frameworks/base/core/java/android/app/NativeActivity.java
+public class NativeActivity extends Activity implements SurfaceHolder.Callback2,
+    InputQueue.Callback, OnGlobalLayoutListener {
+
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+    
+    
+    loadNativeCode调用frameworks/base/core/jni/android_app_NativeActivity.cpp:
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+   
+   NativeActivity.java的onInputQueueCreated()调用jni的
+   onInputChannelCreated_native(JNIEnv* env, jobject clazz, jint handle, jobject channel)函数
+   调用
+    NativeCode* code = (NativeCode*)handle;
+    code-&gt;setInputChannel(channel)
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+        
+        onPauseNative调用android_app_NativeActivity.cpp中的:
+</rich_text><rich_text justification="left"></rich_text><rich_text>  
+     code-&gt;callbacks的函数是在调用code-&gt;createActivityFunc()时，由android_native_app_glue.c的ANativeActivity_onCreate()来赋值的。
+     </rich_text><codebox char_offset="198" frame_height="670" frame_width="800" highlight_brackets="True" show_line_numbers="True" syntax_highlighting="java" width_in_pixels="True">    protected void onCreate(Bundle savedInstanceState) {
+        String libname = &quot;main&quot;;
+        String funcname = &quot;ANativeActivity_onCreate&quot;;
+        ActivityInfo ai;
+        
+        mIMM = (InputMethodManager)getSystemService(Context.INPUT_METHOD_SERVICE);
+        mInputMethodCallback = new InputMethodCallback(this);
+
+        getWindow().takeSurface(this);
+        getWindow().takeInputQueue(this);
+        getWindow().setFormat(PixelFormat.RGB_565);
+        getWindow().setSoftInputMode(
+                WindowManager.LayoutParams.SOFT_INPUT_STATE_UNSPECIFIED
+                | WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+
+        mNativeContentView = new NativeContentView(this);
+        mNativeContentView.mActivity = this;
+        setContentView(mNativeContentView);
+        mNativeContentView.requestFocus();
+        mNativeContentView.getViewTreeObserver().addOnGlobalLayoutListener(this);
+        
+        try {
+            ai = getPackageManager().getActivityInfo(
+                    getIntent().getComponent(), PackageManager.GET_META_DATA);  
+            if (ai.metaData != null) {
+                String ln = ai.metaData.getString(META_DATA_LIB_NAME);              //&quot;android.app.lib_name&quot;
+                if (ln != null) libname = ln;
+                ln = ai.metaData.getString(META_DATA_FUNC_NAME);                    //&quot;android.app.func_name&quot;
+                if (ln != null) funcname = ln;
+            }
+        } catch (PackageManager.NameNotFoundException e) {
+            throw new RuntimeException(&quot;Error getting activity info&quot;, e);
+        }
+        
+        String path = null;
+        
+        File libraryFile = new File(ai.applicationInfo.nativeLibraryDir,
+                System.mapLibraryName(libname));
+        if (libraryFile.exists()) {
+            path = libraryFile.getPath();
+        }
+        
+        if (path == null) {
+            throw new IllegalArgumentException(&quot;Unable to find native library: &quot; + libname);
+        }
+        
+        byte[] nativeSavedState = savedInstanceState != null
+                ? savedInstanceState.getByteArray(KEY_NATIVE_SAVED_STATE) : null;
+
+        mNativeHandle = loadNativeCode(path, funcname, Looper.myQueue(),
+                 getFilesDir().toString(), getObbDir().toString(),
+                 Environment.getExternalStorageAppFilesDirectory(ai.packageName).toString(),
+                 Build.VERSION.SDK_INT, getAssets(), nativeSavedState);
+        
+        if (mNativeHandle == 0) {
+            throw new IllegalArgumentException(&quot;Unable to load native library: &quot; + path);
+        }
+        super.onCreate(savedInstanceState);
+    }
+</codebox><codebox char_offset="287" frame_height="1280" frame_width="800" highlight_brackets="True" show_line_numbers="True" syntax_highlighting="cpp" width_in_pixels="True">static jint
+loadNativeCode_native(JNIEnv* env, jobject clazz, jstring path, jstring funcName,
+        jobject messageQueue, jstring internalDataDir, jstring obbDir,
+        jstring externalDataDir, int sdkVersion,
+        jobject jAssetMgr, jbyteArray savedState)
+{
+    LOG_TRACE(&quot;loadNativeCode_native&quot;);
+
+    const char* pathStr = env-&gt;GetStringUTFChars(path, NULL);
+    NativeCode* code = NULL;
+    
+    void* handle = dlopen(pathStr, RTLD_LAZY);
+    
+    env-&gt;ReleaseStringUTFChars(path, pathStr);
+    
+    if (handle != NULL) {
+        const char* funcStr = env-&gt;GetStringUTFChars(funcName, NULL);
+        code = new NativeCode(handle, (ANativeActivity_createFunc*)
+                dlsym(handle, funcStr));
+        env-&gt;ReleaseStringUTFChars(funcName, funcStr);
+        
+        if (code-&gt;createActivityFunc == NULL) {
+            ALOGW(&quot;ANativeActivity_onCreate not found&quot;);
+            delete code;
+            return 0;
+        }
+        
+        //获取主线程的messageQueue
+        code-&gt;messageQueue = android_os_MessageQueue_getMessageQueue(env, messageQueue);
+        if (code-&gt;messageQueue == NULL) {
+            ALOGW(&quot;Unable to retrieve native MessageQueue&quot;);
+            delete code;
+            return 0;
+        }
+        
+        int msgpipe[2];
+        if (pipe(msgpipe)) {
+            ALOGW(&quot;could not create pipe: %s&quot;, strerror(errno));
+            delete code;
+            return 0;
+        }
+        code-&gt;mainWorkRead = msgpipe[0];
+        code-&gt;mainWorkWrite = msgpipe[1];
+        int result = fcntl(code-&gt;mainWorkRead, F_SETFL, O_NONBLOCK);
+        SLOGW_IF(result != 0, &quot;Could not make main work read pipe &quot;
+                &quot;non-blocking: %s&quot;, strerror(errno));
+        result = fcntl(code-&gt;mainWorkWrite, F_SETFL, O_NONBLOCK);
+        SLOGW_IF(result != 0, &quot;Could not make main work write pipe &quot;
+                &quot;non-blocking: %s&quot;, strerror(errno));
+        code-&gt;messageQueue-&gt;getLooper()-&gt;addFd(
+                code-&gt;mainWorkRead, 0, ALOOPER_EVENT_INPUT, mainWorkCallback, code);
+        
+        code-&gt;ANativeActivity::callbacks = &amp;code-&gt;callbacks;
+        if (env-&gt;GetJavaVM(&amp;code-&gt;vm) &lt; 0) {
+            ALOGW(&quot;NativeActivity GetJavaVM failed&quot;);
+            delete code;
+            return 0;
+        }
+        code-&gt;env = env;
+        code-&gt;clazz = env-&gt;NewGlobalRef(clazz); 
+
+        const char* dirStr = env-&gt;GetStringUTFChars(internalDataDir, NULL);
+        code-&gt;internalDataPathObj = dirStr;
+        code-&gt;internalDataPath = code-&gt;internalDataPathObj.string();
+        env-&gt;ReleaseStringUTFChars(internalDataDir, dirStr);
+    
+        dirStr = env-&gt;GetStringUTFChars(externalDataDir, NULL);
+        code-&gt;externalDataPathObj = dirStr;
+        code-&gt;externalDataPath = code-&gt;externalDataPathObj.string();
+        env-&gt;ReleaseStringUTFChars(externalDataDir, dirStr);
+
+        code-&gt;sdkVersion = sdkVersion;
+        
+        code-&gt;assetManager = assetManagerForJavaObject(env, jAssetMgr);
+
+        dirStr = env-&gt;GetStringUTFChars(obbDir, NULL);
+        code-&gt;obbPathObj = dirStr;
+        code-&gt;obbPath = code-&gt;obbPathObj.string();
+        env-&gt;ReleaseStringUTFChars(obbDir, dirStr);
+
+        jbyte* rawSavedState = NULL;
+        jsize rawSavedSize = 0;
+        if (savedState != NULL) {
+            rawSavedState = env-&gt;GetByteArrayElements(savedState, NULL);
+            rawSavedSize = env-&gt;GetArrayLength(savedState);
+        }
+        
+        //调用jni的ANativeActivity_onCreate()函数
+        code-&gt;createActivityFunc(code, rawSavedState, rawSavedSize);
+
+        if (rawSavedState != NULL) {
+            env-&gt;ReleaseByteArrayElements(savedState, rawSavedState, 0);
+        }
+    }
+    
+    return (jint)code;
+}   
+
+/*
+ * Native state for interacting with the NativeActivity class.
+ */
+struct NativeCode : public ANativeActivity {
+    NativeCode(void* _dlhandle, ANativeActivity_createFunc* _createFunc) {
+        memset((ANativeActivity*)this, 0, sizeof(ANativeActivity));
+        memset(&amp;callbacks, 0, sizeof(callbacks));
+        dlhandle = _dlhandle;
+        createActivityFunc = _createFunc;
+        nativeWindow = NULL;
+        inputChannel = NULL;
+        nativeInputQueue = NULL;
+        mainWorkRead = mainWorkWrite = -1;
+    }
+    
+    ~NativeCode() {
+        if (callbacks.onDestroy != NULL) {
+            callbacks.onDestroy(this);
+        }
+        if (env != NULL &amp;&amp; clazz != NULL) {
+            env-&gt;DeleteGlobalRef(clazz);
+        }
+        if (messageQueue != NULL &amp;&amp; mainWorkRead &gt;= 0) {
+            messageQueue-&gt;getLooper()-&gt;removeFd(mainWorkRead);
+        }
+        if (nativeInputQueue != NULL) {
+            nativeInputQueue-&gt;mWorkWrite = -1;
+        }
+        setSurface(NULL);
+        setInputChannel(NULL);
+        if (mainWorkRead &gt;= 0) close(mainWorkRead);
+        if (mainWorkWrite &gt;= 0) close(mainWorkWrite);
+        if (dlhandle != NULL) {
+            // for now don't unload...  we probably should clean this
+            // up and only keep one open dlhandle per proc, since there
+            // is really no benefit to unloading the code.
+            //dlclose(dlhandle);
+        }
+    }
+    
+    void setSurface(jobject _surface) {
+        if (_surface != NULL) {
+            nativeWindow = android_view_Surface_getNativeWindow(env, _surface);
+        } else {
+            nativeWindow = NULL;
+        }
+    }
+    
+    status_t setInputChannel(jobject _channel) {
+        if (inputChannel != NULL) {
+            delete nativeInputQueue;
+            env-&gt;DeleteGlobalRef(inputChannel);
+        }
+        inputChannel = NULL;
+        nativeInputQueue = NULL;
+        if (_channel != NULL) {
+            inputChannel = env-&gt;NewGlobalRef(_channel);
+            sp&lt;InputChannel&gt; ic =
+                    android_view_InputChannel_getInputChannel(env, _channel);
+            if (ic != NULL) {
+                nativeInputQueue = new AInputQueue(ic, mainWorkWrite);
+            } else {
+                return UNKNOWN_ERROR;
+            }
+        }
+        return OK;
+    }
+    
+    ANativeActivityCallbacks callbacks;
+    
+    void* dlhandle;
+    ANativeActivity_createFunc* createActivityFunc;
+    
+    String8 internalDataPathObj;
+    String8 externalDataPathObj;
+    String8 obbPathObj;
+    
+    sp&lt;ANativeWindow&gt; nativeWindow;
+    int32_t lastWindowWidth;
+    int32_t lastWindowHeight;
+
+    jobject inputChannel;
+    struct AInputQueue* nativeInputQueue;
+    
+    // These are used to wake up the main thread to process work.
+    int mainWorkRead;
+    int mainWorkWrite;
+    sp&lt;MessageQueue&gt; messageQueue;
+};</codebox><codebox char_offset="521" frame_height="550" frame_width="800" highlight_brackets="True" show_line_numbers="True" syntax_highlighting="java" width_in_pixels="True">    @Override
+    protected void onDestroy() {
+        mDestroyed = true;
+        if (mCurSurfaceHolder != null) {
+            onSurfaceDestroyedNative(mNativeHandle);
+            mCurSurfaceHolder = null;
+        }
+        if (mCurInputQueue != null) {
+            onInputChannelDestroyedNative(mNativeHandle, mCurInputQueue.getInputChannel());
+            mCurInputQueue = null;
+        }
+        unloadNativeCode(mNativeHandle);
+        super.onDestroy();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        onPauseNative(mNativeHandle);
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        onResumeNative(mNativeHandle);
+    }</codebox><codebox char_offset="589" frame_height="230" frame_width="800" highlight_brackets="True" show_line_numbers="True" syntax_highlighting="sh" width_in_pixels="True">static void
+onPause_native(JNIEnv* env, jobject clazz, jint handle)
+{
+    LOG_TRACE(&quot;onPause_native&quot;);
+    if (handle != 0) {
+        NativeCode* code = (NativeCode*)handle;
+        if (code-&gt;callbacks.onPause != NULL) {
+            code-&gt;callbacks.onPause(code);
+        }
+    }
+}      </codebox><node name="input处理" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text></rich_text></node></node></cherrytree>
