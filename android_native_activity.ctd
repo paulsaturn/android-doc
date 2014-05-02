@@ -299,4 +299,661 @@ onPause_native(JNIEnv* env, jobject clazz, jint handle)
             code-&gt;callbacks.onPause(code);
         }
     }
-}      </codebox><node name="input处理" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text></rich_text></node></node></cherrytree>
+}      </codebox><node name="input处理" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text scale="h2" weight="heavy">一. InputQueue的获取</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">NativeActivity.java :</rich_text><rich_text>
+实现InputQueue.Callback
+并在onCreate中调用了
+getWindow().takeInputQueue(this); //自己来接管InputQueue，并调用InputQueue.Callback接口
+
+内部实现InputQueue.Callback 接口，把InputChannel传到native 层，
+最后在native 代码中处理消费了输入事件，根本就没有直接调用dispatchKeyEvent(KeyEvent event);方法, 
+而是通过dispatchUnhandledKeyEvent -&gt; decor.dispatchKeyEvent(event);
+
+    public void onInputQueueCreated(InputQueue queue) {
+        if (!mDestroyed) {
+            mCurInputQueue = queue;
+            onInputChannelCreatedNative(mNativeHandle, queue.getInputChannel());
+        }
+    }
+    
+    public void onInputQueueDestroyed(InputQueue queue) {
+        mCurInputQueue = null;
+        if (!mDestroyed) {
+            onInputChannelDestroyedNative(mNativeHandle, queue.getInputChannel());
+        }
+    }
+
+</rich_text><rich_text foreground="#ffff00000000">android_app_NativeActivity.cpp:</rich_text><rich_text>
+static void
+onInputChannelCreated_native(JNIEnv* env, jobject clazz, jint handle, jobject channel)
+{
+    LOG_TRACE(&quot;onInputChannelCreated_native&quot;);
+    if (handle != 0) {
+        NativeCode* code = (NativeCode*)handle;
+        status_t err = code-&gt;setInputChannel(channel);
+        if (err != OK) {
+            jniThrowException(env, &quot;java/lang/IllegalStateException&quot;,
+                    &quot;Error setting input channel&quot;);
+            return;
+        }
+        if (code-&gt;callbacks.onInputQueueCreated != NULL) {
+            code-&gt;callbacks.onInputQueueCreated(code,
+                    code-&gt;nativeInputQueue);
+        }
+    }
+}
+
+static void
+onInputChannelDestroyed_native(JNIEnv* env, jobject clazz, jint handle, jobject channel)
+{
+    LOG_TRACE(&quot;onInputChannelDestroyed_native&quot;);
+    if (handle != 0) {
+        NativeCode* code = (NativeCode*)handle;
+        if (code-&gt;nativeInputQueue != NULL
+                &amp;&amp; code-&gt;callbacks.onInputQueueDestroyed != NULL) {
+            code-&gt;callbacks.onInputQueueDestroyed(code,
+                    code-&gt;nativeInputQueue);
+        }
+        code-&gt;setInputChannel(NULL);
+    }
+}
+
+</rich_text><rich_text foreground="#ffff00000000">struct NativeCode:</rich_text><rich_text>
+    status_t setInputChannel(jobject _channel) {
+        if (inputChannel != NULL) {
+            delete nativeInputQueue;
+            env-&gt;DeleteGlobalRef(inputChannel);
+        }
+        inputChannel = NULL;
+        nativeInputQueue = NULL;
+        if (_channel != NULL) {
+            inputChannel = env-&gt;NewGlobalRef(_channel);
+            sp&lt;InputChannel&gt; ic =
+                    android_view_InputChannel_getInputChannel(env, _channel);
+            if (ic != NULL) {
+                nativeInputQueue = new AInputQueue(ic, mainWorkWrite);
+            } else {
+                return UNKNOWN_ERROR;
+            }
+        }
+        return OK;
+    }
+    
+    mainWorkWrite是来唤醒main thread的匿名管道写端，并新建AInputQueue。
+
+</rich_text><rich_text foreground="#ffff00000000">android_native_activity_glue.c</rich_text><rich_text>:
+static void onInputQueueCreated(ANativeActivity* activity, AInputQueue* queue) {
+    LOGI(&quot;InputQueueCreated: %p -- %p\n&quot;, activity, queue);
+    android_app_set_input((struct android_app*)activity-&gt;instance, queue);
+}       
+
+static void onInputQueueDestroyed(ANativeActivity* activity, AInputQueue* queue) {
+    LOGI(&quot;InputQueueDestroyed: %p -- %p\n&quot;, activity, queue);
+    android_app_set_input((struct android_app*)activity-&gt;instance, NULL);
+}
+
+static void android_app_set_input(struct android_app* android_app, AInputQueue* inputQueue) {
+    pthread_mutex_lock(&amp;android_app-&gt;mutex);
+    android_app-&gt;pendingInputQueue = inputQueue;
+    android_app_write_cmd(android_app, APP_CMD_INPUT_CHANGED);
+    while (android_app-&gt;inputQueue != android_app-&gt;pendingInputQueue) {
+        pthread_cond_wait(&amp;android_app-&gt;cond, &amp;android_app-&gt;mutex);
+    }
+    pthread_mutex_unlock(&amp;android_app-&gt;mutex);
+}
+
+android_app_set_input发出命令APP_CMD_INPUT_CHANGED， 工作线程接收, 调用以下:
+void android_app_pre_exec_cmd(struct android_app* android_app, int8_t cmd) {
+    switch (cmd) {
+        case APP_CMD_INPUT_CHANGED:
+            LOGI(&quot;APP_CMD_INPUT_CHANGED\n&quot;);
+            pthread_mutex_lock(&amp;android_app-&gt;mutex);
+            if (android_app-&gt;inputQueue != NULL) {
+                AInputQueue_detachLooper(android_app-&gt;inputQueue);
+            }
+            android_app-&gt;inputQueue = android_app-&gt;pendingInputQueue;
+            if (android_app-&gt;inputQueue != NULL) {
+                LOGI(&quot;Attaching input queue to looper&quot;);
+                AInputQueue_attachLooper(android_app-&gt;inputQueue,
+                        android_app-&gt;looper, LOOPER_ID_INPUT, NULL,
+                        &amp;android_app-&gt;inputPollSource);
+            }
+            pthread_cond_broadcast(&amp;android_app-&gt;cond);
+            pthread_mutex_unlock(&amp;android_app-&gt;mutex);
+            break;
+            ...
+            ...
+   }
+}     
+
+    调用AInputQueue_attachLooper把InputChannel加入到工作线程的Looper中，当有输入, 就唤醒线程
+    
+    AInputQueue_attachLooper调用了:
+void AInputQueue::attachLooper(ALooper* looper, int ident,
+        ALooper_callbackFunc callback, void* data) {
+    mLooper = static_cast&lt;android::Looper*&gt;(looper);
+    mLooper-&gt;addFd(mConsumer.getChannel()-&gt;getFd(),
+            ident, ALOOPER_EVENT_INPUT, callback, data);
+    mLooper-&gt;addFd(mDispatchKeyRead,
+            ident, ALOOPER_EVENT_INPUT, callback, data);
+}
+
+addFd里调用epoll_ctl(mEpollFd, EPOLL_CTL_ADD, fd, &amp; eventItem)或epoll_ctl(mEpollFd, EPOLL_CTL_MOD, fd, &amp; eventItem);,
+并mRequests.add(fd, request);
+</rich_text><rich_text foreground="#00000000ffff">ALOOPER_EVENT_INPUT表示要或上EPOLLIN
+ALOOPER_EVENT_OUTPUT表示要或上EPOLLOUT</rich_text><rich_text>
+    
+</rich_text><rich_text scale="h2" weight="heavy">二. input event读取</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. service的input部分</rich_text><rich_text>
+InputManager::InputManager(
+        const sp&lt;EventHubInterface&gt;&amp; eventHub,
+        const sp&lt;InputReaderPolicyInterface&gt;&amp; readerPolicy,
+        const sp&lt;InputDispatcherPolicyInterface&gt;&amp; dispatcherPolicy) {
+    mDispatcher = new InputDispatcher(dispatcherPolicy);
+    mReader = new InputReader(eventHub, readerPolicy, mDispatcher);
+    initialize();
+}
+
+初始化Input, 并把InputReader和InputDispatcher连接起来。
+
+void InputManager::initialize() {
+    mReaderThread = new InputReaderThread(mReader);
+    mDispatcherThread = new InputDispatcherThread(mDispatcher);
+}
+创建相应的线程来处理。在InputReaderThread线程循环中调用mEventHub-&gt;getEvents(timeoutMillis, mEventBuffer, EVENT_BUFFER_SIZE);获取
+驱动发送上来的event, 而和Dispatcher的通信是通过调用InputDispatcher的notify等函数。
+
+</rich_text><rich_text foreground="#ffff00000000">详细的部分可读android_wm.ctd中的《输入机制》</rich_text><rich_text>
+
+</rich_text><rich_text scale="h3" weight="heavy">2. activity的input部分</rich_text><rich_text>
+初始化了相应的参数:
+    android_app-&gt;cmdPollSource.id = LOOPER_ID_MAIN;
+    android_app-&gt;cmdPollSource.app = android_app;
+    android_app-&gt;cmdPollSource.process = process_cmd;
+    android_app-&gt;inputPollSource.id = LOOPER_ID_INPUT;
+    android_app-&gt;inputPollSource.app = android_app;
+    android_app-&gt;inputPollSource.process = process_input;
+调用了AInputQueue_attachLooper之后，在工作线程循环中
+    // loop waiting for stuff to do.
+
+    while (1) {
+        // Read all pending events.
+        int ident;
+        int events;
+		int buf_size;
+        struct android_poll_source* source;
+
+        // If not animating, we will block forever waiting for events.
+        // If animating, we loop until all events are read, then continue
+        // to draw the next frame of animation.
+        /* while ((ident=ALooper_pollAll(-1, NULL, &amp;events, */
+        /*         (void**)&amp;source)) &gt;= 0) { */
+        ident=ALooper_pollAll(100, NULL, &amp;events,
+							  (void **)&amp;source);
+		if (ident == ALOOPER_POLL_TIMEOUT ) {
+			//TODO
+		} else	if (ident &gt;= 0) {
+
+            // Process this event.
+            if (source != NULL) {
+                source-&gt;process(state, source);
+            }
+			
+            // If a sensor has data, process it now.
+            if (ident == LOOPER_ID_USER) {
+            }
+
+            // Check if we are exiting.
+            if (state-&gt;destroyRequested != 0) {
+				LOGI(&quot;exit android_main\n&quot;);
+                return;
+            }
+        }
+    }
+	LOGI(&quot;exit android_main\n&quot;);
+	
+	ALooper_pollAll 调用了
+	int Looper::pollAll(int timeoutMillis, int* outFd, int* outEvents, void** outData) {
+        if (timeoutMillis &lt;= 0) {
+            int result;
+            do {
+                result = pollOnce(timeoutMillis, outFd, outEvents, outData);
+            } while (result == ALOOPER_POLL_CALLBACK);
+            return result;
+        } else {
+            nsecs_t endTime = systemTime(SYSTEM_TIME_MONOTONIC)
+                    + milliseconds_to_nanoseconds(timeoutMillis);
+
+            for (;;) {
+                int result = pollOnce(timeoutMillis, outFd, outEvents, outData);
+                if (result != ALOOPER_POLL_CALLBACK) {
+                    return result;
+                }
+
+                nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+                timeoutMillis = toMillisecondTimeoutDelay(now, endTime);
+                if (timeoutMillis == 0) {
+                    return ALOOPER_POLL_TIMEOUT;
+                }
+            }
+        }
+    }
+    
+    enum {
+        /**
+         * Result from ALooper_pollOnce() and ALooper_pollAll():
+         * The poll was awoken using wake() before the timeout expired
+         * and no callbacks were executed and no other file descriptors were ready.
+         */
+        ALOOPER_POLL_WAKE = -1,
+
+        /**
+         * Result from ALooper_pollOnce() and ALooper_pollAll():
+         * One or more callbacks were executed.
+         */
+        ALOOPER_POLL_CALLBACK = -2,
+
+        /**
+         * Result from ALooper_pollOnce() and ALooper_pollAll():
+         * The timeout expired.
+         */
+        ALOOPER_POLL_TIMEOUT = -3,
+
+        /**
+         * Result from ALooper_pollOnce() and ALooper_pollAll():
+         * An error occurred.
+         */
+        ALOOPER_POLL_ERROR = -4,
+    };    
+    
+    int Looper::pollOnce(int timeoutMillis, int* outFd, int* outEvents, void** outData) {
+        int result = 0;
+        for (;;) {
+            while (mResponseIndex &lt; mResponses.size()) {    //开始会直接调用pollInner, 下一个循环才来处理返回
+                const Response&amp; response = mResponses.itemAt(mResponseIndex++);
+                int ident = response.request.ident;
+                if (ident &gt;= 0) {
+                    int fd = response.request.fd;
+                    int events = response.events;
+                    void* data = response.request.data;
+    #if DEBUG_POLL_AND_WAKE
+                    ALOGD(&quot;%p ~ pollOnce - returning signalled identifier %d: &quot;
+                            &quot;fd=%d, events=0x%x, data=%p&quot;,
+                            this, ident, fd, events, data);
+    #endif
+                    if (outFd != NULL) *outFd = fd;
+                    if (outEvents != NULL) *outEvents = events;
+                    if (outData != NULL) *outData = data;
+                    return ident;
+                }
+            }
+
+            if (result != 0) {
+    #if DEBUG_POLL_AND_WAKE
+                ALOGD(&quot;%p ~ pollOnce - returning result %d&quot;, this, result);
+    #endif
+                if (outFd != NULL) *outFd = 0;
+                if (outEvents != NULL) *outEvents = 0;
+                if (outData != NULL) *outData = NULL;
+                return result;
+            }
+
+            result = pollInner(timeoutMillis);
+        }
+    }
+
+其中：
+    timeoutMillis参数为超时等待时间。如果值为–1，则表示无限等待，直到有事件发生为止。如果值为0，则无须等待立即返回。
+    outFd用来存储发生事件的那个文件描述符。
+    outEvents用来存储在该文件描述符上发生了哪些事件，目前支持可读、可写、错误和中断4个事件。这4个事件其实是从epoll事件转化而来的。后面我们会介绍大名鼎鼎的epoll。
+    outData用于存储上下文数据，这个上下文数据是由用户在添加监听句柄时传递的，它的作用和pthread_create函数最后一个参数param一样，用来传递用户自定义的数据。
+        
+    返回值为ALOOPER_POLL_WAKE时，表示这次返回是由wake函数触发的，也就是管道写端的那次写事件触发的。
+    返回值为ALOOPER_POLL_TIMEOUT表示等待超时。
+    返回值为ALOOPER_POLL_ERROR表示等待过程中发生错误。
+    返回值为ALOOPER_POLL_CALLBACK表示某个被监听的句柄因某种原因被触发, 其callback函数被调用。
+
+    
+    int Looper::pollInner(int timeoutMillis) {
+    #if DEBUG_POLL_AND_WAKE
+        ALOGD(&quot;%p ~ pollOnce - waiting: timeoutMillis=%d&quot;, this, timeoutMillis);
+    #endif
+
+        // Adjust the timeout based on when the next message is due.
+        if (timeoutMillis != 0 &amp;&amp; mNextMessageUptime != LLONG_MAX) {
+            nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+            int messageTimeoutMillis = toMillisecondTimeoutDelay(now, mNextMessageUptime);
+            if (messageTimeoutMillis &gt;= 0
+                    &amp;&amp; (timeoutMillis &lt; 0 || messageTimeoutMillis &lt; timeoutMillis)) {
+                timeoutMillis = messageTimeoutMillis;
+            }
+    #if DEBUG_POLL_AND_WAKE
+            ALOGD(&quot;%p ~ pollOnce - next message in %lldns, adjusted timeout: timeoutMillis=%d&quot;,
+                    this, mNextMessageUptime - now, timeoutMillis);
+    #endif
+        }
+
+        // Poll.
+        int result = ALOOPER_POLL_WAKE;
+        mResponses.clear();
+        mResponseIndex = 0;
+
+        struct epoll_event eventItems[EPOLL_MAX_EVENTS];
+        int eventCount = epoll_wait(mEpollFd, eventItems, EPOLL_MAX_EVENTS, timeoutMillis);
+
+        // Acquire lock.
+        mLock.lock();
+
+        // Check for poll error.
+        if (eventCount &lt; 0) {
+            if (errno == EINTR) {
+                goto Done;
+            }
+            ALOGW(&quot;Poll failed with an unexpected error, errno=%d&quot;, errno);
+            result = ALOOPER_POLL_ERROR;
+            goto Done;
+        }
+
+        // Check for poll timeout.
+        if (eventCount == 0) {
+    #if DEBUG_POLL_AND_WAKE
+            ALOGD(&quot;%p ~ pollOnce - timeout&quot;, this);
+    #endif
+            result = ALOOPER_POLL_TIMEOUT;
+            goto Done;
+        }
+
+        // Handle all events.
+    #if DEBUG_POLL_AND_WAKE
+        ALOGD(&quot;%p ~ pollOnce - handling events from %d fds&quot;, this, eventCount);
+    #endif
+
+        for (int i = 0; i &lt; eventCount; i++) {
+            int fd = eventItems[i].data.fd;
+            uint32_t epollEvents = eventItems[i].events;
+            if (fd == mWakeReadPipeFd) {
+                if (epollEvents &amp; EPOLLIN) {
+                    awoken();
+                } else {
+                    ALOGW(&quot;Ignoring unexpected epoll events 0x%x on wake read pipe.&quot;, epollEvents);
+                }
+            } else {
+                ssize_t requestIndex = mRequests.indexOfKey(fd);
+                if (requestIndex &gt;= 0) {
+                    int events = 0;
+                    if (epollEvents &amp; EPOLLIN) events |= ALOOPER_EVENT_INPUT;
+                    if (epollEvents &amp; EPOLLOUT) events |= ALOOPER_EVENT_OUTPUT;
+                    if (epollEvents &amp; EPOLLERR) events |= ALOOPER_EVENT_ERROR;
+                    if (epollEvents &amp; EPOLLHUP) events |= ALOOPER_EVENT_HANGUP;
+                    pushResponse(events, mRequests.valueAt(requestIndex));          //加入到response vector
+                } else {
+                    ALOGW(&quot;Ignoring unexpected epoll events 0x%x on fd %d that is &quot;
+                            &quot;no longer registered.&quot;, epollEvents, fd);
+                }
+            }
+        }
+    Done: ;
+
+        // Invoke pending message callbacks.
+        // 处理定时消息回调
+        mNextMessageUptime = LLONG_MAX;
+        while (mMessageEnvelopes.size() != 0) {
+            nsecs_t now = systemTime(SYSTEM_TIME_MONOTONIC);
+            const MessageEnvelope&amp; messageEnvelope = mMessageEnvelopes.itemAt(0);
+            if (messageEnvelope.uptime &lt;= now) {
+                // Remove the envelope from the list.
+                // We keep a strong reference to the handler until the call to handleMessage
+                // finishes.  Then we drop it so that the handler can be deleted *before*
+                // we reacquire our lock.
+                { // obtain handler
+                    sp&lt;MessageHandler&gt; handler = messageEnvelope.handler;
+                    Message message = messageEnvelope.message;
+                    mMessageEnvelopes.removeAt(0);
+                    mSendingMessage = true;
+                    mLock.unlock();
+
+    #if DEBUG_POLL_AND_WAKE || DEBUG_CALLBACKS
+                    ALOGD(&quot;%p ~ pollOnce - sending message: handler=%p, what=%d&quot;,
+                            this, handler.get(), message.what);
+    #endif
+                    handler-&gt;handleMessage(message);
+                } // release handler
+
+                mLock.lock();
+                mSendingMessage = false;
+                result = ALOOPER_POLL_CALLBACK;
+            } else {
+                // The last message left at the head of the queue determines the next wakeup time.
+                mNextMessageUptime = messageEnvelope.uptime;
+                break;
+            }
+        }
+
+        // Release lock.
+        mLock.unlock();
+
+        // Invoke all response callbacks.
+        for (size_t i = 0; i &lt; mResponses.size(); i++) {
+            Response&amp; response = mResponses.editItemAt(i);
+            if (response.request.ident == ALOOPER_POLL_CALLBACK) {
+                int fd = response.request.fd;
+                int events = response.events;
+                void* data = response.request.data;
+    #if DEBUG_POLL_AND_WAKE || DEBUG_CALLBACKS
+                ALOGD(&quot;%p ~ pollOnce - invoking fd event callback %p: fd=%d, events=0x%x, data=%p&quot;,
+                        this, response.request.callback.get(), fd, events, data);
+    #endif
+                int callbackResult = response.request.callback-&gt;handleEvent(fd, events, data);
+                if (callbackResult == 0) {
+                    removeFd(fd);
+                }
+                // Clear the callback reference in the response structure promptly because we
+                // will not clear the response vector itself until the next poll.
+                response.request.callback.clear();
+                result = ALOOPER_POLL_CALLBACK;
+            }
+        }
+        return result;
+    }
+
+    
+    当有事件过来，pollAll返回ident &gt;=0, 并在调用事件处理函数source-&gt;process(state, source);
+    如果是输入事件，就调用
+</rich_text><rich_text foreground="#ffff00000000">android_native_app_glue.c</rich_text><rich_text>:    
+static void process_input(struct android_app* app, struct android_poll_source* source) {
+    AInputEvent* event = NULL;
+    while (AInputQueue_getEvent(app-&gt;inputQueue, &amp;event) &gt;= 0) {
+        //LOGI(&quot;New input event: type=%d\n&quot;, AInputEvent_getType(event));
+        if (AInputQueue_preDispatchEvent(app-&gt;inputQueue, event)) {
+            continue;
+        }
+        int32_t handled = 0;
+        if (app-&gt;onInputEvent != NULL) handled = app-&gt;onInputEvent(app, event);
+        AInputQueue_finishEvent(app-&gt;inputQueue, event, handled);
+    }		
+}
+
+</rich_text><rich_text foreground="#ffff00000000">android_app_NativeActivity.cpp:</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">AInputQueue_getEvent(app-&gt;inputQueue, &amp;event)调用</rich_text><rich_text>
+int32_t AInputQueue::getEvent(AInputEvent** outEvent) {
+    *outEvent = NULL;
+
+    char byteread;
+    ssize_t nRead = read(mDispatchKeyRead, &amp;byteread, 1);
+
+    Mutex::Autolock _l(mLock);
+
+    if (nRead == 1) {
+        if (mDispatchingKeys.size() &gt; 0) {  //从java的dispatchKeyEvent调用dispatchKeyEventNative发过来的event.
+            KeyEvent* kevent = mDispatchingKeys[0];
+            *outEvent = kevent;
+            mDispatchingKeys.removeAt(0);
+            in_flight_event inflight;
+            inflight.event = kevent;
+            inflight.seq = -1;
+            inflight.finishSeq = 0;
+            mInFlightEvents.push(inflight);
+        }
+
+        bool finishNow = false;
+        if (mFinishPreDispatches.size() &gt; 0) {
+            finish_pre_dispatch finish(mFinishPreDispatches[0]);
+            mFinishPreDispatches.removeAt(0);
+            const size_t N = mInFlightEvents.size();
+            for (size_t i=0; i&lt;N; i++) {
+                const in_flight_event&amp; inflight(mInFlightEvents[i]);
+                if (inflight.seq == finish.seq) {
+                    *outEvent = inflight.event;
+                    finishNow = finish.handled;
+                }
+            }
+            if (*outEvent == NULL) {
+                ALOGW(&quot;getEvent couldn't find inflight for seq %d&quot;, finish.seq);
+            }
+        }
+
+        if (finishNow) {    //IM已经处理过
+            finishEvent(*outEvent, true, false);
+            *outEvent = NULL;
+            return -1;
+        } else if (*outEvent != NULL) {
+            return 0;
+        }
+    }
+
+    uint32_t consumerSeq;
+    InputEvent* myEvent = NULL;
+    status_t res = mConsumer.consume(&amp;mPooledInputEventFactory, true /*consumeBatches*/, -1,
+            &amp;consumerSeq, &amp;myEvent);
+    if (res != android::OK) {
+        if (res != android::WOULD_BLOCK) {
+            ALOGW(&quot;channel '%s' ~ Failed to consume input event.  status=%d&quot;,
+                    mConsumer.getChannel()-&gt;getName().string(), res);
+        }
+        return -1;
+    }
+
+    if (mConsumer.hasDeferredEvent()) {
+        wakeupDispatchLocked();
+    }
+
+    in_flight_event inflight;
+    inflight.event = myEvent;
+    inflight.seq = -1;
+    inflight.finishSeq = consumerSeq;
+    mInFlightEvents.push(inflight);
+
+    *outEvent = myEvent;
+    return 0;
+}
+
+</rich_text><rich_text foreground="#00000000ffff">AInputQueue_preDispatchEvent(app-&gt;inputQueue, event)调用</rich_text><rich_text>
+bool AInputQueue::preDispatchEvent(AInputEvent* event) {
+    if (((InputEvent*)event)-&gt;getType() != AINPUT_EVENT_TYPE_KEY) {
+        // The IME only cares about key events.
+        return false;
+    }
+
+    // For now we only send system keys to the IME...  this avoids having
+    // critical keys like DPAD go through this path.  We really need to have
+    // the IME report which keys it wants.
+    if (!((KeyEvent*)event)-&gt;isSystemKey()) {
+        return false;
+    }
+
+    return preDispatchKey((KeyEvent*)event);
+}
+
+bool AInputQueue::preDispatchKey(KeyEvent* keyEvent) {
+    Mutex::Autolock _l(mLock);
+
+    LOG_TRACE(&quot;preDispatch key: pending=%d write=%d\n&quot;, mPreDispatchingKeys.size(), mWorkWrite);
+    const size_t N = mInFlightEvents.size();
+    for (size_t i=0; i&lt;N; i++) {
+        in_flight_event&amp; inflight(mInFlightEvents.editItemAt(i));
+        if (inflight.event == keyEvent) {
+            if (inflight.seq &gt;= 0) {
+                // This event has already been pre-dispatched!
+                LOG_TRACE(&quot;Event already pre-dispatched!&quot;);
+                return false;
+            }
+            mSeq++;
+            if (mSeq &lt; 0) mSeq = 1;
+            inflight.seq = mSeq;
+
+            if (mPreDispatchingKeys.size() &lt;= 0 &amp;&amp; mWorkWrite &gt;= 0) {
+                write_work(mWorkWrite, CMD_DEF_KEY);
+            }
+            mPreDispatchingKeys.add(inflight);
+            return true;
+        }
+    }
+
+    ALOGW(&quot;preDispatchKey called for unknown event: %p&quot;, keyEvent);
+    return false;
+}
+
+把key放到mPreDispatchingKeys，并通过write_work(mWorkWrite, CMD_DEF_KEY);唤醒主线程mainWorkCallback来调用NativeActivity.java的preDispatchKeyEvent()
+来处理，如果IM会回调finishPreDispatchKeyEventNative() -&gt; AInputQueue::finishPreDispatch(int seq, bool handled), handled表示是否IM已经处理；如果没有处理
+就在getEvent()返回这个AInputEvent。
+    static final class InputMethodCallback implements InputMethodManager.FinishedEventCallback {
+        WeakReference&lt;NativeActivity&gt; mNa;
+
+        InputMethodCallback(NativeActivity na) {
+            mNa = new WeakReference&lt;NativeActivity&gt;(na);
+        }
+
+        @Override
+        public void finishedEvent(int seq, boolean handled) {
+            NativeActivity na = mNa.get();
+            if (na != null) {
+                na.finishPreDispatchKeyEventNative(na.mNativeHandle, seq, handled);
+            }
+        }
+    }
+    
+    void preDispatchKeyEvent(KeyEvent event, int seq) {
+        mIMM.dispatchKeyEvent(this, seq, event,
+                mInputMethodCallback);
+    }
+    
+
+</rich_text><rich_text foreground="#00000000ffff">AInputQueue_finishEvent调用:</rich_text><rich_text>
+void AInputQueue::finishEvent(AInputEvent* event, bool handled, bool didDefaultHandling) {
+    LOG_TRACE(&quot;finishEvent: %p handled=%d, didDefaultHandling=%d&quot;, event,
+            handled ? 1 : 0, didDefaultHandling ? 1 : 0);
+
+    if (!handled &amp;&amp; !didDefaultHandling
+            &amp;&amp; ((InputEvent*)event)-&gt;getType() == AINPUT_EVENT_TYPE_KEY
+            &amp;&amp; ((KeyEvent*)event)-&gt;hasDefaultAction()) {
+        // The app didn't handle this, but it may have a default action
+        // associated with it.  We need to hand this back to Java to be
+        // executed.
+        doUnhandledKey((KeyEvent*)event);
+        return;
+    }
+
+    Mutex::Autolock _l(mLock);
+
+    const size_t N = mInFlightEvents.size();
+    for (size_t i=0; i&lt;N; i++) {
+        const in_flight_event&amp; inflight(mInFlightEvents[i]);
+        if (inflight.event == event) {
+            if (inflight.finishSeq) {
+                status_t res = mConsumer.sendFinishedSignal(inflight.finishSeq, handled);
+                if (res != android::OK) {
+                    ALOGW(&quot;Failed to send finished signal on channel '%s'.  status=%d&quot;,
+                            mConsumer.getChannel()-&gt;getName().string(), res);
+                }
+            }
+            mPooledInputEventFactory.recycle(static_cast&lt;InputEvent*&gt;(event));
+            mInFlightEvents.removeAt(i);
+            return;
+        }
+    }
+
+    ALOGW(&quot;finishEvent called for unknown event: %p&quot;, event);
+}
+
+doUnhandledKey也是通过主线程mainWorkCallback发回给java的dispatchUnhandledKeyEvent来处理。
+</rich_text></node></node></cherrytree>
