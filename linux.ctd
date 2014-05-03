@@ -48,7 +48,376 @@
 业务不熟练害死人啊，所以只要多看看源码，一般问题都能搞定。
 【最近新添加 -R】
 对于 -R参数，其实也很重要，在关闭udhcpc时，可以向dhcpserver发送release取消租约。
-</rich_text></node><node name="Linux3.0.6内核task_struct注释 " prog_lang="custom-colors" readonly="False" tags="" unique_id="61"><rich_text justification="left"></rich_text><rich_text>
+</rich_text></node><node name="udev实现原理" prog_lang="custom-colors" readonly="False" tags="" unique_id="63"><rich_text>    相对于linux来说，udev还是一个新事物。然而，尽管它03年才出现，尽管它很低调(J)，但它无疑已经成为linux下不可或缺的组件了。udev是什么？它是如何实现的？最近研究Linux设备管理时，花了一些时间去研究udev的实现。
+    udev是什么？u 是指user space，dev是指device，udev是用户空间的设备驱动程序吗？最初我也这样认为，调试内核空间的程序要比调试用户空间的程序复杂得多，内核空间的程序的BUG所引起的后果也严重得多，
+ device driver是内核空间中所占比较最大的代码，如果把这些device driver中硬件无关的代码，从内核空间移动到用户空间，自然是一个不错的想法。
+    但我的想法并不正确，udev的文档是这样说的，
+    1. dynamic replacement for /dev。作为devfs的替代者，传统的devfs不能动态分配major和minor的值，而major和minor非常有限，很快就会用完了。
+        udev能够像DHCP动态分配IP地址一样去动态分配major和minor。
+ 
+    2. device naming。提供设备命名持久化的机制。传统设备命名方式不具直观性，像/dev/hda1这样的名字肯定没有boot_disk这样的名字直观。
+        udev能够像DNS解析域名一样去给设备指定一个有意义的名称。
+ 
+    3. API to access info about current system devices 。提供了一组易用的API去操作sysfs，避免重复实现同样的代码，这没有什么好说的。
+ 
+    我们知道，用户空间的程序与设备通信的方法，主要有以下几种方式，
+    1.  通过ioperm获取操作IO端口的权限，然后用inb/inw/ inl/ outb/outw/outl等函数，避开设备驱动程序，直接去操作IO端口。（没有用过）
+    2.  用ioctl函数去操作/dev目录下对应的设备，这是设备驱动程序提供的接口。像键盘、鼠标和触摸屏等输入设备一般都是这样做的。
+    3.  用write/read/mmap去操作/dev目录下对应的设备，这也是设备驱动程序提供的接口。像framebuffer等都是这样做的。
+ 
+上面的方法在大多数情况下，都可以正常工作，但是对于热插拨(hotplug)的设备，比如像U盘，就有点困难了，因为你不知道：什么时候设备插上了，什么时候设备拔掉了。这就是所谓的hotplug问题了。
+ 
+处理hotplug传统的方法是，在内核中执行一个称为hotplug的程序，相关参数通过环境变量传递过来，再由hotplug通知其它关注hotplug事件的应用程序。这样做不但效率低下，而且感觉也不那么优雅。
+新的方法是采用NETLINK实现的，这是一种特殊类型的socket，专门用于内核空间与用户空间的异步通信。下面的这个简单的例子，可以监听来自内核hotplug的事件。
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+ 
+编译：
+gcc -g hotplug.c -o hotplug_monitor
+ 
+运行后插/拔U盘，可以看到：
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+ 
+udev的主体部分在udevd.c文件中，它主要监控来自4个文件描述符的事件/消息，并做出处理：
+</rich_text><rich_text scale="h2" weight="heavy">1. 来自客户端的控制消息。</rich_text><rich_text>
+    这通常由udevcontrol命令通过地址为/org/kernel/udev/udevd的本地socket，向udevd发送的控制消息。其中消息类型有：
+    l         </rich_text><rich_text foreground="#00000000ffff">UDEVD_CTRL_STOP_EXEC_QUEUE</rich_text><rich_text> 停止处理消息队列。
+    l         </rich_text><rich_text foreground="#00000000ffff">UDEVD_CTRL_START_EXEC_QUEUE</rich_text><rich_text> 开始处理消息队列。
+    l         </rich_text><rich_text foreground="#00000000ffff">UDEVD_CTRL_SET_LOG_LEVEL</rich_text><rich_text> 设置LOG的级别。
+    l         </rich_text><rich_text foreground="#00000000ffff">UDEVD_CTRL_SET_MAX_CHILDS</rich_text><rich_text> 设置最大子进程数限制。好像没有用。
+    l         </rich_text><rich_text foreground="#00000000ffff">UDEVD_CTRL_SET_MAX_CHILDS_RUNNING</rich_text><rich_text> 设置最大运行子进程数限制(遍历proc目录下所有进程，根据session的值判断)。
+    l         </rich_text><rich_text foreground="#00000000ffff">UDEVD_CTRL_RELOAD_RULES</rich_text><rich_text> 重新加载配置文件。
+
+</rich_text><rich_text scale="h2" weight="heavy">2. 来自内核的hotplug事件。</rich_text><rich_text>
+    如果有事件来源于hotplug，它读取该事件，创建一个udevd_uevent_msg对象，记录当前的消息序列号，设置消息的状态为EVENT_QUEUED,然后并放入running_list和exec_list两个队列中，稍后再进行处理。
+
+</rich_text><rich_text scale="h2" weight="heavy">3. 来自signal handler中的事件。</rich_text><rich_text>
+    signal handler是异步执行的，即使有signal产生，主进程的select并不会唤醒，为了唤醒主进程的select，它建立了一个管道，在signal handler中，向该管道写入长度为1个子节的数据，这样就可以唤醒主进程的select了。
+    
+</rich_text><rich_text scale="h2" weight="heavy">4.来自配置文件变化的事件。</rich_text><rich_text>
+    udev通过文件系统inotify功能，监控其配置文件目录/etc/udev/rules.d，一旦该目录中文件有变化，它就重新加载配置文件。
+ 
+其中最主要的事件，当然是来自内核的hotplug事件，如何处理这些事件是udev的关键。udev本身并不知道如何处理这些事件，也没有必要知道，因为它只实现机制，而不实现策略。
+事件的处理是由配置文件决定的，这些配置文件即所谓的rule。
+ 
+关于rule的编写方法可以参考《writing_udev_rules》，udev_rules.c实现了对规则的解析。
+ 
+在规则中，可以让外部应用程序处理某个事件，这有两种方式，一种是直接执行命令，通常是让modprobe去加载驱动程序，或者让mount去加载分区。另外一种是通过本地socket发送消息给某个应用程序。
+ 
+在udevd.c:udev_event_process函数中，我们可以看到，如果RUN参数以”socket:”开头则认为是发到socket，否则认为是执行指定的程序。
+ 
+下面的规则是执行指定程序：
+60-pcmcia.rules:                RUN+=&quot;/sbin/modprobe pcmcia&quot;
+ 
+下面的规则是通过socket发送消息：
+90-hal.rules:RUN+=&quot;socket:/org/freedesktop/hal/udev_event&quot; 
+ 
+hal正是我们下一步要关心的，接下来我会分析HAL的实现原理。
+ 
+ 
+</rich_text><codebox char_offset="1288" frame_height="1020" frame_width="840" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True">#include &lt;stdio.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;ctype.h&gt;
+#include &lt;sys/un.h&gt;
+#include &lt;sys/ioctl.h&gt;
+#include &lt;sys/socket.h&gt;
+#include &lt;linux/types.h&gt;
+#include &lt;linux/netlink.h&gt;
+#include &lt;errno.h&gt;
+ 
+static int init_hotplug_sock(void)
+{
+    struct sockaddr_nl snl;
+    const int buffersize = 16 * 1024 * 1024;
+    int retval;
+ 
+    memset(&amp;snl, 0x00, sizeof(struct sockaddr_nl));
+    snl.nl_family = AF_NETLINK;
+    snl.nl_pid = getpid();
+    snl.nl_groups = 1;
+ 
+    int hotplug_sock = socket(PF_NETLINK, SOCK_DGRAM, NETLINK_KOBJECT_UEVENT);
+    if (hotplug_sock == -1) {
+        printf(&quot;error getting socket: %s&quot;, strerror(errno));
+        return -1;
+    }
+ 
+    /* set receive buffersize */
+    setsockopt(hotplug_sock, SOL_SOCKET, SO_RCVBUFFORCE, &amp;buffersize, sizeof(buffersize));
+ 
+    retval = bind(hotplug_sock, (struct sockaddr *) &amp;snl, sizeof(struct sockaddr_nl));
+    if (retval &lt; 0) {
+        printf(&quot;bind failed: %s&quot;, strerror(errno));
+        close(hotplug_sock);
+        hotplug_sock = -1;
+        return -1;
+    }
+ 
+    return hotplug_sock;
+}
+ 
+#define UEVENT_BUFFER_SIZE      2048
+ 
+int main(int argc, char* argv[])
+{
+         int hotplug_sock       = init_hotplug_sock();
+         
+         while(1)
+         {
+                   char buf[UEVENT_BUFFER_SIZE*2] = {0};
+                   recv(hotplug_sock, &amp;buf, sizeof(buf), 0);  
+                   printf(&quot;%s/n&quot;, buf);
+         }
+ 
+         return 0;
+}</codebox><codebox char_offset="1349" frame_height="480" frame_width="840" highlight_brackets="False" show_line_numbers="False" syntax_highlighting="custom-colors" width_in_pixels="True">add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1
+add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/usbdev2.2_ep00
+add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0
+add@/class/scsi_host/host2
+add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/usbdev2.2_ep81
+add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/usbdev2.2_ep02
+add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/usbdev2.2_ep83
+add@/class/usb_device/usbdev2.2
+add@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/host2/target2:0:0/2:0:0:0
+add@/class/scsi_disk/2:0:0:0
+add@/block/sda
+add@/block/sda/sda1
+add@/class/scsi_device/2:0:0:0
+add@/class/scsi_generic/sg0
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/usbdev2.2_ep81
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/usbdev2.2_ep02
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/usbdev2.2_ep83
+remove@/class/scsi_generic/sg0
+remove@/class/scsi_device/2:0:0:0
+remove@/class/scsi_disk/2:0:0:0
+remove@/block/sda/sda1
+remove@/block/sda
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0/host2/target2:0:0/2:0:0:0
+remove@/class/scsi_host/host2
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/2-1:1.0
+remove@/class/usb_device/usbdev2.2
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1/usbdev2.2_ep00
+remove@/devices/pci0000:00/0000:00:1d.1/usb2/2-1</codebox><node name="维护" prog_lang="custom-colors" readonly="False" tags="" unique_id="64"><rich_text>如果你使用Linux比较长时间了，那你就知道，在对待设备文件这块，Linux改变了几次策略。在Linux早期，设备文件仅仅是是一些带有适当 的属性集的普通文件，它由mknod命令创建，文件存放在/dev目录下。后来，采用了devfs,  一个基于内核的动态设备文件系统，他首次出现在2.3.46内核中。Mandrake，Gentoo等Linux分发版本采用了这种方式。devfs创建  的设备文件是动态的。但是devfs有一些严重的限制，从2.6.13版本后移走了。目前取代他的便是文本要提到的udev－－一个用户空间程序。
+目前很多的Linux分发版本采纳了udev的方式，因为它在Linux设备访问，特别是那些对设备有极端需求的站点(比如需要控制上千个硬盘)和热插拔设备(比如USB摄像头和MP3播放器)上解决了几个问题。下面我我们来看看如何管理udev设备。
+实际上，对于那些为磁盘，终端设备等准备的标准配置文件而言，你不需要修改什么。但是，你需要了解udev配置来使用新的或者外来设备，如果不修改 配置，  这些设备可能无法访问，或者说Linux可能会采用不恰当的名字，属组或权限来创建这些设备文件。你可能也想知道如何修改RS－232串口，音频设备等文 件的属组或者权限。这点在实际的Linux实施中是会遇到的。
+
+</rich_text><rich_text scale="h1" weight="heavy">为什么使用udev</rich_text><rich_text>
+在此之前的设备文件管理方法(静态文件和devfs)有几个缺点：
+*不确定的设备映射。特别是那些动态设备，比如USB设备，设备文件到实际设备的映射并不可靠和确定。举一个例子：如果你有两个USB打印机。一个 可能称  为/dev/usb/lp0,另外一个便是/dev/usb/lp1。但是到底哪个是哪个并不清楚，lp0,lp1和实际的设备没有一一对应的关系，因为   他可能因为发现设备的顺序，打印机本身关闭等原因而导致这种映射并不确定。理想的方式应该是：两个打印机应该采用基于他们的序列号或者其他标识信息的唯一  设备文件来映射。但是静态文件和devfs都无法做到这点。
+*没有足够的主/辅设备号。我们知道，每一个设备文件是有两个8位的数字：一个是主设备号 ，另外一个是辅设备号来分配的。这两个8位的数字加上设备类型(块设备或者字符设备)来唯一标识一个设备。不幸的是，关联这些身边的的数字并不足够。
+*/dev目录下文件太多。一个系统采用静态设备文件关联的方式，那么这个目录下的文件必然是足够多。而同时你又不知道在你的系统上到底有那些设备文件是激活的。
+*命名不够灵活。尽管devfs解决了以前的一些问题，但是它自身又带来了一些问题。其中一个就是命名不够灵活；你别想非常简单的就能修改设备文件的名字。缺省的devfs命令机制本身也很奇怪，他需要修改大量的配置文件和程序。
+*内核内存使用，devfs特有的另外一个问题是，作为内核驱动模块，devfs需要消耗大量的内存，特别当系统上有大量的设备时(比如上面我们提到的系统一个上有好几千磁盘时)
+udev的目标是想解决上面提到的这些问题，他通采用用户空间(user-space)工具来管理/dev/目录树，他和文件系统分开。知道如何改变缺省配置能让你之大如何定制自己的系统，比如创建设备字符连接，改变设备文件属组，权限等。
+
+</rich_text><rich_text scale="h1" weight="heavy">udev配置文件</rich_text><rich_text>
+主要的udev配置文件是/etc/udev/udev.conf。这个文件通常很短，他可能只是包含几行#开头的注释，然后有几行选项：
+</rich_text><rich_text background="#ccffff" foreground="#008080">udev_root</rich_text><rich_text background="#ccffff">=</rich_text><rich_text background="#ccffff" foreground="#804040">&quot;</rich_text><rich_text background="#ccffff" foreground="#ff00ff">/dev/</rich_text><rich_text background="#ccffff" foreground="#804040">&quot;
+ </rich_text><rich_text background="#ccffff" foreground="#008080">udev_rules</rich_text><rich_text background="#ccffff">=</rich_text><rich_text background="#ccffff" foreground="#804040">&quot;</rich_text><rich_text background="#ccffff" foreground="#ff00ff">/etc/udev/rules.d/</rich_text><rich_text background="#ccffff" foreground="#804040">&quot;
+ </rich_text><rich_text background="#ccffff" foreground="#008080">udev_log</rich_text><rich_text background="#ccffff">=</rich_text><rich_text background="#ccffff" foreground="#804040">&quot;</rich_text><rich_text background="#ccffff" foreground="#ff00ff">err</rich_text><rich_text background="#ccffff" foreground="#804040">&quot;</rich_text><rich_text> 
+上面的第二行非常重要，因为他表示udev规则存储的目录，这个目录存储的是以.rules结束的文件。每一个文件处理一系列规则来帮助udev分配名字给设备文件以保证能被内核识别。
+ 你的/etc/udev/rules.d下面可能有好几个udev规则文件，这些文件一部分是udev包安装的，另外一部分则是可能是别的硬件或者软件包  生成的。比如在Fedora Core  5系统上，sane-backends包就会安装60-libsane.rules文件，另外initscripts包会安装60-net.rules文  件。这些规则文件的文件名通常是两个数字开头，它表示系统应用该规则的顺序。
+规则文件里的规则有一系列的键/值对组成，键/值对之间用逗号(,)分割。每一个键或者是用户匹配键，或者是一个赋值键。匹配键确定规则是否被应 用，而赋 值键表示分配某值给该键。这些值将影响udev创建的设备文件。赋值键可以处理一个多值列表。匹配键和赋值键操作符解释见下表：
+
+udev 键/值对操作符
+操作符        匹配或赋值                             解释
+ －－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－－
+ ==             匹配                        相等比较
+ !=              匹配                        不等比较
+ =                赋值                       分配一个特定的值给该键，他可以覆盖之前的赋值。
+ +=              赋值                       追加特定的值给已经存在的键
+ :=               赋值                       分配一个特定的值给该键，后面的规则不可能覆盖它。
+这有点类似我们常见的编程语言，比如C语言。只是这里的键一次可以处理多个值。有一些键在udev规则文件里经常出现，这些键的值可以使用通配符(*,?,甚至范围，比如[0-9])，这些常用键列举如下：
+常用udev键
+ 键                 含义
+ ACTION                     一个时间活动的名字，比如add，当设备增加的时候
+ KERNEL                     在内核里看到的设备名字，比如sd*表示任意SCSI磁盘设备
+ DEVPATH              内核设备录进，比如/devices/*
+ SUBSYSTEM              子系统名字，比如sound,net
+ BUS                     总线的名字，比如IDE,USB
+ DRIVER                     设备驱动的名字，比如ide-cdrom
+ ID                       独立于内核名字的设备名字
+ SYSFS{ value}              sysfs属性值，他可以表示任意
+ ENV{ key}              环境变量，可以表示任意
+ PROGRAM              可执行的外部程序，如果程序返回0值，该键则认为为真(true)
+ RESULT                     上一个PROGRAM调用返回的标准输出。
+ NAME                     根据这个规则创建的设备文件的文件名。注意：仅仅第一行的NAME描述是有效的，后面的均忽略。 如果你想使用使用两个以上的名字来访问一个设备的话，可以考虑SYMLINK键。
+ SYMLINK              根据规则创建的字符连接名
+ OWNER                     设备文件的属组
+ GROUP                     设备文件所在的组。
+ MODE                     设备文件的权限，采用8进制
+ RUN                     为设备而执行的程序列表
+ LABEL                     在配置文件里为内部控制而采用的名字标签(下下面的GOTO服务)
+ GOTO                     跳到匹配的规则（通过LABEL来标识），有点类似程序语言中的GOTO
+ IMPORT{ type}           导入一个文件或者一个程序执行后而生成的规则集到当前文件
+ WAIT_FOR_SYSFS         等待一个特定的设备文件的创建。主要是用作时序和依赖问题。
+ PTIONS                     特定的选项： last_rule 对这类设备终端规则执行； ignore_device  忽略当前规则； ignore_remove 忽略接下来的并移走请求。all_partitions 为所有的磁盘分区创建设备文件。
+ 
+我们给出一个列子来解释如何使用这些键。下面的例子来自Fedora Core 5系统的标准配置文件。
+</rich_text><rich_text foreground="#008080">KERNEL</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">*</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">OWNER</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">root</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text> </rich_text><rich_text foreground="#008080">GROUP</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">root</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">MODE</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">0600</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text> </rich_text><rich_text foreground="#008080">
+KERNEL</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">tty</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">NAME</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">%k</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">GROUP</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">tty</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">MODE</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">0666</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">OPTIONS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">last_rule</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+</rich_text><rich_text foreground="#008080">KERNEL</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">scd[0-9]*</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">SYMLINK+</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">cdrom cdrom-%k</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+</rich_text><rich_text foreground="#008080">KERNEL</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">hd[a-z]</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">BUS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">ide</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, SYSFS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>removable</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">1</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>,
+               SYSFS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>device/media</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">cdrom</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">SYMLINK+</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">cdrom cdrom-%k</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text> </rich_text><rich_text foreground="#008080">
+ACTION</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">add</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">SUBSYSTEM</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">scsi_device</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">RUN+</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">/sbin/modprobe sg</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+上面的例子给出了5个规则，每一个都是KERNEL或者ACTION键开头：
+*第一个规则是缺省的，他匹配任意被内核识别到的设备，然后设定这些设备的属组是root，组是root，访问权限模式是0600(-rw-----)。这也是一个安全的缺省设置保证所有的设备在默认情况下只有root可以读写
+*第二个规则也是比较典型的规则了。它匹配终端设备(tty)，然后设置新的权限为0600，所在的组是tty。它也设置了一个特别的设备文件名:%K。在这里例子里，%k代表设备的内核名字。
+    那也就意味着内核识别出这些设备是什么名字，就创建什么样的设备文件名。
+*第三行开始的KERNEL==&quot;scd[0-9]*&quot;,表示 SCSI CD-ROM 驱动. 它创建一对设备符号连接：cdrom和cdrom-%k。
+*第四行，开始的 KERNEL==&quot;hd[a-z]&quot;, 表示ATA CDROM驱动器。这个规则创建和上面的规则相同的符号连接。ATA CDROM驱动器需要sysfs值以来区别别的ATA设备，因为SCSI CDROM可以被内核唯一识别。.
+*第五行以 ACTION==&quot;add&quot;开始，它告诉udev增加 /sbin/modprobe sg 到命令列表，当任意SCSI设备增加到系统后，这些命令将执行。其效果就是计算机应该会增加sg内核模块来侦测新的SCSI设备。
+    当然，上面仅仅是一小部分例子，如果你的系统采用了udev方式，那你应该可以看到更多的规则。如果你想修改设备的权限或者创建信的符号连接，那么你需要熟读这些规则，特别是要仔细注意你修改的那些与之相关的设备。
+
+</rich_text><rich_text scale="h1" weight="heavy">修改你的udev配置</rich_text><rich_text>
+在修改udev配置之前，我们一定要仔细，通常的考虑是：你最好不要修改系统预置的那些规则，特别不要指定影响非常广泛的配置，比如上面例子中的第一行。不正确的配置可能会导致严重的系统问题或者系统根本就无法这个正确的访问设备。
+而我们正确的做法应该是在/etc/udev/rules.d/下创建一个信的规则文件。确定你给出的文件的后缀是rules文件名给出的数字序列 应该比  标准配置文件高。比如，你可以创建一个名为99-my-udev.rules的规则文件。
+在你的规则文件中，你可以指定任何你想修改的配置，比如，假设你  修改修改floppy设备的所在组，还准备创建一个信的符号连接/dev/floppy，那你可以这么写：
+</rich_text><rich_text foreground="#008080">KERNEL</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">fd[0-9]*</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">GROUP</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">users</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>,   </rich_text><rich_text foreground="#008080">SYMLINK+</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">floppy</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+有些发行版本，比如Fedora，采用了外部脚本来修改某些特定设备的属组，组关系和权限。因此上面的改动可能并不见得生效。如果你遇到了这个问题，你就需要跟踪和修改这个脚本来达到你的目的。或者你可以修改PROGRAM或RUN键的值来做到这点。
+某些规则的修改可能需要更深的挖掘。比如，你可能想在一个设备上使用sysfs信息来唯一标识一个设备。这些信息最好通过udevinfo命令来获取。
+$ udevinfo -a -p </rich_text><rich_text foreground="#ffffff">$(</rich_text><rich_text foreground="#6a5acd">udevinfo -q path      -n /dev/hda</rich_text><rich_text>
+上面的命令两次使用udevinfo：一次是返回sysfs设备路径(他通常和我们看到的Linux设备文件名所在路径－－/dev/hda－－不 同)；
+第二次才是查询这个设备路径，结果将是非常常的syfs信息汇总。你可以找到最够的信息来唯一标志你的设备，你可以采用适当的替换udev配置文件中的  SYSFS选项。下面的结果就是上面的命令输出
+</rich_text><rich_text foreground="#804040">[</rich_text><rich_text>root@localhost rules.d</rich_text><rich_text foreground="#804040">]</rich_text><rich_text foreground="#0000ff"># udevinfo -a -p $(udevinfo -q path        -n      /dev/hda1)
+</rich_text><rich_text>Udevinfo starts with the device specified by the devpath and </rich_text><rich_text foreground="#ffffff">then</rich_text><rich_text> walks up the chain of
+parent devices. It prints </rich_text><rich_text foreground="#804040">for</rich_text><rich_text> every device found,all possible attributes </rich_text><rich_text foreground="#804040">in</rich_text><rich_text> the udev rules
+key format. A rule to match, can be composed by the attributes of the device and the
+attributes from one single parent device.
+
+looking at device </rich_text><rich_text foreground="#804040">'</rich_text><rich_text foreground="#ff00ff">/block/hda/hda1</rich_text><rich_text foreground="#804040">'</rich_text><rich_text>:     </rich_text><rich_text foreground="#008080">
+KERNEL</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">hda1</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">SUBSYSTEM</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">block</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">DRIVER</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;&quot;</rich_text><rich_text>        
+ATTR</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>stat</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">        1133         2268            2            4</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTR</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>size</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">208782</rich_text><rich_text foreground="#804040">&quot;
+</rich_text><rich_text>ATTR</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>start</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">63</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTR</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>dev</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">3:1</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>        
+
+looking at parent device </rich_text><rich_text foreground="#804040">'</rich_text><rich_text foreground="#ff00ff">/block/hda</rich_text><rich_text foreground="#804040">'</rich_text><rich_text>:   </rich_text><rich_text foreground="#008080">
+KERNELS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">hda</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">SUBSYSTEMS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">block</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">DRIVERS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;&quot;</rich_text><rich_text>        
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>stat</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">28905 18814 1234781 302540 34087 133247 849708 981336 0 218340 1283968</rich_text><rich_text foreground="#804040">&quot;
+</rich_text><rich_text>ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>size</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">117210240</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>removable</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>        
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>range</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">64</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>dev</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">3:0</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+
+looking at parent device </rich_text><rich_text foreground="#804040">'</rich_text><rich_text foreground="#ff00ff">/devices/pci0000:00/0000:00:1f.1/ide0/0.0</rich_text><rich_text foreground="#804040">'</rich_text><rich_text>:     </rich_text><rich_text foreground="#008080">
+KERNELS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">0.0</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">SUBSYSTEMS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">ide</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">DRIVERS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">ide-disk</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>        
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>modalias</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">ide:m-disk</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>drivename</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">hda</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>       
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>media</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">disk</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>   
+    
+looking at parent device </rich_text><rich_text foreground="#804040">'</rich_text><rich_text foreground="#ff00ff">/devices/pci0000:00/0000:00:1f.1/ide0</rich_text><rich_text foreground="#804040">'</rich_text><rich_text>:     </rich_text><rich_text foreground="#008080">
+KERNELS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">ide0</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">SUBSYSTEMS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">DRIVERS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;&quot;</rich_text><rich_text>       
+
+looking at parent device </rich_text><rich_text foreground="#804040">'</rich_text><rich_text foreground="#ff00ff">/devices/pci0000:00/0000:00:1f.1</rich_text><rich_text foreground="#804040">'</rich_text><rich_text>:     </rich_text><rich_text foreground="#008080">
+KERNELS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">0000:00:1f.1</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">SUBSYSTEMS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">pci</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">DRIVERS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">PIIX_IDE</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>        
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>broken_parity_status</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>enable</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">1</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>        
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>modalias</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">pci:v00008086d000024CAsv0000144Dsd0000C009bc01sc01i8a</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>local_cpus</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">1</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>irq</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">11</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>class</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0x01018a</rich_text><rich_text foreground="#804040">&quot;
+</rich_text><rich_text>ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>subsystem_device</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0xc009</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>subsystem_vendor</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0x144d</rich_text><rich_text foreground="#804040">&quot;
+</rich_text><rich_text>ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>device</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0x24ca</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>         ATTRS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>vendor</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0x8086</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text> 
+      
+looking at parent device </rich_text><rich_text foreground="#804040">'</rich_text><rich_text foreground="#ff00ff">/devices/pci0000:00</rich_text><rich_text foreground="#804040">'</rich_text><rich_text>:     </rich_text><rich_text foreground="#008080">
+KERNELS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;</rich_text><rich_text foreground="#ff00ff">pci0000:00</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">SUBSYSTEMS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;&quot;</rich_text><rich_text>     </rich_text><rich_text foreground="#008080">DRIVERS</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">=&quot;&quot;
+</rich_text><rich_text>
+  举一个例子：假设你想修改USB扫描仪的配置。通过一系列的尝试，你已经为这个扫描仪标识了Linux设备文件(每次打开扫描仪时，名字都会变)。你可以使用上面的命令替换这个正确的Linux设备文件名，
+  然后定位输出的采用SYSFS{idVendor}行和SYSFS{idProduct}行。最后你可  以使用这些信息来为这个扫描仪创建新的选项。
+    SYSFS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>idVendor</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">0686</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#804040"> </rich_text><rich_text> SYSFS</rich_text><rich_text foreground="#6a5acd">{</rich_text><rich_text>idProduct</rich_text><rich_text foreground="#6a5acd">}</rich_text><rich_text foreground="#804040">==&quot;</rich_text><rich_text foreground="#ff00ff">400e</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#804040"> 
+</rich_text><rich_text>    </rich_text><rich_text foreground="#008080">SYMLINK+</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">scanner</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">MODE</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">0664</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#804040"> </rich_text><rich_text> </rich_text><rich_text foreground="#008080">group</rich_text><rich_text>=</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text foreground="#ff00ff">scanner</rich_text><rich_text foreground="#804040">&quot;</rich_text><rich_text>
+    上面的例子表示将扫描仪的组设置为scanner，访问权限设置为0664,同时创建一个/dev/scanner的符号连接。
+
+</rich_text><rich_text scale="h1" weight="heavy">udev-FAQ</rich_text><rich_text>
+问：udev是什么? 它的目的何在?
+答：udev是一种工具，它能够根据系统中的硬件设备的状态动态更新设备文件，包括设备文件的创建，删除等。设备文件通常放在/dev目录下。使用udev后，在/dev目录下就只包含系统中真正存在的设备。
+
+问：udev支持什么内核？
+答：udev只支持linux-2.6内核，因为udev严重依赖于sysfs文件系统提供的信息，而sysfs文件系统只在linux-2.6内核中才有。
+
+问：udev是一个内核程序还是用户程序？
+答：udev是一个用户程序(user-mode daemon)。
+
+问：udev和devfs有什么差别？
+答：udev能够实现所有devfs实现的功能。但udev运行在用户模式中，而devfs运行在内核模式中。据称：devfs具有一些不太容易解决的先天缺陷。
+
+问：udev的配置文件放在哪里？
+答：udev是一个用户模式程序。它的配置文件是/etc/udev/udev.conf。这个文件一般缺省有这样几项：
+udev_root=&quot;/dev&quot; ; udev产生的设备文件的根目录是/dev
+ udev_db=&quot;/dev/.udevdb&quot; ; 通过udev产生的设备文件形成的数据库
+ udev_rules=&quot;/etc/udev/rules.d&quot; ;用于指导udev工作的规则所在目录。
+ udev_log=&quot;err&quot; ;当出现错误时，用syslog记录错误信息。
+
+问：udev的工作过程是怎样的？
+答：由于没有研究过udev的源程序，不敢贸然就说udev的工作过程。我只是通过一些网上的资料和udev的说明文档，大致猜测它的工作过程可能是这样的。
+当内核检测到在系统中出现了新设备后，内核会在sysfs文件系统中为该新设备生成一项新的记录，一般sysfs文件系统会被mount到/sys目录中。新记录是以一个或多个文件或目录的方式来表示。每个文件都包含有特定的信息。(信息是如何表述的，还要另外研究？)
+udev在系统中是以守护进程的方式udevd在运行，它通过某种途径(到底什么途径，目前还没搞懂。)检测到新设备的出现，通过查找设备对应的sysfs中的记录得到设备的一些信息。
+udev会根据/etc/udev/udev.conf文件中的udev_rules指定的目录，逐个检查该目录下的文件，这个目录下的文件都是针 对某类或某个设备应该施行什么措施的规则文件。udev读取文件是按照文件名的ASCII字母顺序来读取的，如果udev一旦找到了与新加入的设备匹配的 规则，udev就会根据规则定义的措施对新设备进行配置。同时不再读后续的规则文件。
+
+问：udev的规则文件的语法是怎样的？
+答：udev的规则文件以行为单位，以&quot;#&quot;开头的行代表注释行。其余的每一行代表一个规则。每个规则分成一个或多个&quot;匹配&quot;和&quot;赋值&quot;部分。&quot;匹 配&quot;部分用&quot;匹配&quot;专用的关键字来表示，相应的&quot;赋值&quot;部分用&quot;赋值&quot;专用的关键字来表示。&quot;匹配&quot;关键字包 括：ACTION，KERNEL，BUS，SYSFS等等，&quot;赋值&quot;关键字包括：NAME，SYMLINK，OWNER等等。具体详细的描述可以阅读 udev的man文档。
+下面举个例子来说明一下，有这样一条规则：SUBSYSTEM==&quot;net&quot;, ACTION==&quot;add&quot;, SYSFS{address}==&quot;00:0d:87:f6:59:f3″, IMPORT=&quot;/sbin/rename_netiface %k eth0″
+ 这个规则中的&quot;匹配&quot;部分有三项，分别是SUBSYSTEM，ACTION和SYSFS。而&quot;赋值&quot;部分有一项，是IMPORT。这个规则就是说，当系统 中出现的新硬件属于net子系统范畴，系统对该硬件采取的动作是加入这个硬件，且这个硬件在SYSFS文件系统中的&quot;address&quot;信息等于 &quot;00：0d...&quot;时，对这个硬件在udev层次施行的动作是调用外部程序/sbin/rename_netiface，传递的参数有两个，一个是 &quot;%k&quot;，代表内核对该新设备定义的名称。另一个是&quot;eth0&quot;。     从上面这个例子中可以看出，udev的规则的写法比较灵活的，尤其在&quot;匹配&quot;部分中，可以通过诸如&quot;*&quot;,  &quot;?&quot;,[a-c],[1-9]等shell通配符来灵活匹配多个匹配项。具体的语法可以参考udev的man文档。
+
+问：udev怎样做到不管设备连接的顺序而维持一个统一的设备名？
+答：实际上，udev是通过对内核产生的设备名增加别名的方式来达到上述目的的。前面说过，udev是用户模式程序，不会更改内核的行为。因此，内 核依然会我行我素地产生设备名如sda,sdb等。但是，udev可以根据设备的其他信息如总线（bus），生产商（vendor）等不同来区分不同的设 备，并产生设备文件。udev只要为这个设备文件取一个固定的文件名就可以解决这个问题。在后续对设备的操作中，只要引用新的设备名就可以了。但为了保证 最大限度的兼容，一般来说，新设备名总是作为一个对内核自动产生的设备名的符号链接（link）来使用的。
+例如：内核产生了sda设备名，而根据信息，这个设备对应于是我的内置硬盘，那我就可以制定udev规则，让udev除了产生/dev/sda设备 文件外，另外创建一个符号链接叫/dev/internalHD。这样，我在fstab文件中，就可以用/dev/internalHD来代替原来的 /dev/sda了。下次，由于某些原因，这个硬盘在内核中变成了sdb设备名了，那也不用着急，udev还会自动产生/dev/internalHD这 个链接，并指向正确的/dev/sdb设备。所有其他的文件像fstab等都不用修改。
+
+问：怎样才能找到这些设备信息，并把他们放到udev的规则文件中来匹配呢？
+答：这个问题比较难，网上资料不多，我只找到一篇文章来介绍如何写udev的规则。他的基本方法是通过udevinfo这个实用程序来找到那些可以作为规则文件里的匹配项的项目。有这样两种情况可以使用这个工具：
+第一种情况是，当你把设备插入系统后，系统为设备产生了设备名（如/dev/sda）。那样的
+ 话，你先用udevinfo -q path  -n/dev/sda，命令会产生一个该设备名对应的在sysfs下的路径，如/block/sda。然后，你再用udevinfo -a  -p/sys/block/sda，这个命令会显示一堆信息，信息分成很多块。这些信息实际来自于操作系统维护的sysfs链表，不同的块对应不同的路 径。你就可以用这些信息来作为udev规则文件中的匹配项。但需要注意的是，同一个规则只能使用同一块中显示的信息，不能跨块书写规则。
+第二种情况是，不知道系统产生的设备名，那就只有到/sys目录下去逐个目录查找了，反复用udevinfo　-a -p/sys/path...这个命令看信息，如果对应的信息是这个设备的，那就恭喜你。否则就再换个目录。当然，在这种情况下，成功的可能性比较小。
+
+问: udev和devfs是什么关系
+ 答:  udev完全在用户态(userspace)工作，利用设备加入或移除时内核所发送的hotplug事件(event)来工作。关于设备的详细信息是由内 核输出(export)到位于/sys的sysfs文件系统的。所有的设备命名策略、权限控制和事件处理都是在用户态下完成的。与此相反，devfs是作 为内核的一部分工作的。
+
+问: 如果udev不能完成所有devfs的工作的话，为什么把devfs标记为OBSOLETE/removed?
+答: 引用 Al Viro (Linux VFS 内核维护者):
+-devfs所做的工作被确信可以在用户态来完成。
+ -devfs被加入内核之时，大家寄望它的质量可以迎头赶上。
+ -devfs被发现了一些可修复和无法修复的 bug。
+ -对于可修复的 bug，几个月前就已经被修复了，其维护者认为一切良好。
+ -对于后者，同样是相当常一段时间以来没有改观了。
+ -devfs的维护者和作者对它感到失望并且已经停止了对代码的维护工作。
+
+问: 但是当一个并不存在的/dev节点被打开的时候，udev并不能如devfs一样自动加载驱动程序。
+ 答: 的确如此，但Linux的设计是在设备被发现的时候加载模块，而不是当它被访问的时候。
+
+问: 不过等等，我确实希望 udev 可以在不存在的节点被打开的时候自动加载驱动。这是我使用devfs的唯一原因了。给udev 增加这个功能吧。
+ 答: 不，udev 是用来管理/dev 的，不是用来加载内核驱动的。
+
+问: 嗨，求你们了。这不难做到的。
+ 答: 这么个功能对于一个配置正确的计算机是多余的。系统中所有的设备都应该产生hotplug 事件、加载恰当的驱动，而 udev  将会注意到这点并且为它创建对应的设备节点。如果你不想让所有的设备驱动停留在内存之中，应该使用其它东西来管理你的模块(如脚本,  modules.conf, 等等) 这不是udev 的工作。
+
+问: 但是我真的喜欢那个功能，还是加上吧
+ 答: devfs用的方法导致了大量无用的modprobe尝试，以此程序探测设备是否存在。每个试探性探测都新建一个运行 modprobe 的进程，而几乎所有这些都是无用的。
+
+问: 我喜欢devfs的设备文件命名方式，udev 可以这样命名么?
+ 答: 可以，udev 可以使用 /dev 的命名策略来创建节点。通过一个配置文件，可以把内核缺省的名字映射到 devfs  的名字。可以看看udev 中带的 udev.rules.devfs 文件。注意: devfs  的命名方式是不被建议并且不被官方支持的，因为它所用的简单枚举设备的方式在设备可能被随时加入或删除的情况下确实是一个比较笨的方法。这些编号代给你的 将只有麻烦，而并不能用来确定设备。看看那个永久性磁盘 (persistentdisk)  的规则就知道如何在用户态下正确的做这件事，而不是傻傻地列出设备。
+
+问: udev 可以为哪些设备创建节点?
+ 答: 所有在 sysfs 中显示的设备都可以由 udev 来创建节点。如果内核中增加了其它设备的支持，udev  也就自动地可以为它们工作了。现在所有的块设备都在被支持之列，大部分的主字符设备也是被支持的。内核开发者们正致力于让所有的字符设备都被支持。可以到 linux-kernel邮件列表上寻找补丁或是查看补丁的状态。
+
+问: udev 是否会去掉匿名设备数量的限制?
+ 答: udev 完全工作于用户态。如果内核支持了更多的匿名设备，udev就会支持。
+
+问: udev 是否会支持符号链接?
+ 答: udev 现在就支持符号链接，每个设备节点拥有多个符号链接也是被支持的。
+
+问: udev如何处理/dev文件系统?
+ 答: 建议使用一个每次启动系统的时候重新创建的 tmpfs 作为 /dev 的文件系统。不过实际上udev并不关心那种文件系统在被使用。
+
+问: 在 init 运行之前，udev 如何处理设备?
+ 答: udev 可以被放入 initramfs 之中，并在每个设备被发现的时候运行。也可以让udev 工作在一个真的根分区被加载之后根据 /sys 的内容创建的初始/dev目录之中。
+
+问: 我是否可以利用 udev 在一个 USB 设备被加载的时候自动加载上这个设备?
+ 答: 技术上讲是可以的，但是 udev 不是用于这个工作的。所有的主流发布版 (distro)都包含了 HAL (</rich_text><rich_text link="webs http://freedesktop.org/wiki/Software_2fhal">http://freedesktop.org/wiki/Software_2fhal</rich_text><rich_text>) 用于这个工作，它也是专门用于监视设备变更的，并且集成进入了桌面软件。
+换个角度说，这可以简单的通过 fstab 来实现:/dev/disk/by-label/PENDRIVE /media/PENDRIVE vfat user,noauto 0 0
+ 这样，用户可以用如下命令来访问设备:
+ $mount /media/PENDRIVE
+ 同样不需要管理员权限，但却拥有了设备的全部访问权限。使用永久性磁盘链接(label, uuid) 将可以指定同一设备，无论其实际上的内核名字是什么。
+
+问: 有什么我需要注意的安全问题么?
+ 答:  当使用动态设备编号的时候，一个给定的主/从设备号可能在不同时间对应不同的设备，如果一个用户拥有对这个节点的访问权限，并且可以创建一个到这个节点的 硬链接，他就可以如此得到一个这个设备节点的拷贝。当设备被移除之后，udev  删除了设备节点，但硬链接依然存在。如果这个设备节点之后被重新使用不同的访问权限被创建的时候，其硬链接仍然可以使用先前的访问权限来访问。(同样的问 题也存在在使用 PAM 改变访问权限的 login 上。)
+简单的解决方案就是通过把 /dev 放在 tmpfs 这样的单独的文件系统之上来防止建立硬链接。
+
+问: 我有其他的关于 udev 的问题，我应该问谁?
+ 答: linux-hotplug-devel 正是问这些的地方。邮件列表的地址是</rich_text><rich_text link="webs http://mailto:linux-hotplug-devel@lists.sourceforge.net">linux-hotplug-devel@lists.sourceforge.net</rich_text><rich_text> 。
+</rich_text></node></node><node name="Linux3.0.6内核task_struct注释 " prog_lang="custom-colors" readonly="False" tags="" unique_id="61"><rich_text justification="left"></rich_text><rich_text>
 </rich_text><codebox char_offset="0" frame_height="1360" frame_width="940" highlight_brackets="True" show_line_numbers="False" syntax_highlighting="chdr" width_in_pixels="True">struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, &gt;0 stopped */
 	void *stack;	//stack should points to a threadinfo struct
