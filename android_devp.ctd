@@ -33,7 +33,7 @@ $pm setInstallLocation 00 由App自行决定软件能否安装在SD卡 
 1 强制全部App安装在ROM内 
 2 强制全部App安装在SD卡 
     
-二. 抓屏命令
+</rich_text><rich_text scale="h2" weight="heavy">二. 抓屏命令</rich_text><rich_text>
 1. screencap
     screencap /mnt/sdcard/test.png
     把&quot;/dev/graphics/fb0&quot;的数据保存到/mnt/sdcard/test.png
@@ -42,7 +42,7 @@ $pm setInstallLocation 00 由App自行决定软件能否安装在SD卡 
     screenshot /mnt/sdcard/test.png
     把&quot;/dev/graphics/fb0&quot;的数据保存到/mnt/sdcard/test.png
 
-三.input
+</rich_text><rich_text scale="h2" weight="heavy">三.input</rich_text><rich_text>
 使用Adb shell command直接送key event給Android
 
 adb shell input keyevent 7    # for key '0'
@@ -141,10 +141,54 @@ adb shell input text &quot;ANDROID&quot;
 84 --&gt;  &quot;KEYCODE_SEARCH&quot; 
 85 --&gt;  &quot;TAG_LAST_KEYCODE&quot; 
 
-四. svc命令
+</rich_text><rich_text scale="h2" weight="heavy">四. svc命令</rich_text><rich_text>
 1. svc命令字
     svc wifi [enable|disable]
-    打开wifi/关闭wifi</rich_text><node name="ANR" prog_lang="custom-colors" readonly="False" tags="" unique_id="18"><rich_text> 一：什么是ANR
+    打开wifi/关闭wifi
+ 
+</rich_text><rich_text scale="h2" weight="heavy">五. 在线视频调试</rich_text><rich_text>
+1. 视频转换
+ffmpeg -y -i &lt;in file&gt; -vcodec copy -acodec copy -vbsf h264_mp4toannexb &lt;output file&gt;
+in file为待转换的视频文件，比如input.mov，
+output file为转换后的文件，要命名为output.ts
+
+2.视频分片
+m3u8-segmenter -i out.ts -d 10 -p segmenter_test -m test.m3u8 -u &lt;url&gt;
+i表示输入文件;
+d表示切割文件的播放时间(10秒);
+p表示切割文件的前缀;
+m表示生成的m3u8文件名;
+u表示这些切割后的文件处于web server的哪个目录下
+n表示有多少个文件存在, 如果超过这个数，会自动删除旧的文件。
+
+把分片后的ts文件和m3u8文件放到参数u指定web server的目录下.
+
+3.视频播放 (PC测试OK)
+1). 服务端
+    cvlc GomTV.ts --sout '#http{mux=ts,dst=:6000/live.ts}'
+    cvlc GomTV.ts --sout '#http{mux=ts,dst=:6000/live.ts}' --loop
+2). 客户端播放
+    vlc http://192.169.1.46:6000/live.ts
+    但是在android中使用下面命令播放不了:
+    am start -n com.softwinner.TvdVideo/.TvdVideoActivity -d http://192.169.1.46:6000/live.ts
+    
+#===============================================================================
+4. 服务器设置 (m3u8视频流服务器，PC和android都测试OK)
+1). 服务器
+    启动apache2
+    sudo service apache2 start
+
+    停止apache2
+    sudo service apache2 stop
+
+    启动lighttpd
+    sudo lighttpd -f config/lighttpd.conf
+
+2). 客户端播放
+    vlc http://192.169.1.46/mov/test.m3u8
+    am start -n com.softwinner.TvdVideo/.TvdVideoActivity -d http://192.169.1.46/mov/test.m3u8
+
+</rich_text><node name="ANR" prog_lang="custom-colors" readonly="False" tags="" unique_id="18"><rich_text> 一：什么是ANR
  ANR:Application  Not Responding，即应用无响应
  二：ANR的类型
  ANR一般有三种类型：
