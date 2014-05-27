@@ -355,3 +355,31 @@ v1.6.2-rc1-20-g8c5b85c.tar.gz
 2.zip包
 $ git archive master --prefix='project/' --format=zip > `git describe master`.zip
 
+================================================================================
+git reflog 和git log的区别，外加git cherry-pick的一种用法
+================================================================================
+git reflog 可以查看所有分支的所有操作记录（包括（包括commit和reset的操作），包括已经被删除的commit记录，git log则不能察看已经删除了的commit记录
+
+具体一个例子，假设有三个commit， git st:
+
+commit3: add test3.c
+
+commit2: add test2.c
+
+commit1: add test1.c
+
+如果执行git reset --hard HEAD~1则 删除了commit3，如果发现删除错误了，需要恢复commit3，这个时候就要使用git reflog
+
+ HEAD@{0}: HEAD~1: updating HEAD
+63ee781 HEAD@{1}: commit: test3:q
+红色加粗的即是被删除了的 commit3，运行git log则没有这一行记录
+
+可以使用git reset --hard 63ee781将红色记录删除，则恢复了cmmit3，运行git log后可以看到：
+
+commit3: add test3.c
+
+commit2: add test2.c
+
+commit1: add test1.c
+
+这里也可以使用另外一种方法来实现：git cherry-pick 63ee781
