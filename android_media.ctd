@@ -1,0 +1,876 @@
+<?xml version="1.0" ?><cherrytree><node name="多媒体框架" prog_lang="custom-colors" readonly="False" tags="" unique_id="89"><rich_text>
+</rich_text><node name="StageFright框架流程解读 " prog_lang="custom-colors" readonly="False" tags="" unique_id="90"><rich_text scale="h1" weight="heavy">1、StageFright介绍</rich_text><rich_text>
+    Android froyo版本多媒体引擎做了变动，新添加了stagefright框架，并且默认情况android选择stagefright，并没有完全抛弃opencore，主要是做了一个OMX层，仅仅是对 opencore的omx-component部分做了引用。stagefright是在MediaPlayerService这一层加入的，和opencore是并列的。Stagefright在 Android中是以shared library的形式存在(libstagefright.so)，其中的module -- AwesomePlayer可用来播放video/audio。 AwesomePlayer提供许多API，可以让上层的应用程序(Java/JNI)来调用。
+
+</rich_text><rich_text scale="h1" weight="heavy">2、StageFright数据流封装</rich_text><rich_text>
+</rich_text><rich_text scale="h3">    </rich_text><rich_text scale="h3" weight="heavy">2.1》由数据源DataSource生成MediaExtractor。通过MediaExtractor::Create(dataSource)来实现。Create方法通过两步来生成相应的 MediaExtractor（MediaExtractor.cpp）：</rich_text><rich_text>
+☐  通过dataSource-&gt;sniff来探测数据类型
+☐  生成相应的Extractor：
+    if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG4)
+            || !strcasecmp(mime, &quot;audio/mp4&quot;)) {
+        return new MPEG4Extractor(source);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_MPEG)) {
+        return new MP3Extractor(source, meta);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_NB)
+            || !strcasecmp(mime, MEDIA_MIMETYPE_AUDIO_AMR_WB)) {
+        return new AMRExtractor(source);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_WAV)) {
+        return new WAVExtractor(source);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_OGG)) {
+        return new OggExtractor(source);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MATROSKA)) {
+        return new MatroskaExtractor(source);
+    } else if (!strcasecmp(mime, MEDIA_MIMETYPE_CONTAINER_MPEG2TS)) {
+        return new MPEG2TSExtractor(source);
+    }
+
+</rich_text><rich_text scale="h3">    </rich_text><rich_text scale="h3" weight="heavy">2.2》把音视频轨道分离，生成mVideoTrack和mAudioTrack两个MediaSource。代码如下（AwesomePlayer.cpp）：</rich_text><rich_text>
+   if (!haveVideo &amp;&amp; !strncasecmp(mime, &quot;video/&quot;, 6)) {
+        setVideoSource(extractor-&gt;getTrack(i));
+        haveVideo = true;
+   } else if (!haveAudio &amp;&amp; !strncasecmp(mime, &quot;audio/&quot;, 6)) {
+        setAudioSource(extractor-&gt;getTrack(i));
+        haveAudio = true;
+   }
+
+</rich_text><rich_text scale="h3">    </rich_text><rich_text scale="h3" weight="heavy">2.3》得到的这两个MediaSource，只具有parser功能，没有decode功能。还需要对这两个MediaSource做进一步的包装，获取了两个MediaSource（具有parse和decode功能）：</rich_text><rich_text>
+mVideoSource = OMXCodec::Create(
+            mClient.interface(), mVideoTrack-&gt;getFormat(),
+            false, // createEncoder
+            mVideoTrack,
+            NULL, flags);
+mAudioSource = OMXCodec::Create(
+                mClient.interface(), mAudioTrack-&gt;getFormat(),
+                false, // createEncoder
+                mAudioTrack);
+    当调用MediaSource.start()方法后，它的内部就会开始从数据源获取数据并解析，等到缓冲区满后便停止。在AwesomePlayer里就可以调用MediaSource的read方法读取解码后的数据。
+☐  对于mVideoSource来说，读取的数据：mVideoSource-&gt;read(&amp;mVideoBuffer, &amp;options)交给显示模块进行渲染，mVideoRenderer-&gt;render(mVideoBuffer);
+☐  对mAudioSource来说，用mAudioPlayer对mAudioSource进行封装，然后由mAudioPlayer负责读取数据和播放控制。
+
+</rich_text><rich_text scale="h1" weight="heavy">3、StageFright的Decode</rich_text><rich_text>
+    经过“数据流的封装”得到的两个MediaSource，其实是两个OMXCodec。AwesomePlayer和mAudioPlayer都是从MediaSource中得到数据进行播放。AwesomePlayer得到的是最终需要渲染的原始视频数据，而mAudioPlayer读取的是最终需要播放的原始音频数据。也就是说，从OMXCodec中读到的数据已经是原始数据了。
+    OMXCodec是怎么把数据源经过parse、decode两步以后转化成原始数据的。从OMXCodec::Create这个构造方法开始，它的参数：
+☐  IOMX &amp;omx指的是一个OMXNodeInstance对象的实例。
+☐  MetaData ＆meta这个参数由MediaSource.getFormat获取得到。这个对象的主要成员就是一个KeyedVector&lt;uint32_t, typed_data&gt; mItems，里面存放了一些代表MediaSource格式信息的名值对。
+☐  bool createEncoder指明这个OMXCodec是编码还是解码。
+☐  MediaSource ＆source是一个MediaExtractor。
+☐  char *matchComponentName指定一种Codec用于生成这个OMXCodec。
+    先使用findMatchingCodecs寻找对应的Codec，找到以后为当前IOMX分配节点并注册事件监听器：omx-&gt;allocateNode(componentName, observer, &amp;node)。最后，把IOMX封装进一个OMXCodec：
+sp&lt;OMXCodec&gt; codec = new OMXCodec(
+                    omx, node, quirks,
+                    createEncoder, mime, componentName,
+                    source);
+这样就得到了OMXCodec。
+    AwesomePlayer中得到这个OMXCodec后，首先调用mVideoSource-&gt;start()进行初始化。 OMXCodec初始化主要是做两件事：
+☐ 向OpenMAX发送开始命令。mOMX-&gt;sendCommand(mNode, OMX_CommandStateSet, OMX_StateIdle)
+☐ 调用allocateBuffers()分配两个缓冲区，存放在Vector&lt;BufferInfo&gt; mPortBuffers[2]中，分别用于输入和输出。
+    AwesomePlayer开始播放后，通过mVideoSource-&gt;read(&amp;mVideoBuffer, &amp;options)读取数据。mVideoSource-&gt;read(&amp;mVideoBuffer, &amp;options)具体是调用OMXCodec.read来读取数据。而OMXCodec.read主要分两步来实现数据的读取：
+☐ 通过调用drainInputBuffers()对mPortBuffers[kPortIndexInput]进行填充，这一步完成 parse。由OpenMAX从数据源把demux后的数据读取到输入缓冲区，作为OpenMAX的输入。
+☐ 通过fillOutputBuffers()对mPortBuffers[kPortIndexOutput]进行填充，这一步完成 decode。由OpenMAX对输入缓冲区中的数据进行解码，然后把解码后可以显示的视频数据输出到输出缓冲区。
+    AwesomePlayer通过mVideoRenderer-&gt;render(mVideoBuffer)对经过parse和decode 处理的数据进行渲染。一个mVideoRenderer其实就是一个包装了IOMXRenderer的AwesomeRemoteRenderer：
+mVideoRenderer = new AwesomeRemoteRenderer(
+                mClient.interface()-&gt;createRenderer(
+                        mISurface, component,
+                        (OMX_COLOR_FORMATTYPE)format,
+                        decodedWidth, decodedHeight,
+                                    mVideoWidth, mVideoHeight,
+                        rotationDegrees));
+
+</rich_text><rich_text scale="h1" weight="heavy">4、StageFright处理流程</rich_text><rich_text>
+    Audioplayer 为AwesomePlayer的成员，audioplayer通过callback来驱动数据的获取，awesomeplayer则是通过 videoevent来驱动。二者有个共性，就是数据的获取都抽象成mSource-&gt;Read()来完成，且read内部把parser和dec 绑在一起。Stagefright AV同步部分，audio完全是callback驱动数据流，video部分在onVideoEvent里会获取audio的时间戳，是传统的AV时间戳做同步。
+ 
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy"> 4.1》AwesomePlayer的Video主要有以下几个成员：</rich_text><rich_text>
+☐  mVideoSource(解码视频)
+☐  mVideoTrack(从多媒体文件中读取视频数据)
+☐  mVideoRenderer(对解码好的视频进行格式转换，android使用的格式为RGB565)
+☐  mISurface(重绘图层)
+☐  mQueue(event事件队列)
+    
+</rich_text><rich_text scale="h3">    </rich_text><rich_text scale="h3" weight="heavy">4.2》stagefright运行时的Audio部分抽象流程如下：</rich_text><rich_text>
+☐ 设置mUri的路径
+☐ 启动mQueue，创建一个线程来运行 threadEntry（命名为TimedEventQueue，这个线程就是event调度器）
+☐ 打开mUri所指定的文件的头部，则会根据类型选择不同的分离器（如MPEG4Extractor）
+☐ 使用 MPEG4Extractor对MP4进行音视频轨道的分离，并返回MPEG4Source类型的视频轨道给mVideoTrack
+☐ 根据 mVideoTrack中的编码类型来选择解码器，avc的编码类型会选择AVCDecoder，并返回给mVideoSource，并设置mVideoSource中的mSource为mVideoTrack
+☐ 插入onVideoEvent到Queue中，开始解码播放
+☐ 通过mVideoSource对象来读取解析好的视频buffer
+如果解析好的buffer还没到AV时间戳同步的时刻，则推迟到下一轮操作
+☐ mVideoRenderer为空，则进行初始化（如果不使用 OMX会将mVideoRenderer设置为AwesomeLocalRenderer）
+☐ 通过mVideoRenderer对象将解析好的视频buffer转换成RGB565格式，并发给display模块进行图像绘制
+☐ 将onVideoEvent重新插入event调度器来循环
+
+</rich_text><rich_text scale="h3">    </rich_text><rich_text scale="h3" weight="heavy">4.3》数据由源到最终解码后的流程如下：</rich_text><rich_text>
+                URI,FD
+                   ｜
+            DataSource
+                   ｜
+          MediaExtractor
+                    |
+    mVideoTrack   mAudioTrack//音视频数据流
+                   ｜
+    mVideoSource   mAudioSource//音视频解码器
+         ｜                      |
+      mVideoBuffer    mAudioPlayer
+说明：
+☐ 设置DataSource，数据源可以两种URI和FD。URI可以http://，rtsp://等。FD是一个本地文件描述符，能过FD，可以找到对应的文件。
+☐ 由DataSource生成MediaExtractor。通过sp&lt;MediaExtractor&gt; extractor = MediaExtractor::Create(dataSource);来实现。 MediaExtractor::Create(dataSource)会根据不同的数据内容创建不同的数据读取对象。
+☐ 通过调用setVideoSource由MediaExtractor分解生成音频数据流（mAudioTrack）和视频数据流（mVideoTrack）。
+☐ onPrepareAsyncEvent()如果DataSource是URL的话，根据地址获取数据，并开始缓冲，直到获取到mVideoTrack和mAudioTrack。mVideoTrack和mAudioTrack通过调用initVideoDecoder()和initAudioDecoder()来生成 mVideoSource和mAudioSource这两个音视频解码器。然后调用postBufferingEvent_l()提交事件开启缓冲。
+☐ 数据缓冲的执行函数是onBufferingUpdate()。缓冲区有足够的数据可以播放时，调用play_l()开始播放。play_l()中关键是调用了postVideoEvent_l()，提交了 mVideoEvent。这个事件执行时会调用函数onVideoEvent()。这个函数通过调用 mVideoSource-&gt;read(&amp;mVideoBuffer, &amp;options)进行视频解码。音频解码通过mAudioPlayer实现。
+☐ 视频解码器解码后通过mVideoSource-&gt;read读取一帧帧的数据，放到mVideoBuffer中，最后通过 mVideoRenderer-&gt;render(mVideoBuffer)把视频数据发送到显示模块。当需要暂停或停止时，调用cancelPlayerEvents来提交事件用来停止解码，还可以选择是否继续缓冲数据。
+
+</rich_text><rich_text scale="h1" weight="heavy">5、代码标记Log</rich_text><rich_text>
+    依据第4》项StageFright描述的Vide视频播放流程，作Log标记跟踪视频DATA获取、CODEC过程。从AwesomePlayer.cpp中方法着手，步骤如下：
+☐ 在修改的/mydroid/frameworks/base/media/libstagefrigh/下，用mm编译，并调试直到生成相应的.so文件。注：允许单模块编译时，需事先在/mydroid下允许. ./build/envsetup.sh文件。
+☐ 在/mydroid/目录下make进行整体编译，生成system.img文件。说明：先单模块编译，后再整体编译的好处是，可以缩短调试编译的时间。
+☐ 将system.img文件copy到/android-sdk-linux/platforms/android-8/下。注意：事先备份原有的system.img。
+☐ 带sdcard启动模拟器，在/android-sdk-linux/tools/下运行./adb shell文件，再运行logcat
+☐ 打开Gallery选择视频文件运行，并同步查看log。
+    
+</rich_text><rich_text scale="h1" weight="heavy">反馈结果如下：</rich_text><rich_text>
+I/ActivityManager(   61): Starting: Intent { act=android.intent.action.VIEW dat=content://media/external/video/media/5 typ=video/mp4 cmp=com.cooliris.media/.MovieView } from pid 327
+I/RenderView(  327): OnPause RenderView com.cooliris.media.RenderView@4054a3b0
+E/AwesomePlayer(   34): beginning AwesomePlayer... by jay remarked...
+E/AwesomePlayer(   34): returning AwesomeEvent...by jay remarked...
+E/AwesomePlayer(   34): returning AwesomeEvent...by jay remarked...
+E/AwesomePlayer(   34): returning AwesomeEvent...by jay remarked...
+E/AwesomePlayer(   34): returning AwesomeEvent...by jay remarked...
+E/AwesomePlayer(   34): ending AwesomePlayer... by jay remarked...
+E/AwesomePlayer(   34): setting video source now... by jay remarked...
+E/AwesomePlayer(   34): setting Video Type... by jay remarked...
+E/AwesomePlayer(   34): returning AwesomeEvent...by jay remarked...
+E/AwesomePlayer(   34): beginning initVideoDecoder by jay remarked...
+D/MediaPlayer(  327): getMetadata
+I/ActivityManager(   61): Displayed com.cooliris.media/.MovieView: +1s761ms
+E/AwesomePlayer(   34): beginning AwesomeLocalRenderer init ...by jay remarked...
+E/AwesomePlayer(   34): returning open(libstagefrighthw.so) correctly by jay remarked...
+E/MemoryHeapBase(   34): error opening /dev/pmem_adsp: No such file or directory
+I/SoftwareRenderer(   34): Creating physical memory heap failed, reverting to regular heap.
+E/AwesomePlayer(   34): ending AwesomeLocalRenderer init close ...by jay remarked...
+E/AwesomePlayer(   34): returning AwesomeLocalRenderer...by jay remarked...
+I/CacheService(  327): Starting CacheService</rich_text></node></node><node name="TvdVideo分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. TvdVideoActivity.java
+    1).
+    public class TvdVideoActivity extends Activity {
+        ... 
+       	@Override
+	    public void onCreate(Bundle bundle) {
+		    super.onCreate(bundle);
+
+		    requestWindowFeature(Window.FEATURE_NO_TITLE);
+		    getWindow().setFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN,
+				    WindowManager.LayoutParams.FLAG_FULLSCREEN);
+		    String path000 = getIntent().getStringExtra(&quot;VideoPath000&quot;);
+		    Log.v(TAG, &quot;path=&quot; + path000);
+		    setContentView(R.layout.movie_view);
+		    View rootView = findViewById(R.id.root);
+		    mBDFolderPlayMode = getIntent().getBooleanExtra(
+				    MediaStore.EXTRA_BD_FOLDER_PLAY_MODE, false);
+		    mControl = new MovieViewControl(rootView, this, getIntent(), path000) {
+		        ...
+		    } 
+		
+	    @Override
+	    public void onPause() {
+		    mControl.onPause();
+		    super.onPause();
+	    }
+
+	    @Override
+	    public void onResume() {
+		    mControl.onResume();
+		    super.onResume();
+	    }
+
+	    @Override
+	    public void onDestroy() {
+		    mControl.onDestroy();
+		    super.onDestroy();
+	    }
+    }
+    
+    2). movie_view.xml
+    &lt;RelativeLayout xmlns:android=&quot;</rich_text><rich_text link="webs http://schemas.android.com/apk/res/android&quot;">http://schemas.android.com/apk/res/android&quot;</rich_text><rich_text>
+    android:id=&quot;@+id/root&quot;
+    android:layout_width=&quot;match_parent&quot; 
+    android:layout_height=&quot;match_parent&quot;&gt;
+
+    &lt;!-- 视频显示 --&gt;
+    &lt;com.softwinner.TvdVideo.VideoView android:id=&quot;@+id/surface_view&quot; 
+            android:layout_width=&quot;match_parent&quot;
+            android:layout_height=&quot;match_parent&quot;
+            android:layout_centerInParent=&quot;true&quot; /&gt;
+            
+    &lt;!-- 加载进度提示 --&gt;
+    &lt;LinearLayout android:id=&quot;@+id/progress_indicator&quot;
+            android:orientation=&quot;vertical&quot;
+            android:layout_centerInParent=&quot;true&quot;
+            android:layout_width=&quot;match_parent&quot;
+            android:layout_height=&quot;wrap_content&quot;&gt;
+
+        &lt;ProgressBar android:id=&quot;@android:id/progress&quot;
+                style=&quot;?android:attr/progressBarStyleLarge&quot;
+                android:layout_gravity=&quot;center&quot;
+                android:layout_width=&quot;wrap_content&quot;
+                android:layout_height=&quot;wrap_content&quot; /&gt;
+
+        &lt;TextView android:paddingTop=&quot;5dip&quot;
+                android:layout_width=&quot;wrap_content&quot;
+                android:layout_height=&quot;wrap_content&quot;
+                android:layout_gravity=&quot;center&quot;
+                android:text=&quot;@string/loading_video&quot; android:textSize=&quot;14sp&quot;
+                android:textColor=&quot;#ffffffff&quot; /&gt;
+    &lt;/LinearLayout&gt;
+
+&lt;/RelativeLayout&gt;
+
+2. MovieViewControl.java
+    MediaPlayer.OnPreparedListener :
+</rich_text><rich_text foreground="#00000000ffff">        onPrepared(MediaPlayer mp)                
+            Called when the media file is ready for playback.</rich_text><rich_text>
+
+    MediaPlayer.OnInfoListener :
+</rich_text><rich_text foreground="#00000000ffff">        onInfo(MediaPlayer mp, int what, int extra)                
+            Called to indicate an info or a warning.</rich_text><rich_text>
+            </rich_text><rich_text justification="left"></rich_text><rich_text>
+                
+    MediaPlayer.OnErrorListener :    
+</rich_text><rich_text foreground="#00000000ffff">        onError(MediaPlayer mp, int what, int extra)                
+            Called to indicate an error.</rich_text><rich_text>
+            </rich_text><rich_text justification="left"></rich_text><rich_text>
+ 
+    MediaPlayer.OnBufferingUpdateListener :
+</rich_text><rich_text foreground="#00000000ffff">        onBufferingUpdate(MediaPlayer mp, int percent)                
+            Called to update status in buffering a media stream received through progressive HTTP download.</rich_text><rich_text>
+                
+	MediaPlayer.OnCompletionListener :
+</rich_text><rich_text foreground="#00000000ffff">        onCompletion(MediaPlayer mp)                
+            Called when the end of a media source is reached during playback.</rich_text><rich_text>
+
+    MediaPlayer.OnSeekCompleteListener :
+</rich_text><rich_text foreground="#00000000ffff">        onSeekComplete(MediaPlayer mp)                
+            Called to indicate the completion of a seek operation.</rich_text><rich_text>
+            
+    MediaPlayer.OnTimedTextListener :
+</rich_text><rich_text foreground="#00000000ffff">        onTimedText(MediaPlayer mp, TimedText text)                
+            Called to indicate an avaliable timed text</rich_text><rich_text>
+        
+    MediaPlayer.OnVideoSizeChangedListener :
+</rich_text><rich_text foreground="#00000000ffff">        onVideoSizeChanged(MediaPlayer mp, int width, int height)                
+            Called to indicate the video size The video size (width and height) could be 0 if there was no video, no display surface was set, or the value was not determined yet.</rich_text><rich_text>
+
+    /* MediaController.java */                        
+	/**
+	 * Register a callback to be invoked when the media source is ready for
+	 * playback.
+	 * 
+	 */
+	public interface OnListDataChanged {
+		void OnListDataChangedListener(int mediaControlFocusId,
+				int selectedIterm);
+
+		void OnSublistDataChangedListener(int listFoucsIndex, int selectedIterm);
+
+		void OnMediaPrevKeyClickListener();
+
+		void OnMediaNextKeyClickListener();
+
+		void OnMediaStopKeyClickListener();
+
+		void OnMediaSubtitleKeyClickListener();
+
+		void OnMediaAudioKeyClickListener();
+
+		void OnMediaRepeatKeyClickListener();
+	}
+
+	
+    public class MovieViewControl implements MediaPlayer.OnErrorListener,
+		    MediaPlayer.OnCompletionListener, MediaController.OnListDataChanged,
+		    VideoView.OnSubFocusItems {
+	    ...	
+	    Runnable mPlayingChecker = new Runnable() {
+		    public void run() {
+			    if (mVideoView.isPlaying()) {
+				    mProgressView.setVisibility(View.GONE);
+			    } else {
+				    mHandler.postDelayed(mPlayingChecker, 250);
+			    }
+		    }
+	    };
+	
+	    ...
+	    public MovieViewControl(View rootView, Context context, Intent intent,
+			    String path000) {
+		    mVideoView = (VideoView) rootView.findViewById(R.id.surface_view);
+		    mProgressView = rootView.findViewById(R.id.progress_indicator);
+		    Log.v(TAG, &quot;path000=&quot; + path000);
+		    mContext = context;
+		    mUri = Uri2File2Uri(intent.getData());
+		    mRes = mContext.getResources();
+		    sp = mContext.getSharedPreferences(STORE_NAME, Context.MODE_PRIVATE);
+		    editor = sp.edit();
+		    initToast();
+
+		    // For streams that we expect to be slow to start up, show a
+		    // progress spinner until playback starts.
+		    String scheme = mUri.getScheme();
+		    if (&quot;</rich_text><rich_text link="webs http&quot;.equalsIgnoreCase(scheme)">http&quot;.equalsIgnoreCase(scheme)</rich_text><rich_text> || &quot;rtsp&quot;.equalsIgnoreCase(scheme)) {
+			    mHandler.postDelayed(mPlayingChecker, 250);     </rich_text><rich_text foreground="#00000000ffff">//等待网路数据加载</rich_text><rich_text>
+		    } else {
+			    mProgressView.setVisibility(View.GONE);
+		    }
+
+		    /* create playlist */
+		    mFinishOnCompletion = intent.getBooleanExtra(
+				    MediaStore.EXTRA_FINISH_ON_COMPLETION, true);
+		    mPlayListType = intent.getStringExtra(MediaStore.PLAYLIST_TYPE);
+		    mPlayList = new ArrayList&lt;String&gt;();
+		    if (mPlayListType != null) {
+			    if (mPlayListType
+					    .equalsIgnoreCase(MediaStore.PLAYLIST_TYPE_CUR_FOLDER)) {
+				    /* create playlist from current folder */
+				    createFolderDispList();
+			    } else if (mPlayListType
+					    .equalsIgnoreCase(MediaStore.PLAYLIST_TYPE_MEDIA_PROVIDER)) {
+				    /* create playlist from mediaprovider */
+				    createMediaProviderDispList(mUri, mContext);
+			    }
+		    } else {
+			    Log.w(TAG,
+					    &quot;*********** scheme is null or scheme != file, create playlist failed *************&quot;);
+		    }
+
+		    mVideoView.setBDFolderPlayMode(intent.getBooleanExtra(
+				    MediaStore.EXTRA_BD_FOLDER_PLAY_MODE, false));
+		    mVideoView.setOnSubFocusItems(this);
+		    mVideoView.setOnErrorListener(this);
+		    mVideoView.setOnCompletionListener(this);
+		    mVideoView.setVideoURI(mUri, path000, 1);
+		    mMediaController = new MediaController(context);        </rich_text><rich_text foreground="#00000000ffff">//创建MediaController</rich_text><rich_text>
+		    setImageButtonListener();
+		    mVideoView.setMediaController(mMediaController);      </rich_text><rich_text foreground="#00000000ffff">//把mMediaController传给VideoView</rich_text><rich_text> 
+		    mMediaController.setFilePathTextView(mUri.getPath());
+		    // make the video view handle keys for seeking and pausing
+		    mVideoView.requestFocus();
+		    mMediaController.setOnListDataChanged(this);
+
+		    mBookmarkService = new BookmarkService(mContext);
+		    final int bookmark = getBookmark();
+		    // SAVE sub and track, add by maizirong
+		    mCurrentSubSave = getSubSave();
+		    mCurrentTrackSave = getTrackSave();
+		    mCurrentSubColorSave = getSubColorSave();
+		    mCurrentSubSizeSave = getSubSizeSave();
+		    Log.v(&quot;Mzizirong&quot;,
+				    &quot;_subBookMark______&quot; + Integer.toString(mCurrentSubSave));
+		    if (bookmark &gt; 0) {
+			    replayVideoDialog();
+			    mVideoView.seekTo(bookmark);
+			    // deleteBookmark();
+		    }
+
+		    mVideoView.start();
+		    // setSaves();
+	    } 
+	    ...
+    }
+       
+3.  VideoView.java
+    public class VideoView extends SurfaceView implements MediaPlayerControl {
+        ...
+        @Override
+        public boolean onTouchEvent(MotionEvent ev) {
+            if (isInPlaybackState() &amp;&amp; mMediaController != null) {
+                toggleMediaControlsVisiblity();
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onTrackballEvent(MotionEvent ev) {
+            if (isInPlaybackState() &amp;&amp; mMediaController != null) {
+                toggleMediaControlsVisiblity();
+            }
+            return false;
+        }
+
+        @Override
+        public boolean onKeyDown(int keyCode, KeyEvent event)
+        {
+            ...
+            return super.onKeyDown(keyCode, event);
+        }
+        
+        private void openVideo() {
+            if (mUri == null || mSurfaceHolder == null) {
+                // not ready for playback just yet, will try again later
+                return;
+            }
+            // Tell the music playback service to pause
+            // TODO: these constants need to be published somewhere in the framework.
+            Intent i = new Intent(&quot;com.android.music.musicservicecommand&quot;);
+            i.putExtra(&quot;command&quot;, &quot;pause&quot;);
+            mContext.sendBroadcast(i);
+		    Log.w(TAG, &quot;openVideo 0&quot;);
+
+            // we shouldn't clear the target state, because somebody might have
+            // called start() previously
+            release(false);
+	         Log.w(TAG, &quot;openVideo 1&quot;);
+            try {
+                mMediaPlayer = new MediaPlayer();
+                mMediaPlayer.setOnPreparedListener(mPreparedListener);
+                mMediaPlayer.setOnVideoSizeChangedListener(mSizeChangedListener);
+                mDuration = -1;
+		    Log.w(TAG, &quot;openVideo 3&quot;);
+                mMediaPlayer.setOnCompletionListener(mCompletionListener);
+                mMediaPlayer.setOnErrorListener(mErrorListener);
+                mMediaPlayer.setOnBufferingUpdateListener(mBufferingUpdateListener);
+                mCurrentBufferPercentage = 0;
+		    Log.w(TAG, &quot;openVideo 4&quot;);
+		    Log.w(TAG, &quot;sean : 2mSourcePath: &quot; + mSourcePath);
+		    Log.v(TAG, &quot;sean : 2mSourcePath: &quot; + mSourcePath);
+		        if(mSourcePath!=null)
+		        {
+			        mHeaders=new HashMap&lt;String, String&gt;();
+		        //	mHeaders.put(new String(mSourcePath),&quot;BD_SUB&quot;);
+			        mHeaders.put(&quot;BD_SUB&quot;,new String(mSourcePath));
+		        }
+		    Log.v(&quot;sean&quot;, &quot;coming to set data source &quot;);
+                mMediaPlayer.setDataSource(mContext, mUri, mHeaders);
+               	Log.w(TAG, &quot;openVideo 5&quot;);
+		    mMediaPlayer.setDisplay(mSurfaceHolder);
+		    Log.w(TAG, &quot;openVideo 6&quot;);
+                mMediaPlayer.setAudioStreamType(AudioManager.STREAM_MUSIC);
+                mMediaPlayer.setScreenOnWhilePlaying(true);
+		    Log.w(TAG, &quot;openVideo 7&quot;);
+                mMediaPlayer.setBdFolderPlayMode(mBDFolderPlayMode);
+                mMediaPlayer.prepareAsync();
+		    Log.w(TAG, &quot;openVideo 8&quot;);
+                // we don't set the target state here either, but preserve the
+                // target state that was there before.
+                mCurrentState = STATE_PREPARING;
+                if( mOnSubFocusItems != null ) {
+                    mOnSubFocusItems.subFocusItems();
+                }
+                if (mMediaController != null) {
+                    mMediaController.setMediaPlayer(this);      </rich_text><rich_text foreground="#00000000ffff">//MediaController通过MediaPlayerControl来控制video播放和获取video状态</rich_text><rich_text>
+                }
+                //attachMediaController();
+                 Log.w(TAG, &quot;openVideo 9&quot;);
+            } catch (IOException ex) {
+                Log.w(TAG, &quot;Unable to open content: &quot; + mUri, ex);
+                mCurrentState = STATE_ERROR;
+                mTargetState = STATE_ERROR;
+                mErrorListener.onError(mMediaPlayer, MediaPlayer.MEDIA_ERROR_UNKNOWN, 0);
+                return;
+            } catch (IllegalArgumentException ex) {
+                Log.w(TAG, &quot;Unable to open content: &quot; + mUri, ex);
+                mCurrentState = STATE_ERROR;
+                mTargetState = STATE_ERROR;
+                mErrorListener.onError(mMediaPlayer, MediaPlayer.MEDIA_ERROR_UNKNOWN, 0);
+                return;
+            }
+        }
+    
+	    MediaPlayer.OnVideoSizeChangedListener mSizeChangedListener = new MediaPlayer.OnVideoSizeChangedListener() {
+		    public void onVideoSizeChanged(MediaPlayer mp, int width, int height) {
+			    mVideoWidth = mp.getVideoWidth();
+			    mVideoHeight = mp.getVideoHeight();
+			    if (mVideoWidth &gt; 0 &amp;&amp; mVideoHeight &gt; 0) {
+				    getHolder().setFixedSize(mVideoWidth, mVideoHeight);
+			    }
+		    }
+	    };
+
+	    MediaPlayer.OnPreparedListener mPreparedListener = new MediaPlayer.OnPreparedListener() {
+		    public void onPrepared(MediaPlayer mp) {
+			    mCurrentState = STATE_PREPARED;
+
+			    // Get the capabilities of the player for this stream
+			    Metadata data = mp.getMetadata(MediaPlayer.METADATA_ALL,
+					    MediaPlayer.BYPASS_METADATA_FILTER);
+
+			    if (data != null) {
+				    mCanPause = !data.has(Metadata.PAUSE_AVAILABLE)
+						    || data.getBoolean(Metadata.PAUSE_AVAILABLE);
+				    mCanSeekBack = !data.has(Metadata.SEEK_BACKWARD_AVAILABLE)
+						    || data.getBoolean(Metadata.SEEK_BACKWARD_AVAILABLE);
+				    mCanSeekForward = !data.has(Metadata.SEEK_FORWARD_AVAILABLE)
+						    || data.getBoolean(Metadata.SEEK_FORWARD_AVAILABLE);
+			    } else {
+				    mCanPause = mCanSeekBack = mCanSeekForward = true;
+			    }
+
+			    if (mOnPreparedListener != null) {
+				    mOnPreparedListener.onPrepared(mMediaPlayer);
+			    }
+			    if (mMediaController != null) {
+				    mMediaController.setEnabled(true);
+			    }
+			    if (mOnSubFocusItems != null) {
+				    mOnSubFocusItems.initSubAndTrackInfo();
+			    }
+			    mVideoWidth = mp.getVideoWidth();
+			    mVideoHeight = mp.getVideoHeight();
+
+			    int seekToPosition = mSeekWhenPrepared; // mSeekWhenPrepared may be
+													    // changed after seekTo()
+													    // call
+			    if (seekToPosition != 0) {
+				    seekTo(seekToPosition);
+			    }
+			    if (mVideoWidth &gt; 0 &amp;&amp; mVideoHeight &gt; 0) {
+				    getHolder().setFixedSize(mVideoWidth, mVideoHeight);
+
+				    if (mTargetState == STATE_PLAYING) {
+					    start();
+					    if (mMediaController != null) {
+						    mMediaController.show();
+					    }
+				    } else if (!isPlaying()
+						    &amp;&amp; (seekToPosition != 0 || getCurrentPosition() &gt; 0)) {
+					    if (mMediaController != null) {
+						    // Show the media controls when we're paused into a
+						    // video and make 'em stick.
+						    mMediaController.show(0);
+					    }
+				    }
+			    } else {
+				    // We don't know the video size yet, but should start anyway.
+				    // The video size might be reported to us later.
+				    if (mTargetState == STATE_PLAYING) {
+					    start();
+				    }
+			    }
+		    }
+	    };
+
+	    private MediaPlayer.OnCompletionListener mCompletionListener = new MediaPlayer.OnCompletionListener() {
+		    public void onCompletion(MediaPlayer mp) {
+			    mCurrentState = STATE_PLAYBACK_COMPLETED;
+			    mTargetState = STATE_PLAYBACK_COMPLETED;
+			    if (mMediaController != null) {
+				    mMediaController.hide();
+			    }
+			    if (mOnCompletionListener != null) {
+				    mOnCompletionListener.onCompletion(mMediaPlayer);
+			    }
+		    }
+	    };
+
+	    private MediaPlayer.OnErrorListener mErrorListener = new MediaPlayer.OnErrorListener() {
+		    public boolean onError(MediaPlayer mp, int framework_err, int impl_err) {
+			    Log.d(TAG, &quot;Error: &quot; + framework_err + &quot;,&quot; + impl_err);
+			    mCurrentState = STATE_ERROR;
+			    mTargetState = STATE_ERROR;
+			    if (mMediaController != null) {
+				    mMediaController.hide();
+			    }
+
+			    /* If an error handler has been supplied, use it and finish. */
+			    if (mOnErrorListener != null) {
+				    if (mOnErrorListener.onError(mMediaPlayer, framework_err,
+						    impl_err)) {
+					    return true;
+				    }
+			    }
+
+			    /*
+			     * Otherwise, pop up an error dialog so the user knows that
+			     * something bad has happened. Only try and pop up the dialog if
+			     * we're attached to a window. When we're going away and no longer
+			     * have a window, don't bother showing the user an error.
+			     */
+			    if (getWindowToken() != null) {
+				    Resources r = mContext.getResources();
+				    int messageId;
+
+				    if (framework_err == MediaPlayer.MEDIA_ERROR_NOT_VALID_FOR_PROGRESSIVE_PLAYBACK) {
+					    messageId = com.android.internal.R.string.VideoView_error_text_invalid_progressive_playback;
+				    } else {
+					    messageId = com.android.internal.R.string.VideoView_error_text_unknown;
+				    }
+
+				    LayoutInflater inflate = (LayoutInflater) mContext
+						    .getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+				    View errorView = inflate.inflate(R.layout.dialog_replay, null);
+				    /* error title */
+				    TextView v = (TextView) errorView
+						    .findViewById(R.id.replay_title);
+				    v.setText(com.android.internal.R.string.VideoView_error_title);
+				    /* error message */
+				    v = (TextView) errorView.findViewById(R.id.replay_msg);
+				    v.setText(messageId);
+				    ((Button) errorView.findViewById(R.id.replay_confirm))
+						    .setOnClickListener(new View.OnClickListener() {
+							    public void onClick(View arg0) {
+								    if (mOnCompletionListener != null) {
+									    mOnCompletionListener
+											    .onCompletion(mMediaPlayer);
+								    }
+								    mErrorDialog.dismiss();
+							    }
+						    });
+				    ((Button) errorView.findViewById(R.id.replay_cancel))
+						    .setVisibility(GONE);
+				    mErrorDialog = new Dialog(mContext, R.style.dialog);
+				    mErrorDialog.setContentView(errorView);
+				    mErrorDialog.setCancelable(false);
+				    mErrorDialog.show();
+			    }
+			    return true;
+		    }
+	    };
+
+	    private MediaPlayer.OnBufferingUpdateListener mBufferingUpdateListener = new MediaPlayer.OnBufferingUpdateListener() {
+		    public void onBufferingUpdate(MediaPlayer mp, int percent) {
+			    mCurrentBufferPercentage = percent;
+		    }
+	    };
+	    ...
+    }
+    
+4. MediaController.java ：播放控制UI    
+public class MediaController extends FrameLayout {
+    ...
+	@Override
+	public void onFinishInflate() { 
+	    </rich_text><rich_text foreground="#00000000ffff">//如: MyView mv = (MyView)View.inflate (context,R.layout.my_view,null); 当加载完成xml后，就会执行那个方法</rich_text><rich_text>。
+		if (mRoot != null)
+			initControllerView(mRoot);
+	}
+	    
+	public MediaController(Context context) {
+		super(context);
+		mContext = context;
+		initFloatingWindow();
+	}
+
+	private void initFloatingWindow() {
+		mWindowManager = (WindowManager) mContext
+				.getSystemService(Context.WINDOW_SERVICE);
+		mWindow = PolicyManager.makeNewWindow(mContext);
+		mWindow.setWindowManager(mWindowManager, null, null);
+		mWindow.requestFeature(Window.FEATURE_NO_TITLE);
+		mDecor = mWindow.getDecorView();
+		mDecor.setOnTouchListener(mTouchListener);
+		mWindow.setContentView(this);
+		mWindow.setBackgroundDrawableResource(android.R.color.transparent);
+
+		// While the media controller is up, the volume control keys should
+		// affect the media stream type
+		mWindow.setVolumeControlStream(AudioManager.STREAM_MUSIC);
+		// mDisplay = mWindowManager.getDefaultDisplay();
+
+		setFocusable(true);
+		setFocusableInTouchMode(true);
+		setHolding(false);
+		setDescendantFocusability(ViewGroup.FOCUS_AFTER_DESCENDANTS);
+		requestFocus();
+	}
+    
+</rich_text><rich_text foreground="#00000000ffff">    //MovieViewControl构造函数中调用了mVideoView.setMediaController(mMediaController);
+    //VideoView::setMediaController -&gt; VideoView::attachMediaController -&gt; setAnchorView
+    // 参数View :             View anchorView = this.getParent() instanceof View ? (View)this.getParent() : this;
+</rich_text><rich_text>	public void setAnchorView(View view) {
+		mAnchor = view;
+
+		FrameLayout.LayoutParams frameParams = new FrameLayout.LayoutParams(
+				ViewGroup.LayoutParams.MATCH_PARENT,
+				ViewGroup.LayoutParams.MATCH_PARENT);
+
+		removeAllViews();
+		View v = makeControllerView();
+		View statusView = makeStatusView();
+		addView(v, frameParams);
+		addView(statusView, frameParams);
+	}
+	
+	</rich_text><rich_text foreground="#00000000ffff">//创建播放的进度条</rich_text><rich_text>
+	protected View makeStatusView() {
+		LayoutInflater inflate = (LayoutInflater) mContext
+				.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+		mStatus = inflate.inflate(R.layout.media_status, null);     </rich_text><rich_text foreground="#00000000ffff">//加载layout/media_status.xml</rich_text><rich_text>
+
+		initStatusView(mStatus);  //初始化进度条  
+
+		return mStatus;
+	}
+
+    </rich_text><rich_text foreground="#00000000ffff">//创建播放的控制条</rich_text><rich_text>
+	protected View makeControllerView() {
+		LayoutInflater inflate = (LayoutInflater) mContext
+				.getSystemService(Context.LAYOUT_INFLATER_SERVICE);
+		mRoot = inflate.inflate(R.layout.media_controller, null);
+
+		initControllerView(mRoot); </rich_text><rich_text foreground="#00000000ffff"> //初始化各按钮和注册按钮的listeners</rich_text><rich_text>
+
+		return mRoot;
+	}
+	    
+    ...
+}    
+
+media_controller.xml :
+ &lt;LinearLayout xmlns:android=&quot;</rich_text><rich_text link="webs http://schemas.android.com/apk/res/android&quot;">http://schemas.android.com/apk/res/android&quot;</rich_text><rich_text>
+    android:layout_width=&quot;match_parent&quot;
+    android:layout_height=&quot;wrap_content&quot;
+    android:background=&quot;#00666666&quot;
+    android:orientation=&quot;vertical&quot;&gt;
+    &lt;LinearLayout
+	    android:id=&quot;@+id/content&quot;
+	    android:layout_width=&quot;fill_parent&quot;
+	    android:layout_height=&quot;0dp&quot;
+	    android:layout_weight=&quot;1&quot;
+	    android:orientation=&quot;vertical&quot;
+    /&gt;
+
+						&lt;!-- mediaController layout --&gt;
+	&lt;RelativeLayout
+        android:layout_width=&quot;match_parent&quot;
+        android:layout_height=&quot;wrap_content&quot; &gt;
+	    &lt;LinearLayout
+	        android:id=&quot;@+id/media_control&quot;
+	        android:layout_width=&quot;match_parent&quot;
+	        android:layout_height=&quot;wrap_content&quot;
+        	android:background=&quot;@drawable/mediacontrol_background&quot;
+		    android:layout_alignParentBottom=&quot;true&quot;
+	        android:gravity=&quot;center&quot;
+	        android:orientation=&quot;horizontal&quot;&gt;
+	        
+	        &lt;ImageButton android:id=&quot;@+id/jump&quot;
+	        	 style=&quot;@style/MediaButton.Jump&quot; 
+	        	 android:nextFocusUp=&quot;@id/jump&quot;/&gt;
+	        &lt;ImageButton android:id=&quot;@+id/repeat&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	style=&quot;@style/MediaButton.Repeat&quot; 
+	        	android:nextFocusDown=&quot;@+id/list&quot; /&gt;
+	        &lt;ImageButton android:id=&quot;@+id/track&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	style=&quot;@style/MediaButton.Track&quot;
+	        	android:nextFocusDown=&quot;@+id/list&quot; /&gt;
+	        &lt;ImageButton android:id=&quot;@+id/prev&quot; 
+	        	style=&quot;@style/MediaButton.Previous&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	android:nextFocusUp=&quot;@id/prev&quot;/&gt;
+	        &lt;ImageButton android:id=&quot;@+id/pause&quot; 
+	        	style=&quot;@style/MediaButton.Play&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	android:nextFocusUp=&quot;@id/pause&quot;/&gt;
+	        &lt;ImageButton android:id=&quot;@+id/next&quot; 
+	        	style=&quot;@style/MediaButton.Next&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	android:nextFocusUp=&quot;@id/next&quot;/&gt;
+	        &lt;ImageButton android:id=&quot;@+id/zoom&quot; 
+	        	style=&quot;@style/MediaButton.Zoom&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	android:nextFocusDown=&quot;@+id/list&quot; /&gt;
+	        &lt;ImageButton android:id=&quot;@+id/mode3D&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	style=&quot;@style/MediaButton.Mode3D&quot; 
+	        	android:nextFocusDown=&quot;@+id/list&quot;/&gt;
+	        &lt;ImageButton android:id=&quot;@+id/subset&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	style=&quot;@style/MediaButton.SubSet&quot; 
+	        	android:nextFocusDown=&quot;@+id/list&quot; /&gt;
+	        &lt;ImageButton android:id=&quot;@+id/volume_up&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	style=&quot;@style/MediaButton.VolUp&quot; 
+	        	android:nextFocusDown=&quot;@id/volume_up&quot; /&gt;
+	        &lt;ImageButton android:id=&quot;@+id/volume_down&quot; 
+	        	android:focusableInTouchMode=&quot;true&quot;
+	        	style=&quot;@style/MediaButton.VolDown&quot; 
+	        	android:nextFocusDown=&quot;@id/volume_down&quot; /&gt;
+	        	
+	    &lt;/LinearLayout&gt;
+	    
+    	&lt;LinearLayout android:id=&quot;@+id/list_layout&quot;
+		android:layout_width=&quot;fill_parent&quot;
+		android:layout_height=&quot;200dip&quot;
+		android:layout_above=&quot;@id/media_control&quot;
+		android:orientation=&quot;horizontal&quot; &gt;
+	        	&lt;!--  grid view layout --&gt;
+    	&lt;LinearLayout android:id=&quot;@+id/grid_layout&quot;
+			android:layout_width=&quot;247dip&quot;
+			android:layout_height=&quot;fill_parent&quot;
+			android:visibility=&quot;gone&quot;
+			android:orientation=&quot;vertical&quot; &gt;	        	
+			&lt;GridView
+			    android:id=&quot;@+id/gridview&quot;
+			    android:layout_width=&quot;wrap_content&quot;   
+			    android:layout_height=&quot;wrap_content&quot;
+			    android:verticalSpacing=&quot;10dip&quot;  
+    			android:horizontalSpacing=&quot;10dip&quot;
+			    android:columnWidth=&quot;100dip&quot;
+			    android:background=&quot;@drawable/grid_background&quot;
+				android:nextFocusUp=&quot;@id/gridview&quot;
+				android:nextFocusDown=&quot;@id/gridview&quot;
+				android:nextFocusLeft=&quot;@id/gridview&quot;
+				android:nextFocusRight=&quot;@id/gridview&quot;
+			    android:numColumns=&quot;auto_fit&quot;
+			    android:stretchMode=&quot;columnWidth&quot;
+				android:fadingEdge=&quot;none&quot; 
+				android:cacheColorHint=&quot;#00000000&quot;
+			    android:gravity=&quot;center&quot;
+			/&gt;
+		&lt;/LinearLayout&gt;		   	
+    			&lt;!-- sublist view layout --&gt;
+    	&lt;LinearLayout android:id=&quot;@+id/sublist_layout&quot;
+			android:layout_width=&quot;280dip&quot;
+			android:layout_height=&quot;fill_parent&quot;
+			android:visibility=&quot;gone&quot;
+			android:orientation=&quot;vertical&quot; &gt;
+		    &lt;ListView android:id=&quot;@+id/sublist&quot;
+				android:layout_width=&quot;match_parent&quot;
+				android:layout_height=&quot;wrap_content&quot;
+				android:background=&quot;@drawable/item_background&quot;
+				android:nextFocusUp=&quot;@id/sublist&quot;
+				android:nextFocusDown=&quot;@id/sublist&quot;
+				android:nextFocusLeft=&quot;@id/sublist&quot;
+				android:nextFocusRight=&quot;@+id/list&quot;
+				android:focusable=&quot;true&quot;
+				android:choiceMode=&quot;singleChoice&quot;
+	    		android:fadingEdge=&quot;none&quot; 
+				android:cacheColorHint=&quot;#00000000&quot; /&gt;
+		&lt;/LinearLayout&gt;		
+	    					&lt;!-- list view layout --&gt;
+		&lt;RelativeLayout
+		    android:layout_width=&quot;247dip&quot;
+		    android:layout_height=&quot;fill_parent&quot;
+		    android:orientation=&quot;vertical&quot;&gt;
+		    &lt;ListView android:id=&quot;@+id/list&quot;
+				android:layout_width=&quot;match_parent&quot;
+				android:layout_height=&quot;wrap_content&quot;
+    			android:background=&quot;@drawable/item_background&quot;
+				android:focusable=&quot;true&quot;
+				android:nextFocusUp=&quot;@id/list&quot;
+				android:nextFocusLeft=&quot;@id/list&quot;
+				android:nextFocusRight=&quot;@id/list&quot;
+			    android:layout_alignParentBottom=&quot;true&quot;
+				android:choiceMode=&quot;singleChoice&quot;
+	    		android:fadingEdge=&quot;none&quot; 
+				android:cacheColorHint=&quot;#00000000&quot; /&gt;
+			&lt;/RelativeLayout&gt;
+
+		&lt;/LinearLayout&gt;
+
+	&lt;/RelativeLayout&gt;
+&lt;/LinearLayout&gt;
+    </rich_text><table char_offset="2804" col_max="400" col_min="40"><row><cell>what          </cell><cell>the type of info or warning.  • MEDIA_INFO_UNKNOWN 
+• MEDIA_INFO_VIDEO_TRACK_LAGGING 
+• MEDIA_INFO_VIDEO_RENDERING_START 
+• MEDIA_INFO_BUFFERING_START 
+• MEDIA_INFO_BUFFERING_END 
+• MEDIA_INFO_BAD_INTERLEAVING 
+• MEDIA_INFO_NOT_SEEKABLE 
+• MEDIA_INFO_METADATA_UPDATE 
+• MEDIA_INFO_UNSUPPORTED_SUBTITLE 
+• MEDIA_INFO_SUBTITLE_TIMED_OUT 
+</cell></row><row><cell>extra          </cell><cell>an extra code, specific to the info. Typically implementation dependent.</cell></row><row><cell>mp          </cell><cell>the MediaPlayer the info pertains to.</cell></row></table><table char_offset="2983" col_max="400" col_min="40"><row><cell>what          </cell><cell>the type of error that has occurred:  • MEDIA_ERROR_UNKNOWN 
+• MEDIA_ERROR_SERVER_DIED 
+</cell></row><row><cell>extra          </cell><cell>an extra code, specific to the error. Typically implementation dependent.  • MEDIA_ERROR_IO 
+• MEDIA_ERROR_MALFORMED 
+• MEDIA_ERROR_UNSUPPORTED 
+• MEDIA_ERROR_TIMED_OUT 
+</cell></row><row><cell>mp          </cell><cell>the MediaPlayer the error pertains to</cell></row></table></node></cherrytree>

@@ -710,12 +710,12 @@ am start -n com.softwinner.TvdVideo/.TvdVideoActivity -d &quot;&quot;</rich_text
 dumpsys  用来给出手机中所有应用程序的信息，并且也会给出现在手机的状态。
 dumpsys [Option] 
                 meminfo 显示内存信息
-                cpuinfo 显示CPU信息
-                account 显示accounts信息
-                activity 显示所有的activities的信息
-                window 显示键盘，窗口和它们的关系
-                wifi 显示wifi信息
-
+                cpuinfo   显示CPU信息
+                account   显示accounts信息
+                activity   显示所有的activities的信息
+                window  显示键盘，窗口和它们的关系
+                wifi         显示wifi信息
+                power     显示power信息(如Wake Locks等信息)
                 上面名字为服务名字
 
 查看系统的所有服务：
