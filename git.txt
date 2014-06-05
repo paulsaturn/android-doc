@@ -202,6 +202,32 @@ git reset --mixed（默认） :取消了commit ，取消了add
 git reset --hard :取消了commit ，取消了add，取消源文件修改 
 
 ================================================================================
+# git config
+================================================================================
+git config的范围:
+--system  会配置在/etc/gitconfig文件中
+--global 会写在~/.gitconfig文件中
+	当前项目目录 .git/config文件
+后者会覆盖前者，如果变量名相同的话。
+
+设置git默认编辑器:
+git config --global core.editor vim
+
+这时候，再用git config -e 就会打开emacs编辑器，并且emacs已经打开了当前项目的config文件。
+git config -e --global 会打开~/.gitconfig文件
+git config -e --system 会打开/etc/gitconfig文件
+
+查看git设置:
+git config --list
+如果查看global的设置，用下面的命令：
+git config --global --list
+
+删除设置:
+我们可以直接编辑文件，也可以用类似下面的命令
+git config--unset --global user.name
+将~/.gitconfig文件中的user.name删除了。
+
+================================================================================
 Git fetch和git pull的区别
 ================================================================================
 Git中从远程的分支获取最新的版本到本地有这样2个命令：
