@@ -417,6 +417,593 @@ udev会根据/etc/udev/udev.conf文件中的udev_rules指定的目录，逐个�
 
 问: 我有其他的关于 udev 的问题，我应该问谁?
  答: linux-hotplug-devel 正是问这些的地方。邮件列表的地址是</rich_text><rich_text link="webs http://mailto:linux-hotplug-devel@lists.sourceforge.net">linux-hotplug-devel@lists.sourceforge.net</rich_text><rich_text> 。
+</rich_text></node><node name="ubuntu bluetooth 调试" prog_lang="custom-colors" readonly="False" tags="" unique_id="65"><rich_text>源码：bluez_4.66.orig.tar.gz
+</rich_text><rich_text scale="h2" weight="heavy">编译</rich_text><rich_text>
+编译bluez-4.66时，在configure时，遇到如下dbus错误：
+configure: error: D-Bus library is required
+
+解决方法：
+sudo apt-get install libdbus-1-dev libdbus-glib-1-dev
+make -j4
+最终产生bluetoothd，在src/.libs/目录下。
+
+ 
+</rich_text><rich_text scale="h2" weight="heavy">运行</rich_text><rich_text>
+    在ubuntu下，系统启动时默认已经启动里了bluetoothd，只是这个bluetoothd位于/usr/sbin/下。我们可以用killall -9 bluetoothd将默认启动的bluetoothd干掉，
+然后手动
+    启动我们自己编译的bluetoothd，经检验，自己编译的bluetoothd也是可以配合运行的，基本配对传文件功能也正常。
+我们用./bluetoothd -h查看bluetoothd运行命令，结果如下：
+Usage:
+   bluetoothd [OPTION...]
+ 
+ Help Options:
+   -h, --help            Show help options
+ 
+ Application Options:
+   -n, --nodaemon        Don't run as daemon in background
+   -d, --debug=DEBUG     Enable debug information output
+   -u, --udev            Run from udev mode of operation
+ 
+    最简单的情况下，我们用sudo ./bluetoothd去启动bluetoothd程序。用sudo的原因就不需要讲了，因为程序本身用到里很多root权限。我们用这个命令启动后，
+发现程序马上
+    就进入后台运行了。在看上面help出来的结果，在后面加上-n参数，这时候发现程序在控制台运行，并且可以用ctrl+c终止程序。这里我主要是为了调试蓝牙模块，
+所以用
+    控制台跑程序，以便打印一些我要的信息。其他两个参数后面在研究。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">代码解析</rich_text><rich_text>
+</rich_text><rich_text foreground="#ff0000">代码解析之：start_sdp_server(mtu, main_opts.deviceid, SDP_SERVER_COMPAT);</rich_text><rich_text>
+此部分代码在sdpd-server.c文件中，函数如下：
+1. int start_sdp_server(uint16_t mtu, const char *did, uint32_t flags)  
+2. {  
+3.     int compat = flags &amp; SDP_SERVER_COMPAT;  
+4.     int master = flags &amp; SDP_SERVER_MASTER;  
+5.   
+6.     info(&quot;Starting SDP server&quot;);  
+7.   
+8.     if (init_server(mtu, master, compat) &lt; 0) {  
+9.         error(&quot;Server initialization failed&quot;);  
+10.         return -1;  
+11.     }  
+12.   
+13.     if (did &amp;&amp; strlen(did) &gt; 0) {  
+14.         const char *ptr = did;  
+15.         uint16_t vid = 0x0000, pid = 0x0000, ver = 0x0000;  
+16.   
+17.         vid = (uint16_t) strtol(ptr, NULL, 16);  
+18.         ptr = strchr(ptr, ':');  
+19.         if (ptr) {  
+20.             pid = (uint16_t) strtol(ptr + 1, NULL, 16);  
+21.             ptr = strchr(ptr + 1, ':');  
+22.             if (ptr)  
+23.                 ver = (uint16_t) strtol(ptr + 1, NULL, 16);  
+24.             register_device_id(vid, pid, ver);  
+25.         }  
+26.     }  
+27.   
+28.     //create a channel according to socket, just like create a port according to the socket  
+29.     //then add io_accept_event func listen to the channel if there are someone connect to  
+30.     //the channel, just like we create a port on linux, then we will listen to the port because  
+31.     //there maybe someone connect to the port, here we act as a server.  
+32.     l2cap_io = g_io_channel_unix_new(l2cap_sock);  
+33.     g_io_channel_set_close_on_unref(l2cap_io, TRUE);  
+34.   
+35.     g_io_add_watch(l2cap_io, G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,  
+36.                     io_accept_event, &amp;l2cap_sock);  
+37.   
+38.     if (compat &amp;&amp; unix_sock &gt; fileno(stderr)) {  
+39.         unix_io = g_io_channel_unix_new(unix_sock);  
+40.         g_io_channel_set_close_on_unref(unix_io, TRUE);  
+41.   
+42.         g_io_add_watch(unix_io, G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,  
+43.                     io_accept_event, &amp;unix_sock);  
+44.     }  
+45.   
+46.     return 0;  
+47. }  
+    这个函数在最后创建l2cap_io，并用io_accept_event接口侦听此channel。这里我的理解就类似于linux下我们创建端口port后，
+会用listen接口去侦听创建的端口，这样一旦有client连接上来，我们就可以用accept接口去接受连接。这里我觉得应该原理相同，这里无非是用glib库实现而已。
+
+接下来看io_accept_event这个接口：
+1. static gboolean io_accept_event(GIOChannel *chan, GIOCondition cond, gpointer data)  
+2. {  
+3.     GIOChannel *io;  
+4.     int nsk;  
+5.   
+6.     if (cond &amp; (G_IO_HUP | G_IO_ERR | G_IO_NVAL)) {  
+7.         g_io_channel_unref(chan);  
+8.         return FALSE;  
+9.     }  
+10.   
+11.     if (data == &amp;l2cap_sock) {  
+12.         struct sockaddr_l2 addr;  
+13.         socklen_t len = sizeof(addr);  
+14.   
+15.         nsk = accept(l2cap_sock, (struct sockaddr *) &amp;addr, &amp;len);  
+16.     } else if (data == &amp;unix_sock) {  
+17.         struct sockaddr_un addr;  
+18.         socklen_t len = sizeof(addr);  
+19.   
+20.         nsk = accept(unix_sock, (struct sockaddr *) &amp;addr, &amp;len);  
+21.     } else  
+22.         return FALSE;  
+23.   
+24.     if (nsk &lt; 0) {  
+25.         error(&quot;Can't accept connection: %s&quot;, strerror(errno));  
+26.         return TRUE;  
+27.     }  
+28.   
+29.     //here we accept the connect from client, and then generate a new socket, the new socket  
+30.     //is for really data transfer, and here we can see we use io_session_event func to deal with   
+31.     //the new socket for processing the coming data.  
+32.     io = g_io_channel_unix_new(nsk);  
+33.     g_io_channel_set_close_on_unref(io, TRUE);  
+34.   
+35.     g_io_add_watch(io, G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,  
+36.                     io_session_event, data);  
+37.   
+38.     g_io_channel_unref(io);  
+39.   
+40.     return TRUE;  
+41. }  
+这个接口实现接受client过来的连接，并且为这个连接创建新的socket，这个新创建的socket就是用来为这次连接传输数据的。对这次连接数据的处理函数
+为其中注册的io_session_event接口。下面看io_session_event数据处理接口：
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. static gboolean io_session_event(GIOChannel *chan, GIOCondition cond, gpointer data)  
+2. {  
+3.     sdp_pdu_hdr_t hdr;  
+4.     uint8_t *buf;  
+5.     int sk, len, size;  
+6.   
+7.     if (cond &amp; G_IO_NVAL)  
+8.         return FALSE;  
+9.   
+10.     sk = g_io_channel_unix_get_fd(chan);  
+11.   
+12.     if (cond &amp; (G_IO_HUP | G_IO_ERR)) {  
+13.         sdp_svcdb_collect_all(sk);  
+14.         return FALSE;  
+15.     }  
+16.   
+17.     //first receive the sdp pdu hdr, connecting msg i guess  
+18.     len = recv(sk, &amp;hdr, sizeof(sdp_pdu_hdr_t), MSG_PEEK);  
+19.     if (len &lt;= 0) {  
+20.         sdp_svcdb_collect_all(sk);  
+21.         return FALSE;  
+22.     }  
+23.   
+24.     size = sizeof(sdp_pdu_hdr_t) + ntohs(hdr.plen);  
+25.     buf = malloc(size);  
+26.     if (!buf)  
+27.         return TRUE;  
+28.   
+29.     //then receive the real data  
+30.     len = recv(sk, buf, size, 0);  
+31.     if (len &lt;= 0) {  
+32.         sdp_svcdb_collect_all(sk);  
+33.         free(buf);  
+34.         return FALSE;  
+35.     }  
+36.   
+37.     //here we will process the data  
+38.     handle_request(sk, buf, len);  
+39.   
+40.     return TRUE;  
+41. }  
+这里首先recv了sdp头结构数据，然后再recv其他数据。我们看到他真正处理的是第二次接收的数据。把数据传送给接口handle_request处理。handle_request接口将上面recv到的数据转化为
+sdp_req_t结构体，然后辗转调用到process_request这个函数，并将sdp_req_t结构传入，sdp_req_t结构如下：
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. typedef struct request {  
+2.     bdaddr_t device;  
+3.     bdaddr_t bdaddr;  
+4.     int      local;  
+5.     int      sock;  
+6.     int      mtu;  
+7.     int      flags;  
+8.     uint8_t  *buf;  
+9.     int      len;  
+10. } sdp_req_t;  
+下面看一下process_request这个函数：
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. static void process_request(sdp_req_t *req)  
+2. {  
+3.     sdp_pdu_hdr_t *reqhdr = (sdp_pdu_hdr_t *)req-&gt;buf;  
+4.     sdp_pdu_hdr_t *rsphdr;  
+5.     sdp_buf_t rsp;  
+6.     uint8_t *buf = malloc(USHRT_MAX);  
+7.     int sent = 0;  
+8.     int status = SDP_INVALID_SYNTAX;  
+9.   
+10.     //prepare the response struct, init the response data  
+11.     memset(buf, 0, USHRT_MAX);  
+12.     rsp.data = buf + sizeof(sdp_pdu_hdr_t);  
+13.     rsp.data_size = 0;  
+14.     rsp.buf_size = USHRT_MAX - sizeof(sdp_pdu_hdr_t);  
+15.     rsphdr = (sdp_pdu_hdr_t *)buf;  
+16.   
+17.     if (ntohs(reqhdr-&gt;plen) != req-&gt;len - sizeof(sdp_pdu_hdr_t)) {  
+18.         status = SDP_INVALID_PDU_SIZE;  
+19.         goto send_rsp;  
+20.     }  
+21.     //here do all kinds of process according to the pdu id  
+22.     switch (reqhdr-&gt;pdu_id) {  
+23.     case SDP_SVC_SEARCH_REQ:  
+24.         SDPDBG(&quot;Got a svc srch req&quot;);  
+25.         status = service_search_req(req, &amp;rsp);  
+26.         rsphdr-&gt;pdu_id = SDP_SVC_SEARCH_RSP;  
+27.         break;  
+28.     case SDP_SVC_ATTR_REQ:  
+29.         SDPDBG(&quot;Got a svc attr req&quot;);  
+30.         status = service_attr_req(req, &amp;rsp);  
+31.         rsphdr-&gt;pdu_id = SDP_SVC_ATTR_RSP;  
+32.         break;  
+33.     case SDP_SVC_SEARCH_ATTR_REQ:  
+34.         SDPDBG(&quot;Got a svc srch attr req&quot;);  
+35.         status = service_search_attr_req(req, &amp;rsp);  
+36.         rsphdr-&gt;pdu_id = SDP_SVC_SEARCH_ATTR_RSP;  
+37.         break;  
+38.     /* Following requests are allowed only for local connections */  
+39.     case SDP_SVC_REGISTER_REQ:  
+40.         SDPDBG(&quot;Service register request&quot;);  
+41.         if (req-&gt;local) {  
+42.             status = service_register_req(req, &amp;rsp);  
+43.             rsphdr-&gt;pdu_id = SDP_SVC_REGISTER_RSP;  
+44.         }  
+45.         break;  
+46.     case SDP_SVC_UPDATE_REQ:  
+47.         SDPDBG(&quot;Service update request&quot;);  
+48.         if (req-&gt;local) {  
+49.             status = service_update_req(req, &amp;rsp);  
+50.             rsphdr-&gt;pdu_id = SDP_SVC_UPDATE_RSP;  
+51.         }  
+52.         break;  
+53.     case SDP_SVC_REMOVE_REQ:  
+54.         SDPDBG(&quot;Service removal request&quot;);  
+55.         if (req-&gt;local) {  
+56.             status = service_remove_req(req, &amp;rsp);  
+57.             rsphdr-&gt;pdu_id = SDP_SVC_REMOVE_RSP;  
+58.         }  
+59.         break;  
+60.     default:  
+61.         error(&quot;Unknown PDU ID : 0x%x received&quot;, reqhdr-&gt;pdu_id);  
+62.         status = SDP_INVALID_SYNTAX;  
+63.         break;  
+64.     }  
+65.   
+66. send_rsp:  
+67.     //fill in the response data and then send rsp the the client  
+68.     if (status) {  
+69.         rsphdr-&gt;pdu_id = SDP_ERROR_RSP;  
+70.         bt_put_unaligned(htons(status), (uint16_t *)rsp.data);  
+71.         rsp.data_size = sizeof(uint16_t);  
+72.     }  
+73.   
+74.     SDPDBG(&quot;Sending rsp. status %d&quot;, status);  
+75.   
+76.     rsphdr-&gt;tid  = reqhdr-&gt;tid;  
+77.     rsphdr-&gt;plen = htons(rsp.data_size);  
+78.   
+79.     /* point back to the real buffer start and set the real rsp length */  
+80.     rsp.data_size += sizeof(sdp_pdu_hdr_t);  
+81.     rsp.data = buf;  
+82.   
+83.     /* stream the rsp PDU */  
+84.     sent = send(req-&gt;sock, rsp.data, rsp.data_size, 0);  
+85.   
+86.     SDPDBG(&quot;Bytes Sent : %d&quot;, sent);  
+87.   
+88.     free(rsp.data);  
+89.     free(req-&gt;buf);  
+90. }  
+这个函数简单明了，首先初始化要返回的数据结构体，然后根据请求做出相应的动作，最后填充完rsp数据并发送给client。这里涉及到的客户端处理请求有以下几种：
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. /* 
+2.  * The PDU identifiers of SDP packets between client and server 
+3.  */  
+4. #define SDP_ERROR_RSP       0x01  
+5. #define SDP_SVC_SEARCH_REQ  0x02  
+6. #define SDP_SVC_SEARCH_RSP  0x03  
+7. #define SDP_SVC_ATTR_REQ    0x04  
+8. #define SDP_SVC_ATTR_RSP    0x05  
+9. #define SDP_SVC_SEARCH_ATTR_REQ 0x06  
+10. #define SDP_SVC_SEARCH_ATTR_RSP 0x07  
+有搜索请求，属性请求，搜索属性请求。怎么请求会回应在一起定义？今天到这里。。。
+
+</rich_text><rich_text foreground="#ff0000">
+ </rich_text><rich_text>
+</rich_text><rich_text foreground="#ff0000">代码解析之：plugin_init(config);</rich_text><rich_text>
+ 
+此函数定义在当前目录下plugin.c文件里面，主要的工作是将提供的plugins添加到plugins全局链表中，并初始化每个plugins：
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. gboolean plugin_init(GKeyFile *config)  
+2. {  
+3.     GSList *list;  
+4.     GDir *dir;  
+5.     const gchar *file;  
+6.     gchar **disabled;  
+7.     unsigned int i;  
+8.   
+9.     /* Make a call to BtIO API so its symbols got resolved before the 
+10.      * plugins are loaded. */  
+11.     bt_io_error_quark();  
+12.   
+13.     if (config)  
+14.         disabled = g_key_file_get_string_list(config, &quot;General&quot;,  
+15.                             &quot;DisablePlugins&quot;,  
+16.                             NULL, NULL);  
+17.     else  
+18.         disabled = NULL;  
+19.   
+20.     DBG(&quot;Loading builtin plugins&quot;);  
+21.   
+22.     //add default plugins, those plugins always need for bluetoothd runing  
+23.     //those plugins will add to the global link named plugins  
+24.     for (i = 0; &lt;span style=&quot;color:#990000;&quot;&gt;&lt;strong&gt;__bluetooth_builtin&lt;/strong&gt;&lt;/span&gt;[i]; i++) {  
+25.         if (is_disabled(__bluetooth_builtin[i]-&gt;name, disabled))  
+26.             continue;  
+27.   
+28.         &lt;span style=&quot;color:#990000;&quot;&gt;&lt;strong&gt;add_plugin(NULL,  __bluetooth_builtin[i]);&lt;/strong&gt;&lt;/span&gt;  
+29.     }  
+30.   
+31.     if (strlen(PLUGINDIR) == 0) {  
+32.         g_strfreev(disabled);  
+33.         goto start;  
+34.     }  
+35.   
+36.     DBG(&quot;Loading plugins %s&quot;, PLUGINDIR);  
+37.   
+38.     dir = g_dir_open(PLUGINDIR, 0, NULL);  
+39.     if (!dir) {  
+40.         g_strfreev(disabled);  
+41.         goto start;  
+42.     }  
+43.   
+44.     //add user plugins, those plugins stored in PLUGINDIR path, and the   
+45.     //PLUGINDIR = /usr/local/lib/bluetooth/plugins. The bluetoothd will  
+46.     //find all those plugins which name *.so, and open them, get the method  
+47.     //named bluetooth_plugin_desc, it will also add those plugins to the  
+48.     //plugins links.  
+49.     while ((file = g_dir_read_name(dir)) != NULL) {  
+50.         struct bluetooth_plugin_desc *desc;  
+51.         void *handle;  
+52.         gchar *filename;  
+53.   
+54.         if (g_str_has_prefix(file, &quot;lib&quot;) == TRUE ||  
+55.                 g_str_has_suffix(file, &quot;.so&quot;) == FALSE)  
+56.             continue;  
+57.   
+58.         if (is_disabled(file, disabled))  
+59.             continue;  
+60.   
+61.         filename = g_build_filename(PLUGINDIR, file, NULL);  
+62.   
+63.         handle = dlopen(filename, RTLD_NOW);  
+64.         if (handle == NULL) {  
+65.             error(&quot;Can't load plugin %s: %s&quot;, filename,  
+66.                                 dlerror());  
+67.             g_free(filename);  
+68.             continue;  
+69.         }  
+70.   
+71.         g_free(filename);  
+72.   
+73.         desc = dlsym(handle, &quot;bluetooth_plugin_desc&quot;);  
+74.         if (desc == NULL) {  
+75.             error(&quot;Can't load plugin description: %s&quot;, dlerror());  
+76.             dlclose(handle);  
+77.             continue;  
+78.         }  
+79.   
+80.         if (add_plugin(handle, desc) == FALSE)  
+81.             dlclose(handle);  
+82.     }  
+83.   
+84.     g_dir_close(dir);  
+85.   
+86.     g_strfreev(disabled);  
+87.   
+88. start:  
+89.     //init all of the plugins by calling the plugins init function  
+90.     for (list = plugins; list; list = list-&gt;next) {  
+91.         struct bluetooth_plugin *plugin = list-&gt;data;  
+92.   
+93.         if (plugin-&gt;desc-&gt;init() &lt; 0) {  
+94.             error(&quot;Failed to init %s plugin&quot;, plugin-&gt;desc-&gt;name);  
+95.             continue;  
+96.         }  
+97.   
+98.         plugin-&gt;active = TRUE;  
+99.     }  
+100.   
+101.     return TRUE;  
+102. }  
+可以看到，这个函数执行的最终结果会生成plugins全局链表。从函数中可以看到，它是通过add_plugin()函数将__bluetooth_builtin[]数组中的成员添加到plugins全局变量中的。__bluetooth_builtin具体是什么东西呢？看它的定义，这个数组定义在builtin.h文件中，如下：
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. extern struct bluetooth_plugin_desc __bluetooth_builtin_audio;  
+2. extern struct bluetooth_plugin_desc __bluetooth_builtin_input;  
+3. extern struct bluetooth_plugin_desc __bluetooth_builtin_serial;  
+4. extern struct bluetooth_plugin_desc __bluetooth_builtin_network;  
+5. extern struct bluetooth_plugin_desc __bluetooth_builtin_service;  
+6. extern struct bluetooth_plugin_desc __bluetooth_builtin_hciops;  
+7. extern struct bluetooth_plugin_desc __bluetooth_builtin_hal;  
+8. extern struct bluetooth_plugin_desc __bluetooth_builtin_storage;  
+9.   
+10. static struct bluetooth_plugin_desc *__bluetooth_builtin[] = {  
+11.   &amp;__bluetooth_builtin_audio,  
+12.   &amp;__bluetooth_builtin_input,  
+13.   &amp;__bluetooth_builtin_serial,  
+14.   &amp;__bluetooth_builtin_network,  
+15.   &amp;__bluetooth_builtin_service,  
+16.   &amp;__bluetooth_builtin_hciops,  
+17.   &amp;__bluetooth_builtin_hal,  
+18.   &amp;__bluetooth_builtin_storage,  
+19.   NULL  
+20. };  
+搜索整个代码工程，都无法找到__bluetooth_builtin_audio等等变量的定义。看这些成员都是extern应用，定义肯定在外部。要看看它们具体是怎么定义的，首先要知道如下#define定义：</rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7605379">#define中的##使用</rich_text><rich_text>。在了解里这个定义后，看下其中一个（其他类似）如__bluetooth_builtin_audio，来看一下以下这个文件：audio/main.c。这个文件中最下面有个宏定义：
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. BLUETOOTH_PLUGIN_DEFINE(audio, VERSION,  
+2.             BLUETOOTH_PLUGIN_PRIORITY_DEFAULT, audio_init, audio_exit)  
+这个宏定义在src/plugin.h文件中，如下：
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. #ifdef BLUETOOTH_PLUGIN_BUILTIN  
+2. #define BLUETOOTH_PLUGIN_DEFINE(name, version, priority, init, exit) \  
+3.         struct bluetooth_plugin_desc __bluetooth_builtin_ ## name = { \  
+4.             #name, version, priority, init, exit \  
+5.         };  
+6. #else  
+7. #define BLUETOOTH_PLUGIN_DEFINE(name, version, priority, init, exit) \  
+8.         extern struct bluetooth_plugin_desc bluetooth_plugin_desc \  
+9.                 __attribute__ ((visibility(&quot;default&quot;))); \  
+10.         struct bluetooth_plugin_desc bluetooth_plugin_desc = { \  
+11.             #name, version, priority, init, exit \  
+12.         };  
+13. #endif  
+根据</rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7605379">#define中的##使用</rich_text><rich_text>这个语法，可以知道__bluetooth_builtin_audio结构体变量定义就是audio/main.c中这个宏，并且已经为这个结构体变量附好了初值（见audio/main.c宏定义中对应的参数值）。
+
+ 
+代码解析之：adapter_ops_setup()
+首先看函数定义：
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. int adapter_ops_setup(void)  
+2. {  
+3.     if (!adapter_ops)  
+4.         return -EINVAL;  
+5.   
+6.     return adapter_ops-&gt;setup();  
+7. }  
+函数很简单，执行了setup函数指针。这里主要看adapter_ops这个全局变量何时被赋值。从上一个函数plugin_init介绍，提到在将全局__bluetooth_builtin[]数组加载到plugins后，最后会依次执行各个plugins的init函数。看下加载__bluetooth_builtin_hciops时，调用的init函数，这个函数定义在plugins/hciops.c中，即hciops_init函数。这个函数将传入的静态全局变量hci_ops赋值给了adapter_ops，所以变量adapter_ops即变量hci_ops。所以此处调用adapter_ops-&gt;setup()，即调用hciops.c中的hciops_setup函数。看hciops_setup函数定义如下：
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. static int hciops_setup(void)  
+2. {  
+3.     struct sockaddr_hci addr;  
+4.     struct hci_filter flt;  
+5.     GIOChannel *ctl_io, *child_io;  
+6.     int sock, err;  
+7.   
+8. info(&quot;hciops_setup\n&quot;);  
+9.   
+10.     if (child_pipe[0] != -1)  
+11.         return -EALREADY;  
+12.   
+13.     if (pipe(child_pipe) &lt; 0) {  
+14.         err = errno;  
+15.         error(&quot;pipe(): %s (%d)&quot;, strerror(err), err);  
+16.         return -err;  
+17.     }  
+18.   
+19.     child_io = g_io_channel_unix_new(child_pipe[0]);  
+20.     g_io_channel_set_close_on_unref(child_io, TRUE);  
+21.     child_io_id = g_io_add_watch(child_io,  
+22.                 G_IO_IN | G_IO_ERR | G_IO_HUP | G_IO_NVAL,  
+23.                 child_exit, NULL);  
+24.     g_io_channel_unref(child_io);  
+25.   
+26.     /* Create and bind HCI socket */  
+27.     sock = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HCI);  
+28.     if (sock &lt; 0) {  
+29.         err = errno;  
+30.         error(&quot;Can't open HCI socket: %s (%d)&quot;, strerror(err),  
+31.                                 err);  
+32.         return -err;  
+33.     }  
+34.   
+35.     /* Set filter */  
+36.     hci_filter_clear(&amp;flt);  
+37.     hci_filter_set_ptype(HCI_EVENT_PKT, &amp;flt);  
+38.     hci_filter_set_event(EVT_STACK_INTERNAL, &amp;flt);  
+39.     if (setsockopt(sock, SOL_HCI, HCI_FILTER, &amp;flt,  
+40.                             sizeof(flt)) &lt; 0) {  
+41.         err = errno;  
+42.         error(&quot;Can't set filter: %s (%d)&quot;, strerror(err), err);  
+43.         return -err;  
+44.     }  
+45.   
+46.     memset(&amp;addr, 0, sizeof(addr));  
+47.     addr.hci_family = AF_BLUETOOTH;  
+48.     addr.hci_dev = HCI_DEV_NONE;  
+49.     if (bind(sock, (struct sockaddr *) &amp;addr,  
+50.                             sizeof(addr)) &lt; 0) {  
+51.         err = errno;  
+52.         error(&quot;Can't bind HCI socket: %s (%d)&quot;,  
+53.                             strerror(err), err);  
+54.         return -err;  
+55.     }  
+56.   
+57.     ctl_io = g_io_channel_unix_new(sock);  
+58.     g_io_channel_set_close_on_unref(ctl_io, TRUE);  
+59.   
+60.     ctl_io_id = g_io_add_watch(ctl_io, G_IO_IN, io_stack_event, NULL);  
+61.   
+62.     g_io_channel_unref(ctl_io);  
+63.   
+64.     /* Initialize already connected devices */  
+65.     return init_known_adapters(sock);  
+66. }  
+这个函数首先创建里一个管道，这个管道通向哪里目前尚未知。然后为HCI层创建里一个sock，绑定一个channel：ctl_io，并用io_stack_event事件处理来处理从这个channel获取的数据。最后初始化HCI适配器，init_known_adapters。下面看以下初始化HCI适配器的函数：
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. static int init_known_adapters(int ctl)  
+2. {  
+3.     struct hci_dev_list_req *dl;  
+4.     struct hci_dev_req *dr;  
+5.     int i, err;  
+6.   
+7. info(&quot;init_known_adapters\n&quot;);  
+8.   
+9.     dl = g_try_malloc0(HCI_MAX_DEV * sizeof(struct hci_dev_req) + sizeof(uint16_t));  
+10.     if (!dl) {  
+11.         err = errno;  
+12.         error(&quot;Can't allocate devlist buffer: %s (%d)&quot;,  
+13.                             strerror(err), err);  
+14.         return -err;  
+15.     }  
+16.   
+17.     dl-&gt;dev_num = HCI_MAX_DEV;  
+18.     dr = dl-&gt;dev_req;  
+19.   
+20.     if (ioctl(ctl, HCIGETDEVLIST, (void *) dl) &lt; 0) {  
+21.         err = errno;  
+22.         error(&quot;Can't get device list: %s (%d)&quot;,  
+23.                             strerror(err), err);  
+24.         g_free(dl);  
+25.         return -err;  
+26.     }  
+27.   
+28.     for (i = 0; i &lt; dl-&gt;dev_num; i++, dr++) {  
+29.         device_event(HCI_DEV_REG, dr-&gt;dev_id);  
+30.   
+31.         if (hci_test_bit(HCI_UP, &amp;dr-&gt;dev_opt))  
+32.             device_event(HCI_DEV_UP, dr-&gt;dev_id);  
+33.     }  
+34.   
+35.     g_free(dl);  
+36.     return 0;  
+37. }  
+从函数中可以看出，这里支持最大HCI设备个数为16个，即HCI_MAX_DEV的值。这里用ioctl从驱动部分取得真正HCI适配器，获取的HCI设备列表是hci_dev_req链表。然后循环链表，用device_event函数依次注册并启动HCI设备。
+
+
+代码解析之：rfkill_init()
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. void rfkill_init(void)  
+2. {  
+3.     int fd;  
+4.   
+5.     if (!main_opts.remember_powered)  
+6.         return;  
+7.   
+8.     fd = open(&quot;/dev/rfkill&quot;, O_RDWR);  
+9.     if (fd &lt; 0) {  
+10.         error(&quot;Failed to open RFKILL control device&quot;);  
+11.         return;  
+12.     }  
+13.   
+14.     channel = g_io_channel_unix_new(fd);  
+15.     g_io_channel_set_close_on_unref(channel, TRUE);  
+16.   
+17.     g_io_add_watch(channel, G_IO_IN | G_IO_NVAL | G_IO_HUP | G_IO_ERR,  
+18.                             rfkill_event, NULL);  
+19. }  
+这个函数打开了/dev/rfkill文件，该文件主要用来暂未知（猜测是控制上电吧）。对文件操作用rfkill_event事件处理函数来处理。要看rfkill_event事件处理函数，先看下如下结构体：
+
+</rich_text><rich_text weight="heavy">[cpp]</rich_text><rich_text> </rich_text><rich_text link="webs http://blog.csdn.net/jmhgg88/article/details/7588995#">view plaincopy</rich_text><rich_text>1. struct rfkill_event {  
+2.     uint32_t idx;  
+3.     uint8_t  type;  
+4.     uint8_t  op;  
+5.     uint8_t  soft;  
+6.     uint8_t  hard;  
+7. };  
 </rich_text></node></node><node name="Linux3.0.6内核task_struct注释 " prog_lang="custom-colors" readonly="False" tags="" unique_id="61"><rich_text justification="left"></rich_text><rich_text>
 </rich_text><codebox char_offset="0" frame_height="1360" frame_width="940" highlight_brackets="True" show_line_numbers="False" syntax_highlighting="chdr" width_in_pixels="True">struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, &gt;0 stopped */
