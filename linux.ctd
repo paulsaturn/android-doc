@@ -8118,7 +8118,7 @@ if (*addr == oldvalue) {
      return 0;
   }
 
-</rich_text></node><node name="关于热插拔usb hotplug /proc/sys/kernel mdev udev busybox " prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text foreground="#000000">这篇文章说的很好http://blog.chinaunix.net/u1/38994/showart_2022040.html：</rich_text><rich_text>  
+</rich_text></node><node name="关于热插拔hotplug /proc/sys/kernel mdev udev busybox " prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text foreground="#000000">这篇文章说的很好http://blog.chinaunix.net/u1/38994/showart_2022040.html：</rich_text><rich_text>  
 </rich_text><rich_text foreground="#000000">如何使用busybox精简版本udev程序--mdev动态创建插入的u盘和鼠标等设备 </rich_text><rich_text>  
 </rich_text><rich_text foreground="#000000">busybox的mdev是一个精简了的udev管理程序,它可以间接的以hotplug方式被内核调用,进而在arm平台上/dev目录下动态创建设备 节点,因为hotplug会被内核发送uevent之前调用,所以如果动态可插拔设备很多,很频繁,那么每次内核都会调用elf格式的用户空间的 hotplug,生成一个独立的hotplug程序来处理,所以hotplug是一个非常笨重的实现方法,但是在我们的arm开发板上,可插拔设备并没有 想象中的频繁
  目前还没有必要移植完全版的udev,所以完全可以在不复杂的嵌入式设备上使用mdev来管理动态节点,
