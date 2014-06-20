@@ -228,6 +228,117 @@ xmlns:soap12=&quot;</rich_text><rich_text link="webs http://www.w3.org/2003/05/s
     &lt;/CancelOrderResponse&gt;
 &lt;/soap12:Body&gt;
 &lt;/soap12:Envelope&gt;
+</rich_text></node><node name="Ubuntu dns server安装配置" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text>测试地址： </rich_text><rich_text link="webs http://pad.timetop.cn/">http://pad.timetop.cn/</rich_text><rich_text>
+
+1. 修改全局选项   
+sudo vi /etc/bind/named.conf.options
+转发的IP地址修改成广东电信的DNS IP：
+forwarders {
+	202.96.128.166;
+};
+         
+2. 添加zone  
+sudo vi /etc/bind/named.conf.default-zones
+	添加2个zone ，“db.timetop.cn”用来正解、“db.192”是用来反解
+
+zone &quot;timetop.cn&quot;  {
+	 type master;
+	 file &quot;/etc/bind/db.timetop.cn&quot;;
+};
+
+zone &quot;1.169.192.in-addr.arpa&quot; {
+	type master;
+	file &quot;/etc/bind/db.192&quot;;
+};
+
+3. 设定DNS的正解：
+sudo cp /etc/bind/db.local /etc/bind/db.timetop.cn
+sudo vi /etc/bind/db.timetop.cn
+;
+; BIND data file for local loopback interface
+;
+$TTL    604800
+@       IN      SOA     timetop.cn. root.timetop.cn. (
+                              2         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+; name to IP
+@       IN      NS      timetop.cn.
+@       IN      A       192.168.1.46
+pad		IN      A       192.168.1.46
+
+4. 设定DNS的反解:  
+sudo cp /etc/bind/db.127 /etc/bind/db.192
+sudo vi /etc/bind/db.192
+;
+; BIND reverse data file for local loopback interface
+;
+$TTL    604800
+@       IN      SOA     timetop.cn. root.timetop.cn. (
+                              1         ; Serial
+                         604800         ; Refresh
+                          86400         ; Retry
+                        2419200         ; Expire
+                         604800 )       ; Negative Cache TTL
+;
+@       IN      NS      timetop.cn.
+1.0.0   IN      PTR     pad.timetop.cn.
+46     IN      PTR   	pad.timetop.cn.
+
+5. 启动bind服务： 
+sudo service bind9 restart
+
+6、查看启动bind服务的日志： 
+tail /var/log/syslog
+Jun 20 13:46:21 paul-ubuntu named[7515]: command channel listening on 127.0.0.1#953
+Jun 20 13:46:21 paul-ubuntu named[7515]: command channel listening on ::1#953
+Jun 20 13:46:21 paul-ubuntu named[7515]: zone 0.in-addr.arpa/IN: loaded serial 1
+Jun 20 13:46:21 paul-ubuntu named[7515]: zone 127.in-addr.arpa/IN: loaded serial 1
+Jun 20 13:46:21 paul-ubuntu named[7515]: zone 255.in-addr.arpa/IN: loaded serial 1
+Jun 20 13:46:21 paul-ubuntu named[7515]: zone localhost/IN: loaded serial 2
+Jun 20 13:46:21 paul-ubuntu named[7515]: managed-keys-zone ./IN: loaded serial 2
+Jun 20 13:46:21 paul-ubuntu named[7515]: running
+Jun 20 13:46:22 paul-ubuntu named[7515]: validating @0x7f9cf44d0e10: . NS: got insecure response; parent indicates it should be secure
+Jun 20 13:46:22 paul-ubuntu named[7515]: error (insecurity proof failed) resolving './NS/IN': 202.96.128.166#53
+
+7.在本机(192.168.1.254)上设置DNS ：
+1).
+sudo vi /etc/resolv.conf
+	添加一行, 
+	nameserver 192.169.1.46
+
+2).永久保存:
+sudo vi /etc/resolvconf/resolv.conf.d/base
+	添加一行, 
+	nameserver 192.169.1.46
+	
+sudo resolvconf -u	
+
+cat /etc/resolv.conf
+	是否有下面一行：
+	nameserver 192.169.1.46
+
+8. 测试DNS
+1). 在DNS Server端
+命令：host pad.timetop.cn (正解)
+	pad.timetop.cn has address 192.169.1.46
+
+命令：host 192.169.1.46     （反解）
+	46.1.169.192.in-addr.arpa domain name pointer pad.timetop.cn.
+
+2). 在客户端
+命令： nslookup </rich_text><rich_text link="webs http://www.baidu.com">www.baidu.com</rich_text><rich_text>
+Server:		202.96.128.166
+Address:	202.96.128.166#53
+
+Non-authoritative answer:
+</rich_text><rich_text link="webs http://www.baidu.com	canonical">www.baidu.com	canonical</rich_text><rich_text> name = </rich_text><rich_text link="webs http://www.a.shifen.com.">www.a.shifen.com.</rich_text><rich_text>
+Name:	</rich_text><rich_text link="webs http://www.a.shifen.com">www.a.shifen.com</rich_text><rich_text>
+Address: 115.239.210.27
+Name:	</rich_text><rich_text link="webs http://www.a.shifen.com">www.a.shifen.com</rich_text><rich_text>
+Address: 115.239.211.110
 </rich_text></node><node name="websocket简介" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text> WebSocket是html5新增加的一种通信协议，目前流行的浏览器都支持这个协议，例如 Chrome，Safrie，Firefox，Opera，IE等等，对该协议支持最早的应该是chrome，从chrome12就已经开始支持，随着协 议草案的不断变化，各个浏览器对协议的实现也在不停的更新。该协议还是草案，没有成为标准，不过成为标准应该只是时间问题了，从WebSocket草案的 提出到现在已经有十几个版本了，目前最新的是版本17，所对应的协议版本号为13，目前对该协议支持最完善的浏览器应该是chrome，毕竟 WebSocket协议草案也是Google发布的。
 
 </rich_text><rich_text scale="h2" weight="heavy">一. WebSocket API简介</rich_text><rich_text>
