@@ -277,7 +277,191 @@ terminal中直接调用库函数execve()执行另外一个shell命令,那么sh�
      slavename = ptsname(fdm); /*  get name of slave */
      fds = open(slavename, O_RDWR); /*  open slave */
      ioctl(fds, I_PUSH, &quot;ptem&quot;); /*  push ptem */
-     ioctl(fds, I_PUSH, &quot;ldterm&quot;); /*  push ldterm */</rich_text></node></node><node name="udev实现原理" prog_lang="custom-colors" readonly="False" tags="" unique_id="63"><rich_text>    相对于linux来说，udev还是一个新事物。然而，尽管它03年才出现，尽管它很低调(J)，但它无疑已经成为linux下不可或缺的组件了。udev是什么？它是如何实现的？最近研究Linux设备管理时，花了一些时间去研究udev的实现。
+     ioctl(fds, I_PUSH, &quot;ldterm&quot;); /*  push ldterm */</rich_text></node></node><node name="upstart" prog_lang="custom-colors" readonly="False" tags="" unique_id="72"><rich_text></rich_text><node name="传统的启动方式" prog_lang="custom-colors" readonly="False" tags="" unique_id="71"><rich_text scale="h2" weight="heavy">1.传统的启动方式</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">一)、Linux 系统主要启动步骤</rich_text><rich_text>
+　　读取 MBR 的信息，启动 Boot Manager。
+　　加载系统内核，启动 init 进程， init 进程是 Linux 的根进程，所有的系统进程都是它的子进程。
+　　init 进程读取 /etc/inittab 文件中的信息，并进入预设的运行级别。通常情况下 /etc/rcS.d/ 目录下的启动脚本首先被执行，然后是/etc/rcN.d/ 目录。
+</rich_text><rich_text foreground="#ffff00000000">       Ubuntu里没有/etc/inittab，要修改/etc/init/rc-sysinit.conf中的
+       env DEFAULT_RUNLEVEL=2</rich_text><rich_text>
+       
+　　根据 /etc/rcS.d/ 文件夹中对应的脚本启动 Xwindow 服务器 xorg，Xwindow 为 Linux 下的图形用户界面系统。
+　　启动登录管理器，等待用户登录。
+
+</rich_text><rich_text scale="h3" weight="heavy">二)、运行级别</rich_text><rich_text>
+　　Ubuntu中的运行级别
+　　0(关闭系统)
+　　1(单用户模式，只允许root用户对系统进行维护。)
+　　2 到 5(多用户模式，其中3为字符界面，5为图形界面。)
+　　6(重启系统)
+　　切换运行级别
+　　init [0123456Ss]
+　　例如：init 0 命令关机; init 6 命令重新启动
+　　启动项管理工具
+　　sudo install sysv-rc-conf //或者使用带gui的工具bum
+　　sudo sysv-rc-conf
+
+</rich_text><rich_text scale="h3" weight="heavy">三)、update-rc.d命令详解</rich_text><rich_text>
+　　从所有的运行级别中删除指定启动项
+　　update-rc.d -f remove
+　　按指定顺序、在指定运行级别中启动或关闭
+　　update-rc.d start|stop
+　　实例：update-rc.d apachectl start 20 2 3 4 5 . stop 20 0 1 6 .
+　　解析：表示在2、3、4、5这五个运行级别中，由小到大，第20个开始运行apachectl;在 0 1 6这3个运行级别中，第20个关闭apachectl。这是合并起来的写法，注意它有2个点号，效果等于下面方法：
+　　update-rc.d apachectl defaults
+　　A启动后B才能启动，B关闭后A才关闭
+　　update-rc.d A defaults 80 20
+　　update-rc.d B defaults 90 10
+　　启动和关闭顺序为90，级别默认
+　　update-rc.d defaults 90
+ --------------------------------------------------------------
+ 
+ 在Linux系统下，一个Services的启动、停止以及重启通常是通过/etc/init.d目录下的脚本来控制的。然而，在启动或改变运行级别时， 是在/etc/rcX.d中来搜索脚本。其中X是运行级别的number。本文将解释如何启动、关闭和修改服务的运行。当你在Debian下安装一个新的 服务，比如Apache2，安装完成后，默认情况下它会启动，并在下一次重启后自动启动。但是如果你不是一直需要这个服务，只在需要的时候启用它，你可以 禁用它。直到你需要使用的时候，执行如下指令：
+ /etc/init.d/apache2 start
+
+要实现这个目的，你需要先在/etc/rcX.d目录中删除所有apache2的符号链接，但这个方法操作麻烦，且效率低下。因此，我们建议你使用update-rc.d命令来实现这个功能。
+</rich_text><rich_text scale="h3" underline="single" weight="heavy">1、删除一个服务</rich_text><rich_text>
+ 如果你想手动的完全禁用Apache2服务，你需要删除其中的所有在/etc/rcX.d中的单一链路。但是如果使用update-rc.d，则非常简单：  
+update-rc.d -f apache2 remove
+参数-f是强制删除符号链接，即使/etc/init.d/apache2仍然存在。Note：这个命令仅仅禁止该服务，直到该服务被升级。如果你想在服务升级后仍然保持被禁用。应该执行如下的命令：
+update-rc.d apache2 stop 80 0 1 2 3 4 5 6.
+</rich_text><rich_text underline="single">
+</rich_text><rich_text scale="h3" underline="single" weight="heavy">2、增加一个服务</rich_text><rich_text>
+如果你想重新添加这个服务并让它开机自动执行，你需要执行以下命令： 
+update-rc.d apache2 defaults
+
+并且可以指定该服务的启动顺序：
+update-rc.d apache2 defaults 90
+
+还可以更详细的控制start与kill顺序：
+update-rc.d apache2 defaults 20 80
+
+其中前面的20是start时的运行顺序级别，80为kill时的级别。也可以写成：
+update-rc.d apache2 start 20 2 3 4 5 . stop 80 0 1 6 .
+其中0～6为运行级别。 update-rc.d命令不仅适用Linux服务，编写的脚本同样可以用这个命令设为开机自动运行
+
+</rich_text><rich_text scale="h2" weight="heavy">参考:</rich_text><rich_text>
+man update-rc.d
+man insserv
+man initctl
+http://askubuntu.com/questions/5039/what-is-the-difference-between-etc-init-and-etc-init-d 
+man service
+</rich_text></node><node name="upstart启动方式" prog_lang="custom-colors" readonly="False" tags="" unique_id="73"><rich_text>Debian启动系统维护者们说，现在的Debian Sysvinit启动系统因为其不可靠性，将会逐渐被upstart代替。 
+UpStart: 基于事件的启动系统
+Sysvinit:基于结果的启动系统
+
+SysVinit守护进程（sysvinit软件包）是一个基于运行级别的系统，它使用运行级别（单用户、多用户以及其他更多级别）和链接（位于/etc /rc?.d目录中，分别链接到/etc/init.d中的init脚本）来启动和关闭系统服务。Upstart init守护进程（upstart软件包）则是基于事件的系统，它使用事件来启动和关闭系统服务。
+
+几个很重要的定义：
+</rich_text><rich_text foreground="#ffff00000000">event: 事件</rich_text><rich_text>， 是指系统状态的一种改变，这种改变会被通知给init进程。举例来说，boot loader会触发startup事件，系统进入runlevel 2的时候会触发runlevel 2事件，某个文件系统被挂载时会触发path-mounted事件， USB设备的插拔也都会产生相应的事件。这些时间会被通知给init进程，然后init进程来决定系统如何处理这些事件。
+</rich_text><rich_text foreground="#ffff00000000">job: 作业</rich_text><rich_text>，一项作业是init进程读入的一系列指令。你可以使用initctl start或initctl stop命令来开始或停止某项作业，这是调用作业的一种方式。另一种方式是当系统被告知发生什么事件event后，运行该事件所对应的作业。
+    可用sudo  initctl list命令列出所有系统作业的运行状态。
+</rich_text><rich_text foreground="#ffff00000000">task: 任务</rich_text><rich_text>， a job that performs its work and returns to a waiting state when it is done. 中文是一种完成指定工作后进去等待状态的作业。
+</rich_text><rich_text foreground="#ffff00000000">service: 服务</rich_text><rich_text>，a job that does not normally terminate by itself. 举个例子来说， gettys 是以服务来实现的。 init进程监视所有服务，并在服务失败的时候重启服务。
+
+/etc/event.d目录下是所有init进程读取的job(作业)定义。该目录下的每个文件都定义了一个job(作业)，和对应该作业的事件。这和windows下的消息机制有些类似。在这里新建一个文件myjob：
+$cat /etc/event.d/myjob
+start on hithere
+script 
+    echo  &quot;Hi there, here I am!&quot; &gt; /tmp/myjob.out
+    date &gt;&gt; /tmp/myjob.out
+end script
+这个文件定义了一个作业，在作业在收到hithere事件后触发。该作业运行时将&quot;Hi there, here I am!&quot;和系统时间打印到/tmp/myjob.out
+我们可以使用sudo initctl emit hithere来触发hithere事件，从而导致这项作业的执行.
+ $ sudo initctl emit hithere
+hithere
+myjob (start) waiting
+myjob (start) starting
+myjob (start) pre-start
+myjob (start) spawned, process 8918
+myjob (start) post-start, (main) process 8918
+myjob (start) running, process 8918
+myjob (stop) running
+myjob (stop) stopping
+myjob (stop) killed
+myjob (stop) post-stop
+myjob (stop) waiting
+$ cat /tmp/myjob.out
+Hi there, here I am!
+Mon Oct 26 23:44:29 CST 2009
+$ sudo initctl list myjob
+myjob (stop) waiting
+这个例子演示了事件如何触发作业的运行机制。
+
+在明白事件机制后，我们来看一下ubuntu是怎么利用事件机制来进行启动的。
+init启动后读入event.d中的所有作业定义，看其中的一个
+$ cat /etc/event.d/rc2 
+# rc2 - runlevel 2 compatibility 
+# 
+# This task runs the old sysv-rc runlevel 2 (&quot;multi-user&quot;) scripts. It 
+# is usually started by the telinit compatibility wrapper.
+start on runlevel 2 
+stop on runlevel [!2] 
+console output 
+script 
+    set $(runlevel --set 2 || true) 
+    if [ &quot;$1&quot; != &quot;unknown&quot; ]; then 
+        PREVLEVEL=$1
+         RUNLEVEL=$2 
+        export PREVLEVEL RUNLEVEL 
+    fi 
+
+    exec /etc/init.d/rc 2 
+end script
+看前两行和倒数第二行，
+前两行意思：这里用的前面所说的事件机制，当runlevel为2的时候，系统运行script中的语句
+倒数第二行：调用/etc/init.d/rc，传入参数只有一个2
+接下来看/etc/init.d/rc文件, 这个文件很长，
+cat /etc/init.d/rc
+#! /bin/sh
+#
+# rc
+#
+# Starts/stops services on runlevel changes.
+...
+# Is there an rc directory for this new runlevel?
+if [ -d /etc/rc$runlevel.d ]
+then
+...
+    # First, run the KILL scripts.
+    if [ &quot;$previous&quot; != N ]
+    then
+        ...
+        for s in /etc/rc$runlevel.d/K*
+        ...
+    # Now run the START scripts for this runlevel.
+    for s in /etc/rc$runlevel.d/S*
+    ...
+...
+这里只简短摘取其中一些重要的地方，/etc/init.d/rc文件会根据系统运行级别runlevel来查找文件夹/etc/rc$runlevel.d, 如果runlevel=2, 则查找/etc/rc2.d文件夹, 并运行其中的
+/etc/rc$runlevel.d/K* 和 /etc/rc$runlevel.d/S* 
+脚本。K代表Stop, S代表Start, K*即需要停止的服务等，S*即需要开始运行的服务等， 
+查看/etc/rc2.d目录下的文件：
+$ls -l /etc/rc2.d
+total 4
+-rw-r--r-- 1 root root 556 2008-04-19 13:05 README
+lrwxrwxrwx 1 root root  19 2009-10-12 09:54 S01policykit -&gt; ../init.d/policykit
+lrwxrwxrwx 1 root root  17 2009-10-12 09:54 S05vbesave -&gt; ../init.d/vbesave
+lrwxrwxrwx 1 root root  15 2009-10-12 09:54 S10acpid -&gt; ../init.d/acpid
+lrwxrwxrwx 1 root root  25 2009-10-12 09:54 S10powernowd.early -&gt; ../init.d/powernowd.early
+lrwxrwxrwx 1 root root  18 2009-10-12 09:54 S10sysklogd -&gt; ../init.d/sysklogd
+lrwxrwxrwx 1 root root  34 2009-10-12 09:54 S10xserver-xorg-input-wacom -&gt; ../init.d/xserver-xorg-input-wacom
+...
+</rich_text><rich_text foreground="#ffff00000000">可以看出/etc/rc2.d下面的文件全都是链接到/etc/init.d目录下的服务程序， 而以S开头的链接名表示以Start参数来执行对应的服务程序，以K开头的链接名表示以Stop参数来执行对应的服务程序。而S和K后面的数字代表启动顺序或关闭顺序。S01policykit会在S05vbesave之前执行，因为01&lt;05。这些细节都在/etc/init.d/rc中实现。</rich_text><rich_text>
+
+/etc/rcn.d目录中的每一个链接均指向/etc/init.d目录中的一个文件。 
+
+/etc/rc.local
+当系统启动的时候，在将其他init脚本执行完毕之后，系统就会执行/etc/rc.local文件。可以将用来定制系统的命令放在 rc.local文件中。虽然可以将任何你想要的命令添加到文件中，但是最好还是让这些命令在后台运行。这样一来，如果有些命令挂起，它们不会终止引导进程。
+
+</rich_text><rich_text foreground="#00000000ffff">下面是Upstart大致的一个启动过程：
+1,内核启动init
+2,init找到/etc/event.d/rc-default文件，确定默认的运行级别(X)
+3,触发相应的runlevel事件，开始运行/etc/event.d/rcX
+4,rcX运行/etc/init.d/rc，传入参数X
+5,/etc/init.d/rc脚本进行一系列设置，最后运行相应的/etc/rcX.d/中的脚本
+6,/etc/rcX.d/中的脚本按事先设定的优先级依次启动，直至最后给出登录画面(启动X服务器和GDM)</rich_text><rich_text>
+</rich_text></node></node><node name="udev实现原理" prog_lang="custom-colors" readonly="False" tags="" unique_id="63"><rich_text>    相对于linux来说，udev还是一个新事物。然而，尽管它03年才出现，尽管它很低调(J)，但它无疑已经成为linux下不可或缺的组件了。udev是什么？它是如何实现的？最近研究Linux设备管理时，花了一些时间去研究udev的实现。
     udev是什么？u 是指user space，dev是指device，udev是用户空间的设备驱动程序吗？最初我也这样认为，调试内核空间的程序要比调试用户空间的程序复杂得多，内核空间的程序的BUG所引起的后果也严重得多，
  device driver是内核空间中所占比较最大的代码，如果把这些device driver中硬件无关的代码，从内核空间移动到用户空间，自然是一个不错的想法。
     但我的想法并不正确，udev的文档是这样说的，
