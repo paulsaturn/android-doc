@@ -5930,6 +5930,983 @@ static void commit_tree(struct mount *mnt)
 
  
 
+</rich_text></node><node name="open()分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="74"><rich_text scale="h3" weight="heavy">fs/open.c</rich_text><rich_text>
+static inline int build_open_flags(int flags, umode_t mode, struct open_flags *op)
+{
+	int lookup_flags = 0;
+	int acc_mode;
+
+	if (!(flags &amp; O_CREAT))
+		mode = 0;
+	op-&gt;mode = mode;
+
+	/* Must never be set by userspace */
+	flags &amp;= ~FMODE_NONOTIFY;
+
+	/*
+	 * O_SYNC is implemented as __O_SYNC|O_DSYNC.  As many places only
+	 * check for O_DSYNC if the need any syncing at all we enforce it's
+	 * always set instead of having to deal with possibly weird behaviour
+	 * for malicious applications setting only __O_SYNC.
+	 */
+	if (flags &amp; __O_SYNC)
+		flags |= O_DSYNC;
+
+	/*
+	 * If we have O_PATH in the open flag. Then we
+	 * cannot have anything other than the below set of flags
+	 */
+	if (flags &amp; O_PATH) {
+		flags &amp;= O_DIRECTORY | O_NOFOLLOW | O_PATH;
+		acc_mode = 0;
+	} else {
+		acc_mode = MAY_OPEN | ACC_MODE(flags);
+	}
+
+	op-&gt;open_flag = flags;
+
+	/* O_TRUNC implies we need access checks for write permissions */
+	if (flags &amp; O_TRUNC)
+		acc_mode |= MAY_WRITE;
+
+	/* Allow the LSM permission hook to distinguish append
+	   access from general write access. */
+	if (flags &amp; O_APPEND)
+		acc_mode |= MAY_APPEND;
+
+	op-&gt;acc_mode = acc_mode;
+
+	op-&gt;intent = flags &amp; O_PATH ? 0 : LOOKUP_OPEN;
+
+	if (flags &amp; O_CREAT) {
+		op-&gt;intent |= LOOKUP_CREATE;
+		if (flags &amp; O_EXCL)
+			op-&gt;intent |= LOOKUP_EXCL;
+	}
+
+	if (flags &amp; O_DIRECTORY)
+		lookup_flags |= LOOKUP_DIRECTORY;
+	if (!(flags &amp; O_NOFOLLOW))      </rich_text><rich_text foreground="#00000000ffff">//如果设置了O_NOFOLLOW，打开连接文件会失败</rich_text><rich_text>
+		lookup_flags |= LOOKUP_FOLLOW;
+	return lookup_flags;
+}
+
+long do_sys_open(int dfd, const char __user *filename, int flags, umode_t mode)
+{
+	struct open_flags op;
+	int lookup = build_open_flags(flags, mode, &amp;op);
+	char *tmp = getname(filename);  </rich_text><rich_text foreground="#00000000ffff">//将文件名参数从用户态拷贝至内核</rich_text><rich_text>
+	int fd = PTR_ERR(tmp);
+
+	if (!IS_ERR(tmp)) {
+</rich_text><rich_text foreground="#00000000ffff">        /* 
+        在内核中，每个打开的文件由一个文件描述符表示  
+        该描述符在特定于进程的数组中充当位置索引(数组是  
+        task_struct-&gt;files-&gt;fd_arry)，该数组的元素包含了file结构，其中  
+        包括每个打开文件的所有必要信息。因此，调用下面  
+        函数查找一个未使用的文件描述符,返回的是上面  
+        说的数组的下标
+        */  	</rich_text><rich_text>
+		fd = get_unused_fd_flags(flags);
+		if (fd &gt;= 0) {
+</rich_text><rich_text foreground="#00000000ffff">            /* fd获取成功则开始打开文件，此函数是主要完成打开功能的函数 */  
+            //如果分配fd成功，则创建一个file对象  </rich_text><rich_text>		
+			</rich_text><rich_text foreground="#ffff00000000">struct file *f = do_filp_open(dfd, tmp, &amp;op, lookup);</rich_text><rich_text>
+			if (IS_ERR(f)) {
+				put_unused_fd(fd);
+				fd = PTR_ERR(f);
+			} else {
+</rich_text><rich_text foreground="#00000000ffff">                /*
+                文件如果打开成功，调用fsnotify_open()函数，根据inode所指定的信息进行打开 
+                函数（参数为f）将该文件加入到文件监控的系统中。该系统是用来监控文件被打开，创建， 
+                读写，关闭，修改等操作的
+                */ 		</rich_text><rich_text>	
+				fsnotify_open(f);
+</rich_text><rich_text foreground="#00000000ffff">                /*
+                将文件指针安装在fd数组中 
+                将struct file *f加入到fd索引位置处的数组中。如果后续过程中，有对该文件描述符的 
+                操作的话，就会通过查找该数组得到对应的文件结构，而后在进行相关操作。
+                */  				
+</rich_text><rich_text>				fd_install(fd, f);
+			}
+		}
+		putname(tmp);
+	}
+	return fd;
+}
+
+void fd_install(unsigned int fd, struct file *file)
+{
+	struct files_struct *files = current-&gt;files;
+	struct fdtable *fdt;
+	spin_lock(&amp;files-&gt;file_lock);
+	fdt = files_fdtable(files);
+	BUG_ON(fdt-&gt;fd[fd] != NULL);
+	rcu_assign_pointer(fdt-&gt;fd[fd], file);
+	spin_unlock(&amp;files-&gt;file_lock);
+}
+
+get_unused_fd_flags实际调用的是alloc_fd
+</rich_text><rich_text foreground="#ffff00000000">#define get_unused_fd_flags(flags) alloc_fd(0, (flags))</rich_text><rich_text>
+
+/*
+ * allocate a file descriptor, mark it busy.
+ */
+int alloc_fd(unsigned start, unsigned flags)
+{
+	struct files_struct *files = current-&gt;files;    </rich_text><rich_text foreground="#00000000ffff">//获得当前进程的files_struct结构</rich_text><rich_text>
+	unsigned int fd;
+	int error;
+	struct fdtable *fdt;
+
+	spin_lock(&amp;files-&gt;file_lock);
+repeat:
+	fdt = files_fdtable(files);
+	fd = start;
+	if (fd &lt; files-&gt;next_fd)    </rich_text><rich_text foreground="#00000000ffff">//从上一次打开的fd的下一个fd开始搜索空闲的fd</rich_text><rich_text>
+		fd = files-&gt;next_fd;
+
+	if (fd &lt; fdt-&gt;max_fds)  </rich_text><rich_text foreground="#00000000ffff">//寻找空闲的fd，返回值为空闲的fd</rich_text><rich_text>
+		fd = find_next_zero_bit(fdt-&gt;open_fds-&gt;fds_bits,
+					   fdt-&gt;max_fds, fd);
+</rich_text><rich_text foreground="#00000000ffff">    //如果有必要，即打开的fd超过max_fds,则需要expand当前进程的fd表；    
+    //返回值error&lt;0表示出错，error=0表示无需expand，error=1表示进行了expand； 
+</rich_text><rich_text>	error = expand_files(files, fd);
+	if (error &lt; 0)
+		goto out;
+
+	/*
+	 * If we needed to expand the fs array we
+	 * might have blocked - try again.
+	 */
+	</rich_text><rich_text foreground="#00000000ffff">//error=1表示进行了expand，那么此时需要重新去查找空闲的fd；</rich_text><rich_text>
+	if (error)
+		goto repeat;
+
+    </rich_text><rich_text foreground="#00000000ffff">//设置下一次查找的起始fd，即本次找到的空闲的fd的下一个fd，记录在files-&gt;next_fd中；</rich_text><rich_text>
+	if (start &lt;= files-&gt;next_fd)
+		files-&gt;next_fd = fd + 1;
+
+	FD_SET(fd, fdt-&gt;open_fds);
+	if (flags &amp; O_CLOEXEC)
+		FD_SET(fd, fdt-&gt;close_on_exec);
+	else
+		FD_CLR(fd, fdt-&gt;close_on_exec);
+	error = fd;
+#if 1
+	/* Sanity check */
+	if (rcu_dereference_raw(fdt-&gt;fd[fd]) != NULL) {
+		printk(KERN_WARNING &quot;alloc_fd: slot %d not NULL!\n&quot;, fd);
+		rcu_assign_pointer(fdt-&gt;fd[fd], NULL);
+	}
+#endif
+
+out:
+	spin_unlock(&amp;files-&gt;file_lock);
+	return error;
+}
+
+下面定义sys_open函数:
+</rich_text><rich_text foreground="#00000000ffff">SYSCALL_DEFINE3(open, const char __user *, filename, int, flags, umode_t, mode)</rich_text><rich_text>
+{
+	long ret;
+</rich_text><rich_text foreground="#00000000ffff">    /*
+    检查是否应该不考虑用户层传递的标志、总是强行设置  
+    O_LARGEFILE标志。如果底层处理器的字长不是32位，就是这种  
+    情况
+    */ </rich_text><rich_text>
+	if (force_o_largefile())
+		flags |= O_LARGEFILE;
+
+	</rich_text><rich_text foreground="#ffff00000000">ret = do_sys_open(AT_FDCWD, filename, flags, mode);</rich_text><rich_text>
+	/* avoid REGPARM breakage on x86: */
+	asmlinkage_protect(3, ret, filename, flags, mode);
+	return ret;
+}
+
+</rich_text><rich_text scale="h3" weight="heavy">fs/namei.c</rich_text><rich_text>
+struct file *do_filp_open(int dfd, const char *pathname,
+		const struct open_flags *op, int flags)
+{
+	struct nameidata nd;
+	struct file *filp;
+
+	</rich_text><rich_text foreground="#ffff00000000">filp = path_openat(dfd, pathname, &amp;nd, op, flags | LOOKUP_RCU);</rich_text><rich_text>
+	if (unlikely(filp == ERR_PTR(-ECHILD)))
+		filp = path_openat(dfd, pathname, &amp;nd, op, flags);
+	if (unlikely(filp == ERR_PTR(-ESTALE)))
+		filp = path_openat(dfd, pathname, &amp;nd, op, flags | LOOKUP_REVAL);
+	return filp;
+}
+
+do_filp_open函数的一个重要作用就是根据传递近来的权限进行分析，并且分析传递近来的路径名字，根据路径名逐个解析成dentry，并且通过dentry找到inode，inode就是记录着该文件相关的信息， 包括文件的创建时间和文件属性所有者等等信息，根据这些信息就可以找到对应的文件操作方法。在这个过程当中有一个临时的结构体用于保存在查找过程中的相关信息，就是
+struct nameidata {  
+    struct path path; </rich_text><rich_text foreground="#00000000ffff">//当前目录的dentry数据结构</rich_text><rich_text>  
+    struct qstr last;   </rich_text><rich_text foreground="#00000000ffff">//这个结构体也是临时性的，主要用来保存当前目录的名称，杂凑值。</rich_text><rich_text>
+    struct path	root;
+    struct inode	*inode; /* path.dentry.d_inode */  
+    unsigned int flags;
+    unsigned	seq;  
+    int last_type;  
+    unsigned depth; </rich_text><rich_text foreground="#00000000ffff">//连接文件的深度（可能一个连接文件跟到最后还是一个了连接文件）</rich_text><rich_text>  
+    </rich_text><rich_text foreground="#00000000ffff">//用来保存连接文件的一些信息，下标表示连接文件的深度  </rich_text><rich_text>
+    char *saved_names[MAX_NESTED_LINKS + 1];  
+       
+    /* Intent data */  
+    union {  
+        struct open_intent open;  
+    } intent;  
+};  
+
+static struct file *path_openat(int dfd, const char *pathname,
+		struct nameidata *nd, const struct open_flags *op, int flags)
+{
+	struct file *base = NULL;
+	struct file *filp;
+	struct path path;
+	int error;
+
+	filp = get_empty_filp(); </rich_text><rich_text foreground="#00000000ffff">//从进程文件表中获取一个未使用的文件结构指针，空则出错返回</rich_text><rich_text>  
+	if (!filp)
+		return ERR_PTR(-ENFILE);
+
+	filp-&gt;f_flags = op-&gt;open_flag;
+	nd-&gt;intent.open.file = filp;
+	nd-&gt;intent.open.flags = open_to_namei_flags(op-&gt;open_flag); </rich_text><rich_text foreground="#00000000ffff">//op-&gt;open_flag等于open函数的flags</rich_text><rich_text>
+	nd-&gt;intent.open.create_mode = op-&gt;mode;
+
+	error = path_init(dfd, pathname, flags | LOOKUP_PARENT, nd, &amp;base); </rich_text><rich_text foreground="#00000000ffff">//初始化nd </rich_text><rich_text>
+	if (unlikely(error))
+		goto out_filp;
+
+	current-&gt;total_link_count = 0;
+	error = link_path_walk(pathname, nd);   </rich_text><rich_text foreground="#00000000ffff">//路径名解析函数，将一个路径名最终转化为一个dentry  </rich_text><rich_text>
+	if (unlikely(error))
+		goto out_filp;
+
+	</rich_text><rich_text foreground="#ffff00000000">filp = do_last(nd, &amp;path, op, pathname);</rich_text><rich_text>
+	while (unlikely(!filp)) { /* trailing symlink */
+		struct path link = path;
+		void *cookie;
+		if (!(nd-&gt;flags &amp; LOOKUP_FOLLOW)) {
+			path_put_conditional(&amp;path, nd);
+			path_put(&amp;nd-&gt;path);
+			filp = ERR_PTR(-ELOOP);
+			break;
+		}
+		nd-&gt;flags |= LOOKUP_PARENT;
+		nd-&gt;flags &amp;= ~(LOOKUP_OPEN|LOOKUP_CREATE|LOOKUP_EXCL);
+		</rich_text><rich_text foreground="#ffff00000000">error = follow_link(&amp;link, nd, &amp;cookie);</rich_text><rich_text> </rich_text><rich_text foreground="#00000000ffff">//访问连接文件</rich_text><rich_text>
+		if (unlikely(error))
+			filp = ERR_PTR(error);
+		else
+			filp = do_last(nd, &amp;path, op, pathname);
+		put_link(nd, &amp;link, cookie);
+	}
+out:
+	if (nd-&gt;root.mnt &amp;&amp; !(nd-&gt;flags &amp; LOOKUP_ROOT))
+		path_put(&amp;nd-&gt;root);
+	if (base)
+		fput(base);
+	release_open_intent(nd);
+	return filp;
+
+out_filp:
+	filp = ERR_PTR(error);
+	goto out;
+}
+当内核要访问一个文件的时候，第一步要做的是找到这个文件，而查找文件的过程在vfs里面是由link_path_walk函数来完成的,在 path_init的时候我们可以看到传进去的参数有一个LOOKUP_PARENT，它的含义是查找最后一个分量名所在的目录。也就是当这个函数返回的 时候，我们得到了一个路径名中最后一个分量所在的目录。
+接着调用do_last返回最后一个分量对应的file指针
+/*
+ * Handle the last step of open()
+ */
+static struct file *do_last(struct nameidata *nd, struct path *path,
+			    const struct open_flags *op, const char *pathname)
+{
+	struct dentry *dir = nd-&gt;path.dentry;
+	struct dentry *dentry;
+	int open_flag = op-&gt;open_flag;
+	int will_truncate = open_flag &amp; O_TRUNC;
+	int want_write = 0;
+	int acc_mode = op-&gt;acc_mode;
+	struct file *filp;
+	int error;
+
+	nd-&gt;flags &amp;= ~LOOKUP_PARENT;
+	nd-&gt;flags |= op-&gt;intent;
+
+	switch (nd-&gt;last_type) {
+	case LAST_DOTDOT:
+	case LAST_DOT:
+		error = handle_dots(nd, nd-&gt;last_type);
+		if (error)
+			return ERR_PTR(error);
+		/* fallthrough */
+	case LAST_ROOT:
+		error = complete_walk(nd);
+		if (error)
+			return ERR_PTR(error);
+		audit_inode(pathname, nd-&gt;path.dentry);
+		if (open_flag &amp; O_CREAT) {
+			error = -EISDIR;
+			goto exit;
+		}
+		goto ok;
+	case LAST_BIND:
+		error = complete_walk(nd);
+		if (error)
+			return ERR_PTR(error);
+		audit_inode(pathname, dir);
+		goto ok;
+	}
+
+	if (!(open_flag &amp; O_CREAT)) { </rich_text><rich_text foreground="#00000000ffff">//没有创建标志，即文件存在</rich_text><rich_text>
+		int symlink_ok = 0;
+		if (nd-&gt;last.name[nd-&gt;last.len])
+			nd-&gt;flags |= LOOKUP_FOLLOW | LOOKUP_DIRECTORY;
+		if (open_flag &amp; O_PATH &amp;&amp; !(nd-&gt;flags &amp; LOOKUP_FOLLOW))
+			symlink_ok = 1;
+		/* we _can_ be in RCU mode here */
+		error = walk_component(nd, path, &amp;nd-&gt;last, LAST_NORM,
+					!symlink_ok);
+		if (error &lt; 0)
+			return ERR_PTR(error);
+		if (error) /* symlink */
+			return NULL;
+		/* sayonara */
+		error = complete_walk(nd);
+		if (error)
+			return ERR_PTR(error);
+
+		error = -ENOTDIR;
+		if (nd-&gt;flags &amp; LOOKUP_DIRECTORY) {
+			if (!nd-&gt;inode-&gt;i_op-&gt;lookup)
+				goto exit;
+		}
+		audit_inode(pathname, nd-&gt;path.dentry);
+		goto ok;
+	}
+
+	/* create side of things */
+	/*
+	 * This will *only* deal with leaving RCU mode - LOOKUP_JUMPED has been
+	 * cleared when we got to the last component we are about to look up
+	 */
+	error = complete_walk(nd);
+	if (error)
+		return ERR_PTR(error);
+
+	audit_inode(pathname, dir);
+	error = -EISDIR;
+	/* trailing slashes? */
+	if (nd-&gt;last.name[nd-&gt;last.len])
+		goto exit;
+
+	mutex_lock(&amp;dir-&gt;d_inode-&gt;i_mutex);
+
+	dentry = lookup_hash(nd);   </rich_text><rich_text foreground="#00000000ffff">//获取最后路径名中最后一项对应的目录项</rich_text><rich_text>
+	error = PTR_ERR(dentry);
+	if (IS_ERR(dentry)) {
+		mutex_unlock(&amp;dir-&gt;d_inode-&gt;i_mutex);
+		goto exit;
+	}
+
+	path-&gt;dentry = dentry;
+	path-&gt;mnt = nd-&gt;path.mnt;
+
+	/* Negative dentry, just create the file */
+	if (!dentry-&gt;d_inode) {
+		umode_t mode = op-&gt;mode;
+		if (!IS_POSIXACL(dir-&gt;d_inode))
+			mode &amp;= ~current_umask();
+		/*
+		 * This write is needed to ensure that a
+		 * rw-&gt;ro transition does not occur between
+		 * the time when the file is created and when
+		 * a permanent write count is taken through
+		 * the 'struct file' in nameidata_to_filp().
+		 */
+		error = mnt_want_write(nd-&gt;path.mnt);
+		if (error)
+			goto exit_mutex_unlock;
+		want_write = 1;
+		/* Don't check for write permission, don't truncate */
+		open_flag &amp;= ~O_TRUNC;
+		will_truncate = 0;
+		acc_mode = MAY_OPEN;
+		error = security_path_mknod(&amp;nd-&gt;path, dentry, mode, 0);
+		if (error)
+			goto exit_mutex_unlock;
+		error = vfs_create(dir-&gt;d_inode, dentry, mode, nd);
+		if (error)
+			goto exit_mutex_unlock;
+		mutex_unlock(&amp;dir-&gt;d_inode-&gt;i_mutex);
+		dput(nd-&gt;path.dentry);
+		nd-&gt;path.dentry = dentry;
+		goto common;
+	}
+
+	/*
+	 * It already exists.
+	 */
+	mutex_unlock(&amp;dir-&gt;d_inode-&gt;i_mutex);
+	audit_inode(pathname, path-&gt;dentry);
+
+	error = -EEXIST;
+	if (open_flag &amp; O_EXCL)
+		goto exit_dput;
+
+	error = follow_managed(path, nd-&gt;flags);
+	if (error &lt; 0)
+		goto exit_dput;
+
+	if (error)
+		nd-&gt;flags |= LOOKUP_JUMPED;
+
+	error = -ENOENT;
+	if (!path-&gt;dentry-&gt;d_inode)
+		goto exit_dput;
+
+	if (path-&gt;dentry-&gt;d_inode-&gt;i_op-&gt;follow_link)
+		return NULL;
+
+	path_to_nameidata(path, nd);
+	nd-&gt;inode = path-&gt;dentry-&gt;d_inode;
+	/* Why this, you ask?  _Now_ we might have grown LOOKUP_JUMPED... */
+	error = complete_walk(nd);
+	if (error)
+		return ERR_PTR(error);
+	error = -EISDIR;
+	if (S_ISDIR(nd-&gt;inode-&gt;i_mode))
+		goto exit;
+ok:
+	if (!S_ISREG(nd-&gt;inode-&gt;i_mode))
+		will_truncate = 0;
+
+	if (will_truncate) {
+		error = mnt_want_write(nd-&gt;path.mnt);
+		if (error)
+			goto exit;
+		want_write = 1;
+	}
+common:
+	error = may_open(&amp;nd-&gt;path, acc_mode, open_flag);
+	if (error)
+		goto exit;
+	filp = nameidata_to_filp(nd);
+	if (!IS_ERR(filp)) {
+		error = ima_file_check(filp, op-&gt;acc_mode);
+		if (error) {
+			fput(filp);
+			filp = ERR_PTR(error);
+		}
+	}
+	if (!IS_ERR(filp)) {
+		if (will_truncate) {
+			error = handle_truncate(filp);
+			if (error) {
+				fput(filp);
+				filp = ERR_PTR(error);
+			}
+		}
+	}
+out:
+	if (want_write)
+		mnt_drop_write(nd-&gt;path.mnt);
+	path_put(&amp;nd-&gt;path);
+	return filp;
+
+exit_mutex_unlock:
+	mutex_unlock(&amp;dir-&gt;d_inode-&gt;i_mutex);
+exit_dput:
+	path_put_conditional(path, nd);
+exit:
+	filp = ERR_PTR(error);
+	goto out;
+}
+
+struct file *nameidata_to_filp(struct nameidata *nd)
+{
+	const struct cred *cred = current_cred();
+	struct file *filp;
+
+	/* Pick up the filp from the open intent */
+	filp = nd-&gt;intent.open.file;
+	nd-&gt;intent.open.file = NULL;
+
+	/* Has the filesystem initialised the file for us? */
+	if (filp-&gt;f_path.dentry == NULL) {
+		path_get(&amp;nd-&gt;path);
+		filp = __dentry_open(nd-&gt;path.dentry, nd-&gt;path.mnt, filp,
+				     NULL, cred);
+	}
+	return filp;
+}
+
+static struct file *__dentry_open(struct dentry *dentry, struct vfsmount *mnt,
+					struct file *f,
+					int (*open)(struct inode *, struct file *),
+					const struct cred *cred)
+{
+	static const struct file_operations empty_fops = {};
+	struct inode *inode;
+	int error;
+
+	f-&gt;f_mode = OPEN_FMODE(f-&gt;f_flags) | FMODE_LSEEK |
+				FMODE_PREAD | FMODE_PWRITE;
+
+	if (unlikely(f-&gt;f_flags &amp; O_PATH))
+		f-&gt;f_mode = FMODE_PATH;
+
+	inode = dentry-&gt;d_inode;
+	if (f-&gt;f_mode &amp; FMODE_WRITE) {
+		error = __get_file_write_access(inode, mnt);
+		if (error)
+			goto cleanup_file;
+		if (!special_file(inode-&gt;i_mode))
+			file_take_write(f);
+	}
+
+	f-&gt;f_mapping = inode-&gt;i_mapping;
+	f-&gt;f_path.dentry = dentry;
+	f-&gt;f_path.mnt = mnt;
+	f-&gt;f_pos = 0;
+	file_sb_list_add(f, inode-&gt;i_sb);   </rich_text><rich_text foreground="#00000000ffff">//把文件对象插入到文件系统超级块的s_files字段所指向的打开文件的链表</rich_text><rich_text>
+
+	if (unlikely(f-&gt;f_mode &amp; FMODE_PATH)) {
+		f-&gt;f_op = &amp;empty_fops;
+		return f;
+	}
+
+	f-&gt;f_op = fops_get(inode-&gt;i_fop); </rich_text><rich_text foreground="#00000000ffff">//为文件操作建立起所有方法</rich_text><rich_text>  
+
+	error = security_dentry_open(f, cred);
+	if (error)
+		goto cleanup_all;
+
+	error = break_lease(inode, f-&gt;f_flags);
+	if (error)
+		goto cleanup_all;
+
+	if (!open &amp;&amp; f-&gt;f_op)
+		open = f-&gt;f_op-&gt;open;
+	if (open) {
+		error = open(inode, f);
+		if (error)
+			goto cleanup_all;
+	}
+	if ((f-&gt;f_mode &amp; (FMODE_READ | FMODE_WRITE)) == FMODE_READ)
+		i_readcount_inc(inode);
+
+	f-&gt;f_flags &amp;= ~(O_CREAT | O_EXCL | O_NOCTTY | O_TRUNC);
+
+	file_ra_state_init(&amp;f-&gt;f_ra, f-&gt;f_mapping-&gt;host-&gt;i_mapping); </rich_text><rich_text foreground="#00000000ffff">//初始化预读的数据结构</rich_text><rich_text>
+
+	/* NB: we're sure to have correct a_ops only after f_op-&gt;open */
+	if (f-&gt;f_flags &amp; O_DIRECT) { </rich_text><rich_text foreground="#00000000ffff">//检查直接IO操作是否可以作用于文件</rich_text><rich_text>
+		if (!f-&gt;f_mapping-&gt;a_ops ||
+		    ((!f-&gt;f_mapping-&gt;a_ops-&gt;direct_IO) &amp;&amp;
+		    (!f-&gt;f_mapping-&gt;a_ops-&gt;get_xip_mem))) {
+			fput(f);
+			f = ERR_PTR(-EINVAL);
+		}
+	}
+
+	return f;
+
+cleanup_all:
+	fops_put(f-&gt;f_op);
+	if (f-&gt;f_mode &amp; FMODE_WRITE) {
+		put_write_access(inode);
+		if (!special_file(inode-&gt;i_mode)) {
+			/*
+			 * We don't consider this a real
+			 * mnt_want/drop_write() pair
+			 * because it all happenend right
+			 * here, so just reset the state.
+			 */
+			file_reset_write(f);
+			mnt_drop_write(mnt);
+		}
+	}
+	file_sb_list_del(f);
+	f-&gt;f_path.dentry = NULL;
+	f-&gt;f_path.mnt = NULL;
+cleanup_file:
+	put_filp(f);
+	dput(dentry);
+	mntput(mnt);
+	return ERR_PTR(error);
+}
+
+
+static __always_inline int
+follow_link(struct path *link, struct nameidata *nd, void **p)
+{
+	int error;
+	struct dentry *dentry = link-&gt;dentry;
+
+	BUG_ON(nd-&gt;flags &amp; LOOKUP_RCU);
+
+	if (link-&gt;mnt == nd-&gt;path.mnt)
+		mntget(link-&gt;mnt);
+
+	if (unlikely(current-&gt;total_link_count &gt;= 40)) {
+		*p = ERR_PTR(-ELOOP); /* no -&gt;put_link(), please */
+		path_put(&amp;nd-&gt;path);
+		return -ELOOP;
+	}
+	cond_resched();
+	current-&gt;total_link_count++;
+
+	</rich_text><rich_text foreground="#ffff00000000">touch_atime(link-&gt;mnt, dentry);</rich_text><rich_text>
+	nd_set_link(nd, NULL);
+
+	error = security_inode_follow_link(link-&gt;dentry, nd);
+	if (error) {
+		*p = ERR_PTR(error); /* no -&gt;put_link(), please */
+		path_put(&amp;nd-&gt;path);
+		return error;
+	}
+
+	nd-&gt;last_type = LAST_BIND;
+	*p = dentry-&gt;d_inode-&gt;i_op-&gt;follow_link(dentry, nd);
+	error = PTR_ERR(*p);
+	if (!IS_ERR(*p)) {
+		char *s = nd_get_link(nd);
+		error = 0;
+		if (s)
+			error = __vfs_follow_link(nd, s);
+		else if (nd-&gt;last_type == LAST_BIND) {
+			nd-&gt;flags |= LOOKUP_JUMPED;
+			nd-&gt;inode = nd-&gt;path.dentry-&gt;d_inode;
+			if (nd-&gt;inode-&gt;i_op-&gt;follow_link) {
+				/* stepped on a _really_ weird one */
+				path_put(&amp;nd-&gt;path);
+				error = -ELOOP;
+			}
+		}
+	}
+	return error;
+}
+
+以vfat的read操作为例,  如果没有设置NOATIME,  那么每次读取磁盘的文件，都要更新atime.
+read -&gt;
+  -&gt;do_sync_read    
+    -&gt;generic_file_aio_read
+      -&gt;do_generic_file_read 
+        -&gt;file_accessed
+          -&gt;touch_atime
+
+/**
+ * do_generic_file_read - generic file read routine
+ * @filp:	the file to read
+ * @ppos:	current file position
+ * @desc:	read_descriptor
+ * @actor:	read method
+ *
+ * This is a generic file read routine, and uses the
+ * mapping-&gt;a_ops-&gt;readpage() function for the actual low-level stuff.
+ *
+ * This is really ugly. But the goto's actually try to clarify some
+ * of the logic when it comes to error handling etc.
+ */
+static void do_generic_file_read(struct file *filp, loff_t *ppos,
+		read_descriptor_t *desc, read_actor_t actor)
+{
+	struct address_space *mapping = filp-&gt;f_mapping;
+	struct inode *inode = mapping-&gt;host;
+	struct file_ra_state *ra = &amp;filp-&gt;f_ra;
+	pgoff_t index;
+	pgoff_t last_index;
+	pgoff_t prev_index;
+	unsigned long offset;      /* offset into pagecache page */
+	unsigned int prev_offset;
+	int error;
+
+	index = *ppos &gt;&gt; PAGE_CACHE_SHIFT;
+	prev_index = ra-&gt;prev_pos &gt;&gt; PAGE_CACHE_SHIFT;
+	prev_offset = ra-&gt;prev_pos &amp; (PAGE_CACHE_SIZE-1);
+	last_index = (*ppos + desc-&gt;count + PAGE_CACHE_SIZE-1) &gt;&gt; PAGE_CACHE_SHIFT;
+	offset = *ppos &amp; ~PAGE_CACHE_MASK;
+
+	for (;;) {
+		struct page *page;
+		pgoff_t end_index;
+		loff_t isize;
+		unsigned long nr, ret;
+
+		cond_resched();
+find_page:
+		page = find_get_page(mapping, index);
+		if (!page) {
+			page_cache_sync_readahead(mapping,
+					ra, filp,
+					index, last_index - index);
+			page = find_get_page(mapping, index);
+			if (unlikely(page == NULL))
+				goto no_cached_page;
+		}
+		if (PageReadahead(page)) {
+			page_cache_async_readahead(mapping,
+					ra, filp, page,
+					index, last_index - index);
+		}
+		if (!PageUptodate(page)) {
+			if (inode-&gt;i_blkbits == PAGE_CACHE_SHIFT ||
+					!mapping-&gt;a_ops-&gt;is_partially_uptodate)
+				goto page_not_up_to_date;
+			if (!trylock_page(page))
+				goto page_not_up_to_date;
+			/* Did it get truncated before we got the lock? */
+			if (!page-&gt;mapping)
+				goto page_not_up_to_date_locked;
+			if (!mapping-&gt;a_ops-&gt;is_partially_uptodate(page,
+								desc, offset))
+				goto page_not_up_to_date_locked;
+			unlock_page(page);
+		}
+page_ok:
+		/*
+		 * i_size must be checked after we know the page is Uptodate.
+		 *
+		 * Checking i_size after the check allows us to calculate
+		 * the correct value for &quot;nr&quot;, which means the zero-filled
+		 * part of the page is not copied back to userspace (unless
+		 * another truncate extends the file - this is desired though).
+		 */
+
+		isize = i_size_read(inode);
+		end_index = (isize - 1) &gt;&gt; PAGE_CACHE_SHIFT;
+		if (unlikely(!isize || index &gt; end_index)) {
+			page_cache_release(page);
+			goto out;
+		}
+
+		/* nr is the maximum number of bytes to copy from this page */
+		nr = PAGE_CACHE_SIZE;
+		if (index == end_index) {
+			nr = ((isize - 1) &amp; ~PAGE_CACHE_MASK) + 1;
+			if (nr &lt;= offset) {
+				page_cache_release(page);
+				goto out;
+			}
+		}
+		nr = nr - offset;
+
+		/* If users can be writing to this page using arbitrary
+		 * virtual addresses, take care about potential aliasing
+		 * before reading the page on the kernel side.
+		 */
+		if (mapping_writably_mapped(mapping))
+			flush_dcache_page(page);
+
+		/*
+		 * When a sequential read accesses a page several times,
+		 * only mark it as accessed the first time.
+		 */
+		if (prev_index != index || offset != prev_offset)
+			mark_page_accessed(page);
+		prev_index = index;
+
+		/*
+		 * Ok, we have the page, and it's up-to-date, so
+		 * now we can copy it to user space...
+		 *
+		 * The actor routine returns how many bytes were actually used..
+		 * NOTE! This may not be the same as how much of a user buffer
+		 * we filled up (we may be padding etc), so we can only update
+		 * &quot;pos&quot; here (the actor routine has to update the user buffer
+		 * pointers and the remaining count).
+		 */
+		ret = actor(desc, page, offset, nr);
+		offset += ret;
+		index += offset &gt;&gt; PAGE_CACHE_SHIFT;
+		offset &amp;= ~PAGE_CACHE_MASK;
+		prev_offset = offset;
+
+		page_cache_release(page);
+		if (ret == nr &amp;&amp; desc-&gt;count)
+			continue;
+		goto out;
+
+page_not_up_to_date:
+		/* Get exclusive access to the page ... */
+		error = lock_page_killable(page);
+		if (unlikely(error))
+			goto readpage_error;
+
+page_not_up_to_date_locked:
+		/* Did it get truncated before we got the lock? */
+		if (!page-&gt;mapping) {
+			unlock_page(page);
+			page_cache_release(page);
+			continue;
+		}
+
+		/* Did somebody else fill it already? */
+		if (PageUptodate(page)) {
+			unlock_page(page);
+			goto page_ok;
+		}
+
+readpage:
+		/*
+		 * A previous I/O error may have been due to temporary
+		 * failures, eg. multipath errors.
+		 * PG_error will be set again if readpage fails.
+		 */
+		ClearPageError(page);
+		/* Start the actual read. The read will unlock the page. */
+		error = mapping-&gt;a_ops-&gt;readpage(filp, page);
+
+		if (unlikely(error)) {
+			if (error == AOP_TRUNCATED_PAGE) {
+				page_cache_release(page);
+				goto find_page;
+			}
+			goto readpage_error;
+		}
+
+		if (!PageUptodate(page)) {
+			error = lock_page_killable(page);
+			if (unlikely(error))
+				goto readpage_error;
+			if (!PageUptodate(page)) {
+				if (page-&gt;mapping == NULL) {
+					/*
+					 * invalidate_mapping_pages got it
+					 */
+					unlock_page(page);
+					page_cache_release(page);
+					goto find_page;
+				}
+				unlock_page(page);
+				shrink_readahead_size_eio(filp, ra);
+				error = -EIO;
+				goto readpage_error;
+			}
+			unlock_page(page);
+		}
+
+		goto page_ok;
+
+readpage_error:
+		/* UHHUH! A synchronous read error occurred. Report it */
+		desc-&gt;error = error;
+		page_cache_release(page);
+		goto out;
+
+no_cached_page:
+		/*
+		 * Ok, it wasn't cached, so we need to create a new
+		 * page..
+		 */
+		page = page_cache_alloc_cold(mapping);
+		if (!page) {
+			desc-&gt;error = -ENOMEM;
+			goto out;
+		}
+		error = add_to_page_cache_lru(page, mapping,
+						index, GFP_KERNEL);
+		if (error) {
+			page_cache_release(page);
+			if (error == -EEXIST)
+				goto find_page;
+			desc-&gt;error = error;
+			goto out;
+		}
+		goto readpage;
+	}
+
+out:
+	ra-&gt;prev_pos = prev_index;
+	ra-&gt;prev_pos &lt;&lt;= PAGE_CACHE_SHIFT;
+	ra-&gt;prev_pos |= prev_offset;
+
+	*ppos = ((loff_t)index &lt;&lt; PAGE_CACHE_SHIFT) + offset;
+	file_accessed(filp);
+}
+
+int file_read_actor(read_descriptor_t *desc, struct page *page,
+			unsigned long offset, unsigned long size)
+{
+	char *kaddr;
+	unsigned long left, count = desc-&gt;count;
+
+	if (size &gt; count)
+		size = count;
+
+	/*
+	 * Faults on the destination of a read are common, so do it before
+	 * taking the kmap.
+	 */
+	if (!fault_in_pages_writeable(desc-&gt;arg.buf, size)) {
+		kaddr = kmap_atomic(page, KM_USER0);
+		left = __copy_to_user_inatomic(desc-&gt;arg.buf,
+						kaddr + offset, size);
+		kunmap_atomic(kaddr, KM_USER0);
+		if (left == 0)
+			goto success;
+	}
+
+	/* Do it the slow way */
+	kaddr = kmap(page);
+	left = __copy_to_user(desc-&gt;arg.buf, kaddr + offset, size);
+	kunmap(page);
+
+	if (left) {
+		size -= left;
+		desc-&gt;error = -EFAULT;
+	}
+success:
+	desc-&gt;count = count - size;
+	desc-&gt;written += size;
+	desc-&gt;arg.buf += size;
+	return size;
+}
+
+
+static inline void file_accessed(struct file *file)
+{
+	if (!(file-&gt;f_flags &amp; O_NOATIME))
+		touch_atime(file-&gt;f_path.mnt, file-&gt;f_path.dentry);
+}
+
+</rich_text><rich_text scale="h3" weight="heavy">fs/inode.c</rich_text><rich_text>
+void touch_atime(struct vfsmount *mnt, struct dentry *dentry)
+{
+	struct inode *inode = dentry-&gt;d_inode;
+	struct timespec now;
+
+	if (inode-&gt;i_flags &amp; S_NOATIME)
+		return;
+	if (IS_NOATIME(inode))
+		return;
+	if ((inode-&gt;i_sb-&gt;s_flags &amp; MS_NODIRATIME) &amp;&amp; S_ISDIR(inode-&gt;i_mode))
+		return;
+
+	if (mnt-&gt;mnt_flags &amp; MNT_NOATIME)
+		return;
+	if ((mnt-&gt;mnt_flags &amp; MNT_NODIRATIME) &amp;&amp; S_ISDIR(inode-&gt;i_mode))
+		return;
+
+	now = current_fs_time(inode-&gt;i_sb);
+
+	if (!relatime_need_update(mnt, inode, now))
+		return;
+
+	if (timespec_equal(&amp;inode-&gt;i_atime, &amp;now))
+		return;
+
+	if (mnt_want_write(mnt))
+		return;
+
+	inode-&gt;i_atime = now;
+	mark_inode_dirty_sync(inode);
+	mnt_drop_write(mnt);
+}
+EXPORT_SYMBOL(touch_atime);
 </rich_text></node></node><node name="linux boot" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text></rich_text><node name="从ramdisk根文件系统启动Linux" prog_lang="custom-colors" readonly="False" tags="" unique_id="15"><rich_text>今天做了个试验，让Linux2.6.29.4从ramdisk根文件系统启动成功，总结一下。
 其中涉及的内容较多，很多东西不再详述，如需深入研究请查阅相关资料（百度或谷歌一下一大堆）。
 
