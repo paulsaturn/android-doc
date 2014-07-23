@@ -1505,6 +1505,303 @@ sdp_req_t结构体，然后辗转调用到process_request这个函数，并将sd
 5.     uint8_t  soft;  
 6.     uint8_t  hard;  
 7. };  
+</rich_text></node><node name="Udev描述" prog_lang="custom-colors" readonly="False" tags="" unique_id="77"><rich_text>现代Linux发行版可以在已经运行的系统里面识别一个新加入的硬件。有许多用户友好的发行版，比如Ubuntu，可以在像iPod这样的移动设备插入系统时自动运行指定的应用程序，比如Rhythmbox。 
+
+ 
+Linux发行版里面的热插拔（这个词用于描述将设备插入已经运行的系统的过程）功能是三个组件的融合：Udev, HAL, and Dbus.
+
+
+Udev为已经连接在系统上面的设备节点提供一个动态设备目录。当设备插入或移出系统的时候，Udev就在  /dev目录下面创建或者删除设备节点文件。Dbus类似于系统总线，主要用于进程间通信。HAL从Udev的服务中获取信息，当一个设备连接到系统时它   就创建关于这个设备的XML描述。然后它会通过Dbus通知相应的桌面应用程序，比如说Nautilus，Nautius则会打开这个新挂载设备上面的文  件。
+
+
+本文只关注Udev, 是它完成了基本的设备识别。
+
+
+
+</rich_text><rich_text scale="h2">什么是Udev?</rich_text><rich_text>
+Udev是Linux 2.6内核的设备管理器，它在/dev目录下动态地创建/移除设备节点。它是devfs和hotplug的继承者，运行在用户空间，并且用户可以用Udev规则来改变设备的命名。
+
+
+Udev依赖2.5内核引入的sysfs文件系统。sysfs是的设备在用户空间可见。每当一个设备被加入或移除，就会产生内核事件通知用户空间的Udev。
+
+
+在早期的发行中常使用一个外部二进制文件/sbin/hotplug来将设备状态的改变通知Udev。现在这个工具已经被替换掉，Udev可以通过Netlink直接监听这些事件了。
+
+
+</rich_text><rich_text scale="h2">为什么我们需要它 ?</rich_text><rich_text>
+在早期的内核中/dev目录包括一些静态的设备文件。而使用动态设备创建后，只有那些真正存在于系统中的设备节点才会被创建。让我们来看看静态/dev目录的缺点，正是这些缺点导致了Udev的开发。
+
+
+</rich_text><rich_text scale="h3">在/dev的设备节点中精确辨别一个硬件设备的问题</rich_text><rich_text>
+在系统启动过程中，内核会为一个识别到的硬件设备分配一个主/次设备号对。让我们考虑两个硬盘，连接/校准的的方式是一个连接到主接口，另一个连接   到从接口。Linux系统会称它们为/dev/hda和/dev/hdb。现在，如果我们交换两个磁盘，那么它们的设备名也会改变。这使得将一个可用的动  态设备节点定位到正确的设备发生困难。当有一堆的硬盘连接在系统时，情况会变得更加糟糕。
+Udev通过/dev目录提供了一个永久性设备命名系统，使得定位设备变得容易。
+ 
+ 下面是一个例子，显示了Udev为接入系统的硬盘创建的永久性符号链接。
+ 
+$ ls -lR /dev/disk/
+/dev/disk/by-id:
+lrwxrwxrwx 1 root root 9 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593 -&gt; ../../sda 
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part1 -&gt; ../../sda1
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part2 -&gt; ../../sda2
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part3 -&gt; ../../sda3
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part4 -&gt; ../../sda4
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part5 -&gt; ../../sda5
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part6 -&gt; ../../sda6
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 scsi-SATA_WDC_WD800JD-75M_WD-WMAM9UT48593-part7 -&gt; ../../sda7
+/dev/disk/by-label:
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 1 -&gt; ../../sda6
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 boot1 -&gt; ../../sda2
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 project -&gt; ../../sda3
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 SWAP-sda7 -&gt; ../../sda7
+/dev/disk/by-path:
+lrwxrwxrwx 1 root root 9 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0 -&gt; ../../sda
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part1 -&gt; ../../sda1
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part2 -&gt; ../../sda2
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part3 -&gt; ../../sda3
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part4 -&gt; ../../sda4
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part5 -&gt; ../../sda5
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part6 -&gt; ../../sda6
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 pci-0000:00:1f.2-scsi-0:0:0:0-part7 -&gt; ../../sda7
+/dev/disk/by-uuid:
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 18283DC6283DA422 -&gt; ../../sda1
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 25a4068c-e84a-44ac-85e6-461b064d08cd -&gt; ../../sda6
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 3ea7cf15-511b-407a-a56b-c6bfa046fd9f -&gt; ../../sda5
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 8878a0a4-604e-4ddf-b62c-637c4fa84d3f -&gt; ../../sda2
+lrwxrwxrwx 1 root root 10 Jul 4 06:48 e50bcd6d-61ea-4b05-81a8-3cbe17ad6674 -&gt; ../../sda3永久性设备命名为识别硬件设备省去了很多麻烦。 
+
+ 
+
+</rich_text><rich_text scale="h3">/dev中的巨多设备节点</rich_text><rich_text>
+在设备节点的静态创建模型中，没有办法可以分辨出硬件设备是否真的存在于系统之中。因此，所有这会儿被Linux认识的设备都会创建好设备节点。/dev中巨大数目的设备节点使得鉴别一个系统中存在的设备变得困难。
+
+
+
+</rich_text><rich_text scale="h3">主/次设备号对不够了</rich_text><rich_text>
+近年来需要包含的静态设备节点的数目增加得太多，以至于以前所使用的8位模式用来处理所有的设备变得不够用了。因此主/次设备号对开始用光了。
+
+
+字符设备和块设备拥有固定分配的主/次设备号对。分配主/次设备号对的官方机构是</rich_text><rich_text link="webs http://www.lanana.org/docs/device-list/devices.txt">Linux Assigned Name and Number Authority</rich_text><rich_text>。但是，一台机器不会使用所有可能的设备，因此一个系统中肯定有未使用的主/次设备号。在这种情况下，那台机器的内核就可以借用那些未使用设备的主/次设备号，给其他一些需要的设备。
+
+
+有时候这样会产生问题。因为用户空间操作设备的应用程序未必会感知设备号的变化。对于用户空间的程序，LANANA分配的设备号非常重要。因此，主/次设备号的改变必须通知这些应用程序。这被称为主/次设备号的动态分配，Udev完成了这项任务。
+
+
+</rich_text><rich_text scale="h2">Udev的目标</rich_text><rich_text>
+    • 运行在用户空间.
+    • 创建永久性设备名, 将设备命名葱内核空间剥离，并且基于设备命名实现一些规则.
+    • 在/dev中为存在于系统的设备动态创建设备节点，并且为之动态分配主/次设备号.
+    • 提供用户空间的API，用于访问系统中的设备信息.
+
+</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+
+</rich_text><rich_text scale="h2">安装Udev</rich_text><rich_text>
+Udev是2.6内核中的缺省设备管理器。几乎所有的现代Linux发行版都会将Udev作为默认安装的一部分。你也可以从</rich_text><rich_text link="webs http://www.kernel.org/pub/linux/utils/kernel/hotplug/">http://www.kernel.org/pub/linux/utils/kernel/hotplug/</rich_text><rich_text>这里获取Udev。最新版本的Udev需要2.6.25的内核，并且开启了sysfs, procfs, signalfd, inotify, Unix domain sockets, networking和 hotplug的支持。
+
+CONFIG_HOTPLUG=y
+CONFIG_UEVENT_HELPER_PATH=”&quot;
+CONFIG_NET=y
+CONFIG_UNIX=y
+CONFIG_SYSFS=y
+CONFIG_SYSFS_DEPRECATED*=n
+CONFIG_PROC_FS=y
+CONFIG_TMPFS=y
+CONFIG_TMPFS_POSIX_ACL=y 
+CONFIG_INOTIFY=y
+CONFIG_SIGNALFD=y作为一个更加可靠的操作，内核必须不使用CONFIG_SYSFS_DEPRECATED*选项。
+Udev依赖于proc和sys文件系统，并且它们必须挂载在/proc和/sys。
+
+
+
+</rich_text><rich_text scale="h2">Udev的工作</rich_text><rich_text>
+Udev守护进程监听一个netlink套接字，这个套接字是内核用来与用户空间的应用程序进行通信的。当一个设备被加入或移出系统时，内核可能会  通过这个netlink套接字发送一大堆的数据。Udev守护进程截取所有这些数据并完成剩下的工作，也就是创建设备节点，加载模块，等等。
+
+
+
+</rich_text><rich_text scale="h2">内核设备事件管理</rich_text><rich_text>
+    • 启动初始化时, /dev目录使用tmpfs挂载.
+    • 然后, Udev拷贝/lib/udev/devices 的静态设备节点到 /dev 目录.
+    • Udev守护进程开始运行，为所有连接到系统的设备收集来自内核的uevents.
+    • Udev守护进程解析uevent数据，并且对/etc/udev/rules.d中指定的规则进行匹配.
+    • 根据指定的规则为设备创建设备节点和符号链接.
+    • Udev守护进程读取/etc/udev/rules.d/*.rules 中的规则并且保存到内存里面.
+    • Udev接收接收inotify事件，如果某个规则发生了改变，读取这些改变并更新内存副本.
+
+</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+
+</rich_text><rich_text scale="h2">设备驱动程序加载</rich_text><rich_text>
+
+</rich_text><rich_text scale="h3">Udev使用modalias方法来加载设备驱动程序. 位于/lib/modules/`uname -r`/modules.alias 的modalias文件用于协助Udev加载设备驱动. modalias文件由depmod命令创建，包括了设备驱动的别名。</rich_text><rich_text>
+让我们检查一个Linux设备驱动加载的例子：
+我使用一个C程序来从netlink套接字收集数据，并且使用它们来创建设备节点以及加载模块。
+[root@arch ~]# ./a.out
+add@/devices/pci0000:00/0000:00:02.1/usb1/1-4
+ACTION=add
+DEVPATH=/devices/pci0000:00/0000:00:02.1/usb1/1-4
+SUBSYSTEM=usb
+MAJOR=189
+MINOR=1
+DEVTYPE=usb_device
+DEVICE=/proc/bus/usb/001/002
+PRODUCT=1058/1010/105
+TYPE=0/0/0
+BUSNUM=001
+DEVNUM=002
+SEQNUM=1163
+add@/devices/pci0000:00/0000:00:02.1/usb1/1-4/1-4:1.0
+ACTION=add
+DEVPATH=/devices/pci0000:00/0000:00:02.1/usb1/1-4/1-4:1.0
+SUBSYSTEM=usb
+DEVTYPE=usb_interface
+DEVICE=/proc/bus/usb/001/002
+PRODUCT=1058/1010/105 …………………………………………
+你可以看到它提供了很多关于这个设备的信息。这其中包括了用来告诉Udev加载某个特定模块的modalias变量。
+
+
+modalias数据看起来像这样:
+MODALIAS=pci:v000010ECd00008169sv00001385sd0000311Abc02sc00i00The modalias data contains all the information required to find the corresponding device driver :
+pci :- 这是一个PCI设备 
+v :- 设备的厂商ID. 在这里就是 000010EC ( 即 10EC )
+d :- 设备的设备ID. 在这里就是 00008169 ( 即 8169 )
+sv 和 sd 是厂商和设备的子系统版本号. 
+依据ID查找一个PCI设备的厂商/产品的最好地方是 </rich_text><rich_text link="webs http://www.pcidatabase.com/">http://www.pcidatabase.com.</rich_text><rich_text>
+Udev使用modalias数据来从/lib/modules/`uname -r`/modules.alias 查找正确的设备驱动。
+
+ 
+$ grep -i 10EC /lib/modules/`uname -r`/modules.alias | grep -i 8169
+alias pci:v000010ECd00008129sv*sd*bc*sc*i* r8169
+alias pci:v000010ECd00008169sv*sd*bc*sc*i* r8169
+你可以看到适合这个设备的模块是r8169. 让我们获取关于这个驱动程序的更多的信息.
+$ /sbin/modinfo r8169
+filename: /lib/modules/2.6.18-53.el5/kernel/drivers/net/r8169.ko
+version: 2.2LK-NAPI
+license: GPL
+description: RealTek RTL-8169 Gigabit Ethernet driver
+author: Realtek and the Linux r8169 crew 
+srcversion: D5EDA4980B92CA2CF677B62
+alias: pci:v00001737d00001032sv*sd00000024bc*sc*i*
+alias: pci:v000016ECd00000116sv*sd*bc*sc*i*
+alias: pci:v00001186d00004300sv*sd*bc*sc*i*
+alias: pci:v000010ECd00008129sv*sd*bc*sc*i*
+alias: pci:v000010ECd00008169sv*sd*bc*sc*i*
+depends:
+vermagic: 2.6.18-53.el5 SMP mod_unload 686 REGPARM 4KSTACKS gcc-4.1
+parm: media:force phy operation. Deprecated by ethtool (8). (array of int)
+parm: rx_copybreak:Copy breakpoint for copy-only-tiny-frames (int)
+parm: use_dac:Enable PCI DAC. Unsafe on 32 bit PCI slot. (int)
+parm: debug:Debug verbosity level (0=none, …, 16=all) (int)注意查看从&quot;depends”开始的那些行. 它描述了r8169这个模块所依赖的其他一些模块。因此Udev也会加载这些模块。
+
+
+
+</rich_text><rich_text scale="h2">规则处理和设备节点创建</rich_text><rich_text>
+如前所述，Udev会为内核中每个设备状态的改变解析/etc/udev/rules.d/ 中的规则。Udev规则可以用于在用户空间操作设备节点的名字/权限/符号链接。
+
+
+让我们看一些示例规则，有利于帮助你更好地理解Udev规则。
+
+
+内核通过netlink提供的数据可以被Udev用来创建设备节点。这些数据包括主/次设备号对和另外一些设备相关的数据，比如设备/厂商id，设备序列号等。Udev规则可以匹配所有的这些数据，并且用来改变设备节点的名字，创建符号链接，或者注册网络连接。
+
+
+下面这个例子展示了怎样书写Udev规则来重命名系统中的一个网络设备。
+
+
+我们需要得到一些用于创建规则的设备信息。
+# udevadm info -a -p /sys/class/net/eth0/llooking at device '/devices/pci0000:00/0000:00:04.0/0000:01:06.0/net/eth0':
+KERNEL==”eth0″
+SUBSYSTEM==”net”
+DRIVER==”&quot;
+ATTR{addr_len}==”6″
+ATTR{dev_id}==”0×0″
+ATTR{ifalias}==”&quot;
+ATTR{iflink}==”3″
+ATTR{ifindex}==”3″
+ATTR{features}==”0×829″
+ATTR{type}==”1″
+ATTR{link_mode}==”0″
+ATTR{address}==”00:80:48:62:2a:33″
+ATTR{broadcast}==”ff:ff:ff:ff:ff:ff”
+ATTR{carrier}==”1″
+ATTR{dormant}==”0″
+ATTR{operstate}==”unknown”
+ATTR{mtu}==”1500″
+ATTR{flags}==”0×1003″
+ATTR{tx_queue_len}==”1000″
+looking at parent device ‘/devices/pci0000:00/0000:00:04.0/0000:01:06.0′:
+KERNELS==”0000:01:06.0″
+SUBSYSTEMS==”pci”
+DRIVERS==”8139too”
+ATTRS{vendor}==”0×10ec”
+ATTRS{device}==”0×8139″
+ATTRS{subsystem_vendor}==”0×10ec”
+ATTRS{subsystem_device}==”0×8139″
+ATTRS{class}==”0×020000″
+ATTRS{irq}==”19″
+ATTRS{local_cpus}==”ff”
+ATTRS{local_cpulist}==”0-7″
+ATTRS{modalias}==”pci:v000010ECd00008139sv000010ECsd00008139bc02sc00i00″
+ATTRS{enable}==”1″
+ATTRS{broken_parity_status}==”0″
+ATTRS{msi_bus}==”&quot;
+looking at parent device ‘/devices/pci0000:00/0000:00:04.0′:
+KERNELS==”0000:00:04.0″
+SUBSYSTEMS==”pci”
+DRIVERS==”&quot;
+ATTRS{vendor}==”0×10de”
+ATTRS{device}==”0×03f3″
+ATTRS{subsystem_vendor}==”0×0000″
+ATTRS{subsystem_device}==”0×0000″
+ATTRS{class}==”0×060401″
+ATTRS{irq}==”0″
+ATTRS{local_cpus}==”ff”
+ATTRS{local_cpulist}==”0-7″
+ATTRS{modalias}==”pci:v000010DEd000003F3sv00000000sd00000000bc06sc04i01″
+ATTRS{enable}==”1″
+ATTRS{broken_parity_status}==”0″
+ATTRS{msi_bus}==”1″
+looking at parent device ‘/devices/pci0000:00′:
+KERNELS==”pci0000:00″
+SUBSYSTEMS==”&quot;
+DRIVERS==”&quot;
+
+
+你可以发现Udev拥有大量关于这个网络设备的信息。让我们深入检查一下：
+KERNEL==&quot;eth0&quot; :- 该设备的内核名字是eth0
+DRIVERS==”8139too” :- 加载的驱动程序是8139too
+ATTR{address}==”00:80:48:62:2a:33″ :- 该设备的硬件地址
+ATTRS{vendor}==”0×10ec” :- 厂商 id
+ATTRS{device}==”0×8139″ :- 设备 id
+让我们创建一个规则来将这个网络设备重命名为eth1 (这个名字将是永久性的并且重启系统以后也不会复原).
+&gt;[root@arch ~]# cat /etc/udev/rules.d/70-persistent-net.rules
+SUBSYSTEM==”net”, ACTION==”add”, DRIVERS==”?*”, ATTR{address}==”00:80:48:62:2a:33″, ATTR{type}==”1″, KERNEL==”eth*”, NAME=”eth1″
+这个规则就将这个设备重命名成了eth1. 用这种方式我们可以很容易地管理系统中的网络设备或者其他设备节点。
+
+
+
+</rich_text><rich_text scale="h2">Udev 实用工具</rich_text><rich_text>
+Udev提供了一些用户空间的实用程序，用于管理系统中的设备和设备节点。在所有最近的Linux发行版中都可以找到的这样的一个命令就是'udevadm'，udevadm这个命令在功能上可以实现上面提到的各个命令完成的所有任务。
+
+
+这个工具可以用来在正在运行的系统里面重新生成设备节点，如下所示：
+[root@arch ~]# ls -l /dev/ | wc -l
+150
+[root@arch ~]# rm -rf /dev/*
+rm: cannot remove `/dev/pts/0′: Operation not permitted
+rm: cannot remove directory `/dev/shm’: Device or resource busy
+[root@arch ~]# ls -l /dev/ | wc -l
+4
+[root@arch ~]# udevadm trigger
+[root@arch ~]# ls -l /dev/ | wc -l
+150有更多的其他有用的操作都可以通过udevadm命令完成。你可以通过udevadm的man手册页来获取更多的信息。
+
+
+
+</rich_text><rich_text scale="h2">Udev的未来会怎样 ?</rich_text><rich_text>
+预测Linux子系统的将来是不可能的。Linux正在快速开发的过程当中，因此预测Linux的内核的未来是不明智的。DEVfs曾经被当作静态 设备节点的一个解决方案被引入，但是在经历一小段时间之后就消失了。而Udev则被证明是现代Linux内核中一个成功的设备管理器，并且有希望在未来的  发布中成为一个更加稳定，多功能的设备管理系统。
+
+
+
+</rich_text><rich_text scale="h2">关于作者</rich_text><rich_text>
+Unnikrishnan A, 是一个Linux服务器管理的专家。  Linux让他着迷是因为这是一个主要的开源开创性平台，能够让任何人深入学习。他还经常赞赏一个事实，就是Linux有庞大的社区驱动的支持，可以有更 多的机会来展示新思想和解决办法。除了Linux，Unnikrishnan还喜爱电子学和天文学。在他的空余时间，Unnikrishnan喜欢在网络设计的世界中探索。本文最初来源于t </rich_text><rich_text link="webs http://bobcares.com/blog/?p=483">Bobcares</rich_text><rich_text>.
 </rich_text></node></node><node name="Linux3.0.6内核task_struct注释 " prog_lang="custom-colors" readonly="False" tags="" unique_id="61"><rich_text justification="left"></rich_text><rich_text>
 </rich_text><codebox char_offset="0" frame_height="1360" frame_width="940" highlight_brackets="True" show_line_numbers="False" syntax_highlighting="chdr" width_in_pixels="True">struct task_struct {
 	volatile long state;	/* -1 unrunnable, 0 runnable, &gt;0 stopped */
