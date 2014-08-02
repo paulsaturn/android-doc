@@ -11749,6 +11749,59 @@ U 盘。 
   如此就可以在 linux 客户端通过 /mnt/nfs 来访问其它 linux 系统或 UNIX 系统以 NFS 方式共享出来的文件了。以上操作在 redhat as server 3 、 redflag server4.1 、 suse server 9 以及 
 Solaris 7 、 Solaris 8 、 Solaris 9 for x86&amp;sparc环境下测试通过。 
  
+</rich_text></node><node name="计划任务工具cron用法详解" prog_lang="custom-colors" readonly="False" tags="" unique_id="78"><rich_text>linux下大名鼎鼎的计划任务工具crontab的使用介绍baidu、google上多得让人眼花缭乱，本着“天下文章一大抄”的觉悟，加上本人日常工作中总结的使用经验，索性推出这篇笔记式文章，以供遗忘时翻阅之用。
+cron是linux系统下一个自动执行指定任务的程序，即包含“时间”、“路径”、“自动执行脚本”等要素，例如我想通过自动执行脚本“newcopy.sh”在凌晨4点整将/usr/local/下的“new”目录复制到/home下的“superman”目录。
+cron程序在安装系统后一般会自动随系统启动，无需每次人手启动，若无意中将其自启动取消了，可以通过ntsysv或chkconfig将其添加到系统自启动列表中，如下：
+
+</rich_text><rich_text scale="h2" weight="heavy">一、cron服务介绍</rich_text><rich_text>
+       cron把命令行保存在/etc/crontab文件里，每个系统用户如果设置了自己的cron，那都会在/var/spool/cron下面有对应用户名的crontab。无论编写/var/spool/cron目录内的文件还是/etc/crontab文件，都能让cron准确无误地执行安排的任务，区别是/var/spool/cron下各系统用户的crontab文件是对应</rich_text><rich_text underline="single">用户级别</rich_text><rich_text>的的任务配置，而/var/crontab文件则是对应</rich_text><rich_text underline="single">系统级别</rich_text><rich_text>的任务配置。cron服务器每分钟读取一次/var/crontab/cron目录内的所有文件和/etc/crontab文件。
+
+</rich_text><rich_text scale="h2" weight="heavy">二、使用cron服务执行计划任务</rich_text><rich_text>
+#service crond start/restart/stop
+启动/重启/关闭cron服务
+
+#crontab -l
+浏览当前用户的crontab，即浏览已存在的计划任务列表
+
+#crontab -e
+编辑当前用户crontab，如之前从未编辑过crontab文件，那么crontab是一个空白文件，我们可以完全手工编写我们所需要的计划任务列表，下面详细介绍计划任务列表的写法。
+
+以下是几个例子：
+1)9 9 * * * /usr/local/bin/cvsb
+2)3 3 * * 0 /usr/local/bin/qbbak
+3)* */6 * * * /usr/local/bin/esbbak
+4)20,30 * * * /usr/local/bin/esbak
+5)* 23 * * 2-5 /usr/local/bin/esbbak
+
+六个字段对应的含义如下：
+  9         9        *        *        *
+分钟     小时   日期   月份    星期
+
+1)表示每天早上9点9分执行目录/usr/local/bin/中的cvsb文件
+2)表示每周日凌晨3时3分执行目录/usr/local/bin中的qbbak文件
+3)表示每6小时执行一次，执行时间从第一次执行起计算，当然也可以自定义执行时间，比如0 */6 * * *那程序就会在整点执行
+4)表示在每小时20分和30分时执行
+5)表示在星期二到星期五每天的23点执行
+
+上面简单介绍了cron的一些基本用法，这个东东的时间组合可不是一般的强～可以复杂到你无法想象，我们只要掌握少许基本就可以满足日常需求了。
+
+</rich_text><rich_text scale="h2" weight="heavy">三、cron进阶使用</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1.避免cron产生垃圾文件</rich_text><rich_text>
+细心的朋友可能会发现系统/var/spool/clientmqueue/目录下往往存有大量文件，原因是系统中有用户开启了cron，而cron中执行的程序有输出内容，输出内容会以邮件形式发给cron的用户，而sendmail（系统自带的邮件服务器）没有启动所以就产生了这些文件。
+
+这时可以使用输出重定向，即在计划任务后加上&gt; /dev/null 2&gt;&amp;1
+例：
+9 9 * * * /usr/local/bin/cvsb &gt; /dev/null 2&gt;&amp;1
+
+2&gt;&amp;1：把错误重定向到输出要送到的地方。
+把命令的执行结果重定向到/dev/null，即把产生的错误抛弃。
+   
+</rich_text><rich_text scale="h3" weight="heavy">2.一种经常碰到的情况，需要执行的文件没问题，但通过cron就是死活不能正确执行，这时我们可以通过输出重定向将cron的执行过程输出到一个文件，
+通过分析执行过程来寻找错误的原因</rich_text><rich_text>
+
+例：
+9 9 * * * /usr/local/bin/cvsb &gt; /var/log/crontab_log 2&gt;&amp;1
+上例将cron的执行过程输出到一个文本文件crontab_log，这个文件可以随便手动建一个，放在哪都行，重定向目录写对就Ok。
 </rich_text></node></node><node name="libevent事件处理框架分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="38"><rich_text>libevent最大的特点就是封装了对以下三种事件的响应:IO事件,定时器事件,信号事件.这里就分析libevent如果做到这一点的,在libevent中还包括一些其他的功能(如缓冲区),但是我这里就重点讲解这一部分了.
 
 事件原型,简单看一看用于封装事件的结构体定义:
