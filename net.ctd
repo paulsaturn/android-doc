@@ -334,7 +334,7 @@ Server:		202.96.128.166
 Address:	202.96.128.166#53
 
 Non-authoritative answer:
-</rich_text><rich_text link="webs http://www.baidu.com	canonical">www.baidu.com	canonical</rich_text><rich_text> name = </rich_text><rich_text link="webs http://www.a.shifen.com.">www.a.shifen.com.</rich_text><rich_text>
+</rich_text><rich_text link="webs http://www.baidu.com canonical">www.baidu.com	canonical</rich_text><rich_text> name = </rich_text><rich_text link="webs http://www.a.shifen.com.">www.a.shifen.com.</rich_text><rich_text>
 Name:	</rich_text><rich_text link="webs http://www.a.shifen.com">www.a.shifen.com</rich_text><rich_text>
 Address: 115.239.210.27
 Name:	</rich_text><rich_text link="webs http://www.a.shifen.com">www.a.shifen.com</rich_text><rich_text>
@@ -1038,6 +1038,56 @@ Address: 220.181.111.8612 retry=[number] / timeout=[number]
 </rich_text><rich_text scale="h2" weight="heavy">【总结】</rich_text><rich_text>
  其实nslookup命令的man信息不长，大家仔细阅读个20、30分钟也就基本掌握了。
  nslookup命令很小，但却很实用，它是我们与DNS服务器之间很好很方便的通讯桥梁。
+</rich_text></node><node name="udhcpc" prog_lang="custom-colors" readonly="False" tags="" unique_id="11"><rich_text>就可以直接把simple.script拿来使用，改不改名字都可以，busybox里面默认的目录文件是/usr/share/udhcpc/default.script
+ 　　可以查看下帮助
+ 　　# udhcpc --help
+ 　　BusyBox v1.14.1 (2010-01-22 10:35:16 CST) multi-call binary
+ 　　Usage: udhcpc [-Cfbnqtvo] [-c CID] [-V VCLS] [-H HOSTNAME] [-i INTERFACE]
+ 　　[-p pidfile] [-r IP] [-s script] [-O dhcp-option]... [-P N]
+ 　　-V CLASSID      Vendor class identifier
+ 　　-i INTERFACE    Interface to use (default: eth0)
+ 　　-H,-h HOSTNAME  Client hostname
+ 　　-c CLIENTID     Client identifier
+ 　　-C              Suppress default client identifier
+ 　　-p file         Create pidfile
+ 　　-r IP           IP address to request
+ 　　-s file         Run file at DHCP events (default /usr/share/udhcpc/default.script)
+ 　　-t N            Send up to N request packets
+ 　　-T N            Try to get a lease for N seconds (default 3)
+ 　　-A N            Wait N seconds (default 20) after failure
+ 　　-O OPT          Request DHCP option OPT (cumulative)
+ 　　-o              Do not request any options (unless -O is also given)
+ 　　-f              Run in foreground
+ 　　-b              Background if lease is not immediately obtained
+ 　　-S              Log to syslog too
+ 　　-n              Exit with failure if lease is not immediately obtained
+ 　　-q              Quit after obtaining lease
+ 　　-R              Release IP on quit
+ 　　-P N            Use port N instead of default 68
+ 　　-a              Use arping to validate offered address
+ 　　#
+ 　　这样就很好理解了。
+ 　　下面就说说使用udhcpd，同样可以直接把busybox自带的udhcpd.conf作为参考，怎么设置该文件就不详述了，去参考相关文档即可。看看udhcpd怎么使用
+ 　　# udhcpd --help
+ 　　BusyBox v1.14.1 (2010-01-22 10:35:16 CST) multi-call binary
+ 　　Usage: udhcpd [-fS] [-P N] [configfile]
+ 　　DHCP server
+ 　　-f      Run in foreground
+ 　　-S      Log to syslog too
+ 　　-P N    Use port N instead of default 67
+ 　　帮助一目了然。
+ 　　我使用的时候直接
+ 　　#udhcpd /etc/udhcpd.conf
+ 　　即可。
+ 　　还有一个租约文件要简要说说，使用udhcpd时会要求建立一个租约文件，按照提示创建一个就行了，它起什么作用呢？就是为了记录客户端所获得的IP，如果没有租约文件，则会重新给客户端分配一个新IP，如果有，则使用原先分配的IP。
+
+
+最近在做项目的时候卡在了dhcp处，当没有网络的时候，板子一直发送dhcp请求，导致程序不往下执行，解决的办法是把它切换到后台运行，可是如何切换到后台呢，有办法，它自带参数可以实现该功能。如下：
+   udhcpc</rich_text><rich_text foreground="#ff0000"> -b</rich_text><rich_text> -i eth0 -p /var/run/udhcpc.pid -R
+解释一下，-b就是切换到后台指令，-i是指定使用哪个网络接口，双网卡的时候一定要使用它来指定eth0  or  eth1。
+业务不熟练害死人啊，所以只要多看看源码，一般问题都能搞定。
+【最近新添加 -R】
+对于 -R参数，其实也很重要，在关闭udhcpc时，可以向dhcpserver发送release取消租约。
 </rich_text></node></node><node name="nanohttpd分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>1. webserver实现一个简单服务器(框架)
     SimpleWebServer extend NanoHttpd</rich_text><node name="AirDropEmergency数据包分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="6"><rich_text>AirDropEmergency这个应用用nandhttpd(使用的版本不是最新的)来作为上传服务器， 下面是上传的主要数据包:
 </rich_text><rich_text scale="h3" weight="heavy">1. 192.169.1.46:40815 -&gt; 192.169.1.252:51345</rich_text><rich_text>

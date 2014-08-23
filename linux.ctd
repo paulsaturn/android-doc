@@ -1,54 +1,215 @@
-<?xml version="1.0" ?><cherrytree><node name="udhcpc" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>就可以直接把simple.script拿来使用，改不改名字都可以，busybox里面默认的目录文件是/usr/share/udhcpc/default.script
- 　　可以查看下帮助
- 　　# udhcpc --help
- 　　BusyBox v1.14.1 (2010-01-22 10:35:16 CST) multi-call binary
- 　　Usage: udhcpc [-Cfbnqtvo] [-c CID] [-V VCLS] [-H HOSTNAME] [-i INTERFACE]
- 　　[-p pidfile] [-r IP] [-s script] [-O dhcp-option]... [-P N]
- 　　-V CLASSID      Vendor class identifier
- 　　-i INTERFACE    Interface to use (default: eth0)
- 　　-H,-h HOSTNAME  Client hostname
- 　　-c CLIENTID     Client identifier
- 　　-C              Suppress default client identifier
- 　　-p file         Create pidfile
- 　　-r IP           IP address to request
- 　　-s file         Run file at DHCP events (default /usr/share/udhcpc/default.script)
- 　　-t N            Send up to N request packets
- 　　-T N            Try to get a lease for N seconds (default 3)
- 　　-A N            Wait N seconds (default 20) after failure
- 　　-O OPT          Request DHCP option OPT (cumulative)
- 　　-o              Do not request any options (unless -O is also given)
- 　　-f              Run in foreground
- 　　-b              Background if lease is not immediately obtained
- 　　-S              Log to syslog too
- 　　-n              Exit with failure if lease is not immediately obtained
- 　　-q              Quit after obtaining lease
- 　　-R              Release IP on quit
- 　　-P N            Use port N instead of default 68
- 　　-a              Use arping to validate offered address
- 　　#
- 　　这样就很好理解了。
- 　　下面就说说使用udhcpd，同样可以直接把busybox自带的udhcpd.conf作为参考，怎么设置该文件就不详述了，去参考相关文档即可。看看udhcpd怎么使用
- 　　# udhcpd --help
- 　　BusyBox v1.14.1 (2010-01-22 10:35:16 CST) multi-call binary
- 　　Usage: udhcpd [-fS] [-P N] [configfile]
- 　　DHCP server
- 　　-f      Run in foreground
- 　　-S      Log to syslog too
- 　　-P N    Use port N instead of default 67
- 　　帮助一目了然。
- 　　我使用的时候直接
- 　　#udhcpd /etc/udhcpd.conf
- 　　即可。
- 　　还有一个租约文件要简要说说，使用udhcpd时会要求建立一个租约文件，按照提示创建一个就行了，它起什么作用呢？就是为了记录客户端所获得的IP，如果没有租约文件，则会重新给客户端分配一个新IP，如果有，则使用原先分配的IP。
+<?xml version="1.0" ?><cherrytree><node name="Configure，Makefile.am, Makefile.in, Makefile文件之间关系" prog_lang="custom-colors" readonly="False" tags="" unique_id="84"><rich_text>    
+</rich_text><rich_text scale="h3">                        </rich_text><rich_text>
+    </rich_text><rich_text justification="left"></rich_text><rich_text>
 
 
-最近在做项目的时候卡在了dhcp处，当没有网络的时候，板子一直发送dhcp请求，导致程序不往下执行，解决的办法是把它切换到后台运行，可是如何切换到后台呢，有办法，它自带参数可以实现该功能。如下：
-   udhcpc</rich_text><rich_text foreground="#ff0000"> -b</rich_text><rich_text> -i eth0 -p /var/run/udhcpc.pid -R
-解释一下，-b就是切换到后台指令，-i是指定使用哪个网络接口，双网卡的时候一定要使用它来指定eth0  or  eth1。
-业务不熟练害死人啊，所以只要多看看源码，一般问题都能搞定。
-【最近新添加 -R】
-对于 -R参数，其实也很重要，在关闭udhcpc时，可以向dhcpserver发送release取消租约。
-</rich_text></node><node name="s3c" prog_lang="custom-colors" readonly="False" tags="" unique_id="75"><rich_text></rich_text><node name="使用qemu 建立mini2440的模拟仿真环境" prog_lang="custom-colors" readonly="False" tags="" unique_id="76"><rich_text scale="h3" weight="heavy">1. 首先下载qemu for mini2440</rich_text><rich_text>
+ 
+</rich_text><rich_text scale="h3" weight="heavy">1.autoscan (autoconf): </rich_text><rich_text>
+   扫描源代码以搜寻普通的可移植性问题，比如检查编译器，库，头文件等，生成文件configure.scan,它是configure.ac的一个雏形。
+    your source files --&gt; [autoscan*] --&gt; [configure.scan] --&gt; configure.ac
+
+</rich_text><rich_text scale="h3" weight="heavy">2.aclocal (automake):</rich_text><rich_text>
+  根据已经安装的宏，用户定义宏和acinclude.m4文件中的宏将configure.ac文件所需要的宏集中定义到文件 aclocal.m4中。aclocal是一个perl 脚本程序，它的定义是：“aclocal - create aclocal.m4 by scanning configure.ac”
+user input files                       optional input                     process                 output files
+================   ==============     =======          ============
+
+                                                        acinclude.m4 -----------------.
+                                                                                                   V
+                                                                                             .----------.
+            configure.ac ----------------------------------------------&gt;|aclocal|
+                                                    {user macro files} ------&gt;|           |--------------&gt; aclocal.m4
+                                                                                              .--------.
+</rich_text><rich_text scale="h3" weight="heavy">3.autoheader(autoconf): </rich_text><rich_text>
+  根据configure.ac中的某些宏，比如cpp宏定义，运行m4，声称config.h.in
+user input files                        optional input                     process                 output files
+================    ==============     =======          ============
+
+                                                aclocal.m4 ---------------------------.
+                                                                                                    |
+                                                                                                   V
+                                                                                          .---------------.
+configure.ac -----------------------------------------------------&gt;|autoheader|----------&gt; autoconfig.h.in
+                                                                                          .--------------.
+
+</rich_text><rich_text scale="h3" weight="heavy">4.automake:</rich_text><rich_text scale="h3">  </rich_text><rich_text>
+  automake将Makefile.am中定义的结构建立Makefile.in，然后configure脚本将生成的Makefile.in文件转换   为Makefile。如果在configure.ac中定义了一些特殊的宏，比如AC_PROG_LIBTOOL，它会调用libtoolize，否则它  会自己产生config.guess和config.sub
+user input files                        optional input                  processes                   output files
+================   ==============   =========          ============
+                                                                                         .---------------.
+                                                                                          |                 |-------------&gt; COPYING
+                                                                                          |                 |-------------&gt; INSTALL
+                                                                                          |                 |-------------&gt; install-sh
+                                                                                          |                 |-------------&gt; missing
+                                                                                          |automake|-------------&gt; mkinstalldirs
+configure.ac -----------------------------------------------------&gt;|                 |
+Makefile.am  ----------------------------------------------------&gt;|                 |-------------&gt; Makefile.in
+                                                                                          |                 |-------------&gt; stamp-h.in
+                                                                                    .---+                 |-------------&gt; config.guess
+                                                                                    |     |                 |--------------&gt; config.sub
+                                                                                    |     .------+------.
+                                                                                    |               |--------------------&gt; config.guess
+                                                                                    |libtoolize|--------------------&gt; config.sub
+                                                                                    |               |--------------------&gt; ltmain.sh
+                                                                                    |               |--------------------&gt; ltconfig
+                                                                                    .------------.
+
+</rich_text><rich_text scale="h3" weight="heavy">5.autoconf:</rich_text><rich_text scale="h3"> </rich_text><rich_text>
+  将configure.ac中的宏展开，生成configure脚本。这个过程可能要用到aclocal.m4中定义的宏。
+user input files                        optional input                  processes                   output files
+================   ==============   =========          ============
+aclocal.m4, autoconfig.h.in -------------------------------------------.
+                                                                                                 V
+                                                                                           .-----------.
+configure.ac ------------------------------------------------------&gt;|autoconf|------------------&gt; configure 
+
+</rich_text><rich_text scale="h3" weight="heavy">6. ./configure的过程</rich_text><rich_text>
+                                                                                                .--------------------------&gt; [config.cache]
+     configure* ----------------------------------------------------------+-------------------------&gt; config.log
+                                                                                                |
+              [config.h.in]---.                                                          v                            .--&gt; [autoconfig.h]
+                                    +----------------------------------------&gt; config.status* -------+                   
+              Makefile.in ---'                                                                                        `--&gt; Makefile 
+
+</rich_text><rich_text scale="h3" weight="heavy">7. make过程</rich_text><rich_text scale="h3"> </rich_text><rich_text>
+[autoconfig.h] -.
+                            +--&gt; make* ---&gt;  程序
+        Makefile   ---' 
+        .---------,
+                                                config.site -----------------------&gt;|               |
+                                                config.cache --------------------&gt;|configure|  ------------&gt; config.cache
+                                                                                                 |              +-,
+                                                                                                 `-+-------'    |
+                                                                                                     |               |-----------&gt; config.status
+                                               config.h.in ---------------------------&gt;|config-   |-----------&gt; config.h
+                                               Makefile.in --------------------------&gt;|  .status |------------&gt; Makefile
+                                                                                                     |              |------------&gt; stamp-h
+                                                                                                     |              +--,
+                                                                                                  .-+              |   |
+                                                                                                  | `------+----'   |
+                                              ltmain.sh --------------------------&gt;|ltconfig|----------------&gt; libtool
+                                                                                                 |             |         |
+                                                                                                 `-+------'          |
+                                                                                                     |config.guess|
+                                                                                                     | config.sub  |
+                                                                                                     `---------------' 
+.--------,
+
+                                             Makefile ---------------------------&gt;|              |
+                                             config.h ----------------------------&gt;|  make   |
+{project sources} ---------------------------------------------------&gt;|              |---------------&gt; {project targets}
+                                                                                             .-+            +--,
+                                                                                             |  `-----------'   |
+                                                                                             |     libtool      |
+                                                                                             |     missing    |
+                                                                                             |    install-sh  |
+                                                                                             |mkinstalldirs|
+                                                                                             `-----------------'
+
+</rich_text><rich_text scale="h2" weight="heavy">实例：</rich_text><rich_text>
+在/hello/目录下创建一个hello.c文件，并编译运行它：
+#cd /hello/
+(1) 编写源文件hello.c：
+#include&lt;stdio.h&gt; 
+
+int main(int argc, char** argv)
+{
+    printf(&quot;Hello, GNU!n&quot;);
+    return 0;
+}
+[litao@vm0000131 hello]$ ll
+total 4
+-rw-rw-r-- 1 litao litao 68 Aug 12 12:02 hello.c
+
+</rich_text><rich_text scale="h3" weight="heavy">一、autoscan</rich_text><rich_text>
+[litao@vm0000131 hello]$ autoscan
+autom4te: configure.ac: no such file or directory
+autoscan: /usr/bin/autom4te failed with exit status: 1
+[litao@vm0000131 hello]$ ll
+total 8
+-rw-rw-r-- 1 litao litao   0 Aug 12 12:03 autoscan.log
+-rw-rw-r-- 1 litao litao 457 Aug 12 12:03 configure.scan
+-rw-rw-r-- 1 litao litao  68 Aug 12 12:02 hello.c
+已经生成了configure.scan，autoscan.log文件
+将configure.scan 修改为 configure.in，最后修改的内容如下：
+[litao@vm0000131 hello]$ mv configure.scan configure.in    
+[litao@vm0000131 hello]$ vim configure.in 
+
+#                                               -*- Autoconf -*-
+# Process this file with autoconf to produce a configure script.
+
+AC_PREREQ(2.59)
+AC_INIT(FULL-PACKAGE-NAME, VERSION, BUG-REPORT-ADDRESS)
+AC_CONFIG_SRCDIR([hello.c])
+#AC_CONFIG_HEADER([config.h])
+AM_INIT_AUTOMAKE(hello, 1.0)
+# Checks for programs.
+AC_PROG_CC
+
+# Checks for libraries.
+
+# Checks for header files.
+
+# Checks for typedefs, structures, and compiler characteristics.
+
+# Checks for library functions.
+AC_OUTPUT(Makefile)
+
+</rich_text><rich_text scale="h3" weight="heavy">二、acloacl</rich_text><rich_text>
+[litao@vm0000131 hello]$ aclocal 
+
+生成 aclocal.m4 和 autom4te.cache (生成aclocal.m4的过程中涉及到configure.in)
+[litao@vm0000131 hello]$ ll
+total 44
+-rw-rw-r-- 1 litao litao 31120 Aug 12 12:08 aclocal.m4
+drwxr-xr-x 2 litao litao  4096 Aug 12 12:08 autom4te.cache
+-rw-rw-r-- 1 litao litao     0 Aug 12 12:03 autoscan.log
+-rw-rw-r-- 1 litao litao   496 Aug 12 12:08 configure.in
+-rw-rw-r-- 1 litao litao    68 Aug 12 12:02 hello.c
+
+</rich_text><rich_text scale="h3" weight="heavy">三、antoconf</rich_text><rich_text>
+[litao@vm0000131 hello]$ autoconf
+生成 configure (根据 configure.in, 和 aclocal.m4)
+[litao@vm0000131 hello]$ ll
+total 168
+-rw-rw-r-- 1 litao litao  31120 Aug 12 12:08 aclocal.m4
+drwxr-xr-x 2 litao litao   4096 Aug 12 12:11 autom4te.cache
+-rw-rw-r-- 1 litao litao      0 Aug 12 12:03 autoscan.log
+-rwxrwxr-x 1 litao litao 122297 Aug 12 12:11 configure
+-rw-rw-r-- 1 litao litao    496 Aug 12 12:08 configure.in
+-rw-rw-r-- 1 litao litao     68 Aug 12 12:02 hello.c
+
+</rich_text><rich_text scale="h3" weight="heavy">四、编写Makefile.am：</rich_text><rich_text>
+AUTOMAKE_OPTIONS= foreign
+bin_PROGRAMS= hello
+hello_SOURCES= hello.c
+
+</rich_text><rich_text scale="h3" weight="heavy">五、automake</rich_text><rich_text>
+生成 Makefile.in， depcomp， install-sh， 和 missing (根据 Makefile.am, 和 aclocal.m4)
+[litao@vm0000131 hello]$ automake
+configure.in: required file `./install-sh' not found
+configure.in: required file `./missing' not found
+Makefile.am: required file `./depcomp' not found
+[litao@vm0000131 hello]$ automake --add-missing
+configure.in: installing `./install-sh'
+configure.in: installing `./missing'
+Makefile.am: installing `./depcomp'
+[litao@vm0000131 hello]$ ll
+total 192
+-rw-rw-r-- 1 litao litao  31120 Aug 12 12:08 aclocal.m4
+drwxr-xr-x 2 litao litao   4096 Aug 12 12:14 autom4te.cache
+-rw-rw-r-- 1 litao litao      0 Aug 12 12:03 autoscan.log
+-rwxrwxr-x 1 litao litao 122297 Aug 12 12:11 configure
+-rw-rw-r-- 1 litao litao    496 Aug 12 12:08 configure.in
+lrwxrwxrwx 1 litao litao     31 Aug 12 12:16 depcomp -&gt; /usr/share/automake-1.9/depcomp
+-rw-rw-r-- 1 litao litao     68 Aug 12 12:02 hello.c
+lrwxrwxrwx 1 litao litao     34 Aug 12 12:16 install-sh -&gt; /usr/share/automake-1.9/install-sh
+-rw-rw-r-- 1 litao litao     69 Aug 12 12:15 Makefile.am
+-rw-rw-r-- 1 litao litao  16561 Aug 12 12:16 Makefile.in
+lrwxrwxrwx 1 litao litao     31 Aug 12 12:16 missing -&gt; /usr/share/automake-1.9/missing
+
+</rich_text><rich_text scale="h3" weight="heavy">六、configure</rich_text><rich_text>
+生成 Makefile， config.log， 和 config.status
+</rich_text><encoded_png char_offset="34">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</encoded_png></node><node name="s3c" prog_lang="custom-colors" readonly="False" tags="" unique_id="75"><rich_text></rich_text><node name="使用qemu 建立mini2440的模拟仿真环境" prog_lang="custom-colors" readonly="False" tags="" unique_id="76"><rich_text scale="h3" weight="heavy">1. 首先下载qemu for mini2440</rich_text><rich_text>
 git clone git://repo.or.cz/qemu/mini2440.git qemu-mini2440
 如果感觉速度慢，直接打包下载
 http://repo.or.cz/w/qemu/mini2440.git/snapshot/HEAD.tar.gz
@@ -167,6 +328,15 @@ pts(pseudo-terminal slave)是pty的实现方法，与ptmx(pseudo-terminal master
 在RHEL4环境下: 输出为/dev/ptmx /dev/pts/1存在一(master)对多(slave)的情况</rich_text><rich_text>
 =========================================================================
 
+现在master设备命名为/dev/ptmx，而slave设备则对应/dev/pts/目录下的文件名。
+
+在ubuntu12.04中的输入下面的命令：
+#tty
+/dev/pts/11
+表示shell终端打开的ttyp11
+#ps -ax
+可以查看进程所打开的tty*
+
 </rich_text><rich_text scale="h3" weight="heavy">3、控制终端(/dev/tty)</rich_text><rich_text>
 如果当前进程有控制终端(Controlling Terminal)的话，那么/dev/tty就是当前进程的控制终端的设备特殊文件。可以使用命令”ps –ax”来查看进程与哪个控制终端相连。对于你登录的shell，/dev/tty就是你使用的终端，设备号是(5,0)。使用命令”tty”可以查看它具体对应哪个实际终端设备。/dev/tty有些类似于到实际所使用终端设备的一个联接。
 
@@ -176,6 +346,8 @@ pts(pseudo-terminal slave)是pty的实现方法，与ptmx(pseudo-terminal master
 /dev/tty1
 2、#echo &quot;test tty0&quot; &gt; /dev/tty0
 test tty0</rich_text><rich_text>
+
+/dev/tty0代表当前使用的终端，而/dev/console一般指向这个终端。例如初始化时登录系统用的是/dev/tty2，那么/dev/tty0指向/dev/tty2，如果切换到/dev/tty1，则/dev/tty0就指向/dev/tty1了。
 
 </rich_text><rich_text scale="h3" weight="heavy">5 虚拟终端(/dev/pts/n)</rich_text><rich_text>
 在Xwindows模式下的伪终端.
@@ -4517,6 +4689,649 @@ write_seqcount_end(&amp;seqcount_a);
     
 </rich_text><rich_text scale="h1">关于作者</rich_text><rich_text>
  杨燚，计算机科学硕士，毕业于中科院计算技术研究所，有4年的Linux内核编程经验，目前从事嵌入式实时Linux的开发与性能测试。您可以通过</rich_text><rich_text link="webs http://mailto:yang.yi@bmrtech.com?cc=">yang.yi@bmrtech.com</rich_text><rich_text>或</rich_text><rich_text link="webs http://mailto:yyang@ch.mvista.com?cc=">yyang@ch.mvista.com</rich_text><rich_text>与作者联系。
+</rich_text></node></node><node name="rfkill" prog_lang="custom-colors" readonly="False" tags="" unique_id="79"><rich_text scale="h3" weight="heavy">1、介绍</rich_text><rich_text>
+    rfkill子系统在系统对于禁止无线设备工作提供了一个通用的接口，当无线设备被阻止工作时，它就不会在消耗功率。这个子系统在用户开关按钮上提供了一 个方法去阻止某种无线设备的工作。这是用于某些环境下(比如飞机)  ，无线设备就必须被关闭。子系统有硬件和软件模块的概念。在概念上这些意义很小，关于在于它能否被改变。
+
+</rich_text><rich_text scale="h3" weight="heavy">2、实现细节</rich_text><rich_text>
+    rfkill核心为内核驱动提供了API，这是为了在内核中注册这些无线设备。这种方法的打开或者关闭  是为了让系统知道硬件设备的工作状态。当设备是硬件模块（可以被rfkill_set_hw_state() 或者from  query_hw_block调用），set_block()可以被其他的软件模块调用，驱动程序忽视这个方法的调用，他们可以用 rfkill_set_hw_state()的返回值去同步软件的状态而不是一直在调用set_block()，实际上，驱动程序应该用 rfkill_set_hw_state()的返回值，除非硬件实际上一直保持软件和硬件的独立。
+ 
+</rich_text><rich_text scale="h3" weight="heavy">3、内核API</rich_text><rich_text>
+    无线设备的驱动基本上实现了rfkill的驱动。如果rfkill开关只是一个按钮，平台驱动可能实现输入设备驱动。这个开关影响硬件的工作，所以你需要 实现rfkill的驱动。平台需要提供一个方法去开（关）设备的方法。当一个状态改变的时候，除非他们分配了poll_hw_block()回 调，rfkill_set_hw_state()就会被调用。
+
+</rich_text><rich_text scale="h3" weight="heavy">4、userspace 支持</rich_text><rich_text>
+    被推荐使用的用户接口是/dev/rfkill,这是一个混合的字符设备，他允许用户空间使用和设置rfkill设备的状态。这也通知用户空间关于设备的 增加和移除。在linux/rfkill.h中的API也就是一般简单的读/写API，对于打开或者关闭的过渡时期，ioctl需要传入关闭的状态。
+    除了ioctl，和内核通信通过read()和write(),而不是struct  rfkill_event。在这个结构体中，软件和硬件模块被分开。用户空间在系统中能得到rfkill驱动的状态。当然rfkill驱动的状态同事也得 更新默认热插设备的状态。当一个应用打开/dev/rfkill,他可以读取到当前所有设备的状态。通过查询设备变化的消息和监听rfkill  core发出的uevent，设备状态的变化可以被获得。另外，每个 rfkill的设备在sysfs和 emits uevents 中被注册。
+ 
+Linux 中的 rfkill 是用来管理无线模块的命令， 参考
+</rich_text><rich_text link="webs http://blog.free-abc.com.cn/?tag=rfkill">http://blog.free-abc.com.cn/?tag=rfkill</rich_text><rich_text>
+查看无线设备情况
+    rfkill list
+ 
+启用无线网卡命令为
+    rfkill unblock 0
+
+其中0为设备对应的id，可以是1、2……
+echo 0 &gt; /dev/bt_rfkill       echo 1 &gt; /dev/bt_rfkill
+static int bt_rfkill_set_block(void *data, bool blocked)
+{
+    unsigned int ret = 0;
+    ret = bluetooth_set_power(data, blocked ?RFKILL_USER_STATE_SOFT_BLOCKED :RFKILL_USER_STATE_UNBLOCKED);
+    return ret;
+}
+</rich_text></node><node name="bluetooth" prog_lang="custom-colors" readonly="False" tags="" unique_id="80"><rich_text></rich_text><node name="蓝牙底层HCI驱动的实现 " prog_lang="custom-colors" readonly="False" tags="" unique_id="82"><rich_text>
+</rich_text><rich_text scale="h2" weight="heavy">Overview</rich_text><rich_text>
+蓝牙协议栈与蓝牙底层设备一般是通过串口连接，两者之间通过HCI协议通讯。这就要求实现一个串口tty驱动。而对于Bluez协议栈来说，它是通过建立蓝牙的socket来发送、接收数据。因此，在蓝牙通信中，对上层应用是socket通信，对底层则一般是通过一个tty驱动实现。本文以 HCIUART_LL为例，讨论了蓝牙底层的tty驱动部分，代码在drivers\bluetooth\hci_ll.c和hci_ldis.c。
+Hci_ldis.c实现一个蓝牙专用的线路规程，disc id为N_HCI，结构体如下：
+static struct tty_ldisc_ops hci_uart_ldisc;
+      memset(&amp;hci_uart_ldisc, 0, sizeof (hci_uart_ldisc));
+      hci_uart_ldisc.magic       = TTY_LDISC_MAGIC;
+      hci_uart_ldisc.name        = &quot;n_hci&quot;;
+      hci_uart_ldisc.open        = hci_uart_tty_open;
+      hci_uart_ldisc.close        = hci_uart_tty_close;
+      hci_uart_ldisc.read         = hci_uart_tty_read;
+      hci_uart_ldisc.write         = hci_uart_tty_write;
+      hci_uart_ldisc.ioctl          = hci_uart_tty_ioctl;
+      hci_uart_ldisc.poll          = hci_uart_tty_poll;
+      hci_uart_ldisc.receive_buf     = hci_uart_tty_receive;
+      hci_uart_ldisc.write_wakeup  = hci_uart_tty_wakeup;
+      hci_uart_ldisc.owner       = THIS_MODULE;
+在这个结构中，hci_uart_tty_read与hci_uart_tty_write这两个函数为空函数。由此可见，一旦对tty串口设置了 N_HCI线路规程，那么上层就不能再通过读写tty设备的方式发送、接收HCI数据。取而代之的，N_HCI中实现了对上层的socket接口，即与 /net/bluetooth/目录下的代码交互数据的接口。
+
+</rich_text><rich_text scale="h2" weight="heavy">初始化</rich_text><rich_text>
+初始化由hci_uart_init函数完成，里面注册了N_HCI，另外调用了ll_init函数。
+static int __init hci_uart_init(void)
+      static struct tty_ldisc_ops hci_uart_ldisc;
+      memset(&amp;hci_uart_ldisc, 0, sizeof (hci_uart_ldisc));
+      hci_uart_ldisc.magic       = TTY_LDISC_MAGIC;
+      hci_uart_ldisc.name        = &quot;n_hci&quot;;
+      hci_uart_ldisc.open        = hci_uart_tty_open;
+      hci_uart_ldisc.close        = hci_uart_tty_close;
+      hci_uart_ldisc.read         = hci_uart_tty_read;
+      hci_uart_ldisc.write         = hci_uart_tty_write;
+      hci_uart_ldisc.ioctl          = hci_uart_tty_ioctl;
+      hci_uart_ldisc.poll          = hci_uart_tty_poll;
+      hci_uart_ldisc.receive_buf     = hci_uart_tty_receive;
+      hci_uart_ldisc.write_wakeup  = hci_uart_tty_wakeup;
+      hci_uart_ldisc.owner       = THIS_MODULE;
+      tty_register_ldisc(N_HCI, &amp;hci_uart_ldisc)；
+      。。。
+      ll_init();
+ll_init函数很简单，仅仅是调用了hci_uart_register_proto(&amp;llp)。其中llp是一个hci_uart_proto结构。
+static struct hci_uart_proto llp = {
+      .id        = HCI_UART_LL,
+      .open         = ll_open,
+      .close         = ll_close,
+      .recv          = ll_recv,
+      .enqueue     = ll_enqueue,
+      .dequeue     = ll_dequeue,
+      .flush          = ll_flush,
+};
+hci_uart_register_proto函数将会把llp注册到全局数组hup[HCI_UART_LL]中。
+
+</rich_text><rich_text scale="h2" weight="heavy">初始配置</rich_text><rich_text>
+一般来说，应用程序初始化并使用蓝牙设备的配置步骤如下：
+1.    应用程序打开一个tty设备，该tty物理上与蓝牙芯片连接，两者之间使用HCI通信。
+2.    调用该tty的ioctl，设置线路规程为N_HCI。此时会调用到hci_uart_tty_open函数。
+3.    调用IOCTL HCIUARTSETPROTO，设置proto，此ioctl最终会调用到N_HCI线路规程中的hci_uart_tty_ioctl函数。下文将详细讨论。
+4.    应用程序打开蓝牙socket，发送、接收数据。这些数据在内核中最终会转到N_HCI线路规程，并最终通过tty串口驱动与蓝牙芯片交互。
+hci_uart_tty_open函数的代码如下：
+static int hci_uart_tty_open(struct tty_struct *tty)
+      struct hci_uart *hu；
+      hu = kzalloc(sizeof(struct hci_uart), GFP_KERNEL)；
+      tty-&gt;disc_data = hu;
+      hu-&gt;tty = tty;
+      tty-&gt;receive_room = 65536;
+      。。。
+应用程序调用ioctl HCIUARTSETPROTO之后，内核最终会转到hci_uart_tty_ioctl函数处理：
+static int hci_uart_tty_ioctl(struct tty_struct *tty, struct file * file,
+                            unsigned int cmd, unsigned long arg)
+      struct hci_uart *hu = (void *)tty-&gt;disc_data;
+      。。。
+      Case HCIUARTSETPROTO:
+           hci_uart_set_proto(hu, arg); // arg为proto id
+      。。。
+static int hci_uart_set_proto(struct hci_uart *hu, int id)
+      // 得到hci_uart_proto。本文中id值是HCI_UART_LL，即p指向前面提到的llp
+struct hci_uart_proto *p = hup[id];
+      // 在本文讨论的HCI_UART_LL中，p-&gt;open会调用到ll_open函数
+p-&gt;open(hu);      
+      hu-&gt;proto = p;
+      // 注册一个抽象的蓝牙串口设备
+      err = hci_uart_register_dev(hu);
+ ll_open函数的代码如下：
+static int ll_open(struct hci_uart *hu)
+      struct ll_struct *ll;
+      ll = kzalloc(sizeof(*ll), GFP_ATOMIC);
+      skb_queue_head_init(&amp;ll-&gt;txq);
+      skb_queue_head_init(&amp;ll-&gt;tx_wait_q);
+ll-&gt;hcill_state = HCILL_AWAKE;
+hu-&gt;priv = ll;
+hci_uart_register_dev函数用于注册一个抽象的蓝牙设备到蓝牙socket层：
+static int hci_uart_register_dev(struct hci_uart *hu)
+      struct hci_dev *hdev = hci_alloc_dev();
+      hu-&gt;hdev = hdev;
+      hdev-&gt;bus = HCI_UART;
+      hdev-&gt;driver_data = hu;
+      hdev-&gt;open  = hci_uart_open;
+      hdev-&gt;close = hci_uart_close;
+      hdev-&gt;flush = hci_uart_flush;
+      hdev-&gt;send  = hci_uart_send_frame;
+      hdev-&gt;destruct = hci_uart_destruct;
+ 
+      // 这里调用到了蓝牙socket层的函数，本文暂不讨论
+      hci_register_dev(hdev);
+
+</rich_text><rich_text scale="h2" weight="heavy">数据的接收</rich_text><rich_text>
+当tty驱动接收到数据后，会调用到线路规程的receive函数。对于蓝牙，就是N_HCI线路规程中的hci_uart_tty_receive函数。
+static void hci_uart_tty_receive(struct tty_struct *tty, const u8 *data, char *flags, int count)
+      struct hci_uart *hu = (void *)tty-&gt;disc_data;
+      hu-&gt;proto-&gt;recv(hu, (void *) data, count);
+      hu-&gt;hdev-&gt;stat.byte_rx += count;
+      // 通知tty驱动清空接收缓冲区
+      tty_unthrottle(tty);
+如果是HCI_UART_LL，上面recv函数会指向ll_recv函数。ll_recv的逻辑比较复杂，但大意就是从数据流中提取出hci帧， 然后调用hci_recv_frame发送给蓝牙socket层。此外，HCI_UART_LL还实现了一些特殊操作，比如蓝牙芯片的休眠、唤醒等，具体 可查看代码。
+
+</rich_text><rich_text scale="h2" weight="heavy">数据的发送</rich_text><rich_text>
+当有数据需要发送时，网络层会调用到hdev-&gt;send函数指针。在这里，此指针指向的是hci_uart_send_frame 函数。
+static int hci_uart_send_frame(struct sk_buff *skb)
+struct hci_dev* hdev = (struct hci_dev *) skb-&gt;dev;
+      struct hci_uart *hu = (struct hci_uart *) hdev-&gt;driver_data;
+      hu-&gt;proto-&gt;enqueue(hu, skb);
+      hci_uart_tx_wakeup(hu);
+enqueue指针指向ll_enqueue，作用是将数据挂到一个发送队列中。然后，hci_uart_tx_wakeup函数会执行真正的发送 操作。发送操作使用的是tty-&gt;ops-&gt;write(tty, skb-&gt;data,  skb-&gt;len)，即tty底层驱动的write函数。
+</rich_text></node><node name="linux HID驱动分析 " prog_lang="custom-colors" readonly="False" tags="" unique_id="83"><rich_text>最近研究蓝牙的键盘鼠标，所以粗略看了一下Linux的HID框架。
+
+</rich_text><rich_text scale="h2" weight="heavy">HID 总线</rich_text><rich_text>
+HID的总线在hid-core.c的hid-init中初始化：
+bus_register(&amp;hid_bus_type);
+hid_bus_type的定义：
+static struct bus_type hid_bus_type = {
+       .name            = &quot;hid&quot;,
+       .match           = hid_bus_match,
+       .probe           = hid_device_probe,
+       .remove  = hid_device_remove,
+       .uevent          = hid_uevent,
+};
+一般来说，HID驱动很少定义自己的probe函数，所以HID设备的匹配基本都是由总线probe和match函数完成。
+
+</rich_text><rich_text scale="h2" weight="heavy">HID的匹配</rich_text><rich_text>
+hid_bus_match用于检查设备和驱动的VID、PID是否匹配，代码如下：
+static int hid_bus_match(struct device *dev, struct device_driver *drv)
+       struct hid_driver *hdrv = container_of(drv, struct hid_driver, driver);
+       struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+       // 匹配hdev和hdrv的vendorID和productID
+if (!hid_match_device(hdev, hdrv))
+              return 0;
+       // 如果是generic-开头的驱动，那么只要不在黑名单中即可匹配
+       if (!strncmp(hdrv-&gt;name, &quot;generic-&quot;, 8))
+              return !hid_match_id(hdev, hid_blacklist);
+       return 1;
+匹配了PID、VID之后，就进入到hid_device_probe函数：
+static int hid_device_probe(struct device *dev)
+       struct hid_driver *hdrv = container_of(dev-&gt;driver, struct hid_driver, driver);
+       struct hid_device *hdev = container_of(dev, struct hid_device, dev);
+       const struct hid_device_id *id;
+       int ret = 0;
+       if (!hdev-&gt;driver) {
+              // 再匹配一次，这里似乎与前面的hid_bus_match有些重复
+id = hid_match_device(hdev, hdrv);
+              if (id == NULL)
+                     return -ENODEV;
+              hdev-&gt;driver = hdrv;
+              if (hdrv-&gt;probe) { // 若驱动定义了自己的probe函数则调用该probe，但一般HID驱动不会定义
+                     ret = hdrv-&gt;probe(hdev, id);
+              } else { // 默认的probe过程
+                     ret = hid_parse(hdev);
+                     if (!ret)
+                            ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+              }
+              if (ret)
+                     hdev-&gt;driver = NULL;
+       }
+       return ret;
+hid_parse函数的作用是解析HID描述符，具体实现由hid_device-&gt;ll_driver-&gt;parse函数完成。关于HID描述符的文档可在</rich_text><rich_text link="webs http://www.usb.org/">www.usb.org</rich_text><rich_text>下载。
+static inline int __must_check hid_parse(struct hid_device *hdev)
+       ret = hdev-&gt;ll_driver-&gt;parse(hdev);
+由于HID描述符的解析是通用操作，所以HID框架中实现了一个解析函数hid_parse_report。一般来说，hdev-&gt;ll_driver-&gt;parse函数中只要调用hid_parse_report即可。
+hid_parse_report比较复杂，其功能是解析HID描述符，然后把解析出的结果放在 hid_device-&gt;report_enum[type]-&gt;  report_list中。每个解析出的HID结构由一个hid_report描述。report_enum中的type可以是 HID_INPUT_REPORT、HID_OUTPUT_REPORT或者HID_FEATURE_REPORT。
+parse之后，probe函数又会调用hid_hw_start启动HID设备：
+       hid_hw_start(hdev, HID_CONNECT_DEFAULT);
+注意这里的HID_CONNECT_DEFAULT被定义为：
+#define HID_CONNECT_DEFAULT       (HID_CONNECT_HIDINPUT|HID_CONNECT_HIDRAW| \
+              HID_CONNECT_HIDDEV|HID_CONNECT_FF)
+在hid_hw_start中，首先会调用hdev-&gt;ll_driver-&gt;start启动设备，然后是hid_connect将设备与HID框架关联起来。
+hdev-&gt;ll_driver-&gt;start函数由hid的具体设备提供，由该设备所属的总线提供，用于底层的初始化，这里暂不讨论。
+hid_connect会将hid_dev与具体驱动关联起来。
+int hid_connect(struct hid_device *hdev, unsigned int connect_mask)
+       if (hdev-&gt;quirks &amp; HID_QUIRK_HIDDEV_FORCE)  // 一般不会到这里
+              connect_mask |= (HID_CONNECT_HIDDEV_FORCE | HID_CONNECT_HIDDEV);
+       if (hdev-&gt;bus != BUS_USB) // 如果不是USB总线，那么去掉HID_CONNECT_HIDDEV标记
+              connect_mask &amp;= ~HID_CONNECT_HIDDEV;
+       if (hid_hiddev(hdev))  // 匹配某些特定vendorID和productID
+              connect_mask |= HID_CONNECT_HIDDEV_FORCE;
+ 
+       if ((connect_mask &amp; HID_CONNECT_HIDINPUT) &amp;&amp; !hidinput_connect(hdev,
+                            connect_mask &amp; HID_CONNECT_HIDINPUT_FORCE))
+              hdev-&gt;claimed |= HID_CLAIMED_INPUT;
+       if ((connect_mask &amp; HID_CONNECT_HIDDEV) &amp;&amp; hdev-&gt;hiddev_connect &amp;&amp;
+                     !hdev-&gt;hiddev_connect(hdev,
+                            connect_mask &amp; HID_CONNECT_HIDDEV_FORCE))
+              hdev-&gt;claimed |= HID_CLAIMED_HIDDEV;
+       if ((connect_mask &amp; HID_CONNECT_HIDRAW) &amp;&amp; !hidraw_connect(hdev))
+              hdev-&gt;claimed |= HID_CLAIMED_HIDRAW;
+ 
+由此可见，hid_connect共支持3种设备，首先是input设备，调用hidinput_connect登记；其次是hid_dev设备，调用hdev-&gt;hiddev_connect登记；最后是raw设备，调用hidraw_connect登记。
+
+</rich_text><rich_text scale="h3" weight="heavy">HID input</rich_text><rich_text>
+HID中最常用的是input设备，使用hidinput_connect登记到系统。hidinput_connect的主要作用是对hiddev中的每一个report，都建立一个input_dev设备，并登记到input框架中。
+int hidinput_connect(struct hid_device *hid, unsigned int force)
+       // 对每一个report，建立一个input设备
+for (k = HID_INPUT_REPORT; k &lt;= max_report_type; k++)
+              list_for_each_entry(report, &amp;hid-&gt;report_enum[k].report_list, list) {
+                     if (!hidinput) {
+                            hidinput = kzalloc(sizeof(*hidinput), GFP_KERNEL);
+                            input_dev = input_allocate_device();
+                            。。。
+                            input_set_drvdata(input_dev, hid);
+                            input_dev-&gt;event = hid-&gt;ll_driver-&gt;hidinput_input_event;
+                            input_dev-&gt;open = hidinput_open;
+                            input_dev-&gt;close = hidinput_close;
+                            input_dev-&gt;setkeycode = hidinput_setkeycode;
+                            input_dev-&gt;getkeycode = hidinput_getkeycode;
+                            input_dev-&gt;name = hid-&gt;name;
+                            input_dev-&gt;phys = hid-&gt;phys;
+                            input_dev-&gt;uniq = hid-&gt;uniq;
+                            input_dev-&gt;id.bustype = hid-&gt;bus;
+                            input_dev-&gt;id.vendor  = hid-&gt;vendor;
+                            input_dev-&gt;id.product = hid-&gt;product;
+                            input_dev-&gt;id.version = hid-&gt;version;
+                            input_dev-&gt;dev.parent = hid-&gt;dev.parent;
+                            hidinput-&gt;input = input_dev;
+                            list_add_tail(&amp;hidinput-&gt;list, &amp;hid-&gt;inputs);
+                     }
+                     for (i = 0; i &lt; report-&gt;maxfield; i++)
+                            for (j = 0; j &lt; report-&gt;field[i]-&gt;maxusage; j++)
+                                   hidinput_configure_usage(hidinput, report-&gt;field[i],
+                                                         report-&gt;field[i]-&gt;usage + j);
+              }
+
+</rich_text><rich_text scale="h3" weight="heavy">HID dev</rich_text><rich_text>
+HID dev设备目前仅在USB总线中用到，其用于登记的hiddev_connect函数指针目前仅有一个实例hiddev_connect，在usbhid_probe函数中被赋值。
+hid-&gt;hiddev_connect = hiddev_connect;
+
+</rich_text><rich_text scale="h3" weight="heavy">HID raw dev</rich_text><rich_text>
+hidraw.c中定义了一个class hidraw，并创建设备设备驱动
+alloc_chrdev_region(&amp;dev_id, HIDRAW_FIRST_MINOR, HIDRAW_MAX_DEVICES, &quot;hidraw&quot;);
+cdev_init(&amp;hidraw_cdev, &amp;hidraw_ops);
+hidraw_ops中定义了一个基本的字符设备驱动
+static const struct file_operations hidraw_ops = {
+       .owner =        THIS_MODULE,
+       .read =         hidraw_read,
+       .write =        hidraw_write,
+       .poll =         hidraw_poll,
+       .open =         hidraw_open,
+       .release =      hidraw_release,
+       .unlocked_ioctl = hidraw_ioctl,
+};
+由于是raw设备，所以这个驱动中不会解析任何数据，只是简单的将应用层数据传给下层设备，以及将设备产生的数据传给应用层。具体实现可查看代码。
+
+</rich_text><rich_text scale="h2" weight="heavy">数据的传输</rich_text><rich_text>
+HID中数据的传输有两部分，一部分是从应用层到设备，另一部分是从设备到应用层。
+对于HID input设备，从设备到应用层走的是标准的input框架，底层设备通过hid_input_report函数将收到的数据送入HID框架，由HID框架解析并最终调用input_report_key之类的函数将数据上传。
+从应用层到设备也由input框架完成：
+hidinput_connect
+input_dev-&gt;event = hid-&gt;ll_driver-&gt;hidinput_input_event;
+</rich_text></node><node name="bluez HID" prog_lang="custom-colors" readonly="False" tags="" unique_id="81"><rich_text weight="heavy">
+</rich_text><rich_text scale="h1" weight="heavy">Bluez HID分析（一）         </rich_text><rich_text>
+
+本文介绍蓝牙协议栈Bluez在linux中实现HID功能的kernel部分。
+在linux  kernel中，Bluez对HID的实现代码在/net/bluetooth/hidp文件夹中，主要包括sock.c，core.c和hidp.h三 个文件。Bluez提供了一个socket接口，用户空间程序通过使用该socket控制HID。该socket使用的协议编号为 BTPROTO_HIDP。
+
+</rich_text><rich_text scale="h2" weight="heavy">1.  初始化</rich_text><rich_text>
+HIDP的初始化在sock.c的hidp_init_sockets函数。
+int __init hidp_init_sockets(void)
+err = proto_register(&amp;hidp_proto, 0); // 注册proto，可忽略
+// 注册一个BTPROTO_HIDP协议号
+err = bt_sock_register(BTPROTO_HIDP, &amp;hidp_sock_family_ops);
+bt_sock_register是bluez内部的函数，其作用是将传入到net_proto_family结构体登记到全局数组bt_proto中。
+int bt_sock_register(int proto, const struct net_proto_family *ops)
+      。。。
+      bt_proto[proto] = ops;
+      。。。
+这里用到的思想与字符设备驱动中的misc驱动类似，不再赘述。注册完成之后，用户空间就能够通过标准socket操作得到HIDP的socket：
+Int sk = socket(AF_BLUETOOTH, SOCK_RAW, BTPROTO_HIDP);
+下面再看一下结构体hidp_sock_family_ops的内容：
+static const struct net_proto_family hidp_sock_family_ops = {
+            .family  = PF_BLUETOOTH,
+            .owner  = THIS_MODULE,
+            .create  = hidp_sock_create
+};
+这里最重要的是hidp_socke_create函数，该函数中会指定socket的proto_ops。
+static int hidp_sock_create(struct net *net, struct socket *sock, int protocol,
+                     int kern)
+      struct sock *sk;
+      if (sock-&gt;type != SOCK_RAW)
+           return -ESOCKTNOSUPPORT;
+      sk = sk_alloc(net, PF_BLUETOOTH, GFP_ATOMIC, &amp;hidp_proto);
+      sock_init_data(sock, sk);
+      sock-&gt;ops = &amp;hidp_sock_ops;
+      sock-&gt;state = SS_UNCONNECTED;
+      sock_reset_flag(sk, SOCK_ZAPPED);
+      sk-&gt;sk_protocol = protocol;
+      sk-&gt;sk_state     = BT_OPEN;
+      。。。
+hidp_sock_ops的定义：
+static const struct proto_ops hidp_sock_ops = {
+      .family        = PF_BLUETOOTH,
+      .owner        = THIS_MODULE,
+      .release = hidp_sock_release,
+      .ioctl          = hidp_sock_ioctl,
+      .bind          = sock_no_bind,
+      .getname    = sock_no_getname,
+      .sendmsg    = sock_no_sendmsg,
+      .recvmsg     = sock_no_recvmsg,
+      .poll           = sock_no_poll,
+      .listen         = sock_no_listen,
+      .shutdown   = sock_no_shutdown,
+      .setsockopt = sock_no_setsockopt,
+      .getsockopt = sock_no_getsockopt,
+      .connect     = sock_no_connect,
+      .socketpair  = sock_no_socketpair,
+      .accept       = sock_no_accept,
+      .mmap       = sock_no_mmap
+};
+从Hidp_sock_ops中可以看出，BTPROTO_HIDP的socket不支持通常的socket操作，比如bind、connnect、sendmsg、recvmsg等等。该socket真正支持的仅ioctl这一个操作。IOCTL中支持的命令列表如下：
+HIDPCONNADD         // 增加一个HID设备
+HIDPCONNDEL          // 删除指定的HID设备
+HIDPGETCONNLIST         // 得到当前所有HID设备的列表
+HIDPGETCONNINFO        // 得到指定HID设备的信息
+
+</rich_text><rich_text scale="h2" weight="heavy">2.  HIDPCONNADD</rich_text><rich_text>
+HIDPCONNADD命令用于添加一个HID设备，用户空间传下来的参数为结构体struct hidp_connadd_req：
+struct hidp_connadd_req {
+      int   ctrl_sock;        // control socket，类似USB中control pipe
+      int   intr_sock;        // interrupt socket，类似USB中int pipe
+      __u16 parser;
+      __u16 rd_size;         // report descriptor的大小
+      __u8 __user *rd_data; // report descriptor
+      __u8  country;    // 国家码，比如键盘就需要区分是美式键盘还是法式键盘
+      __u8  subclass;
+      __u16 vendor;
+      __u16 product;
+      __u16 version;
+      __u32 flags;
+      __u32 idle_to;
+      char  name[128];
+};
+从结构体中可以看出，该socket发送/接收外部数据都通过ctrl_sock和intr_sock完成，这两个socket由用户空间创建后传入。
+HIDPCONNADD的过程如下：
+      struct socket *csock;
+      struct socket *isock;
+      struct hidp_connadd_req ca;
+      。。。
+      csock = sockfd_lookup(ca.ctrl_sock, &amp;err);
+      isock = sockfd_lookup(ca.intr_sock, &amp;err);
+      hidp_add_connection(&amp;ca, csock, isock);
+ 
+int hidp_add_connection(struct hidp_connadd_req *req, struct socket *ctrl_sock, struct socket *intr_sock)
+      。。。
+      // 确保ctrl socket和intr socket的源地址、目的地址相同
+      if (bacmp(&amp;bt_sk(ctrl_sock-&gt;sk)-&gt;src, &amp;bt_sk(intr_sock-&gt;sk)-&gt;src) ||
+           bacmp(&amp;bt_sk(ctrl_sock-&gt;sk)-&gt;dst, &amp;bt_sk(intr_sock-&gt;sk)-&gt;dst))
+            return -ENOTUNIQ;
+      // 初始化hidp_session结构
+      session-&gt;ctrl_sock = ctrl_sock;
+      session-&gt;intr_sock = intr_sock;
+      session-&gt;state     = BT_CONNECTED;
+      setup_timer(&amp;session-&gt;timer, hidp_idle_timeout, (unsigned long)session);
+      skb_queue_head_init(&amp;session-&gt;ctrl_transmit);
+      skb_queue_head_init(&amp;session-&gt;intr_transmit);
+      。。。
+      // 如果有report描述符，那么创建HID设备，通过HID框架解析该描述符
+      if (req-&gt;rd_size &gt; 0) 
+           err = hidp_setup_hid(session, req);
+           。。。
+      // 如果req中没有report描述符，那么就没有创建hid设备，这时创建一个input设备。这种情况只对HID  Boot Protocol  Device有效，对于这种设备不需要report描述符。具体可参考HID设备的文档。由于input设备的情况比较简单，这里不再讨论
+if (!session-&gt;hid)
+           err = hidp_setup_input(session, req);
+           。。。
+      // 将session挂入hidp_session_list链表
+      。。。
+      // 建立一个内核任务
+      kernel_thread(hidp_session, session, CLONE_KERNEL);
+到这里，还剩下两个函数需要进一步分析，一个是hidp_setup_hid，另一个是hidp_session。Hidp_session比较简单：
+static int hidp_session(void *arg)
+      LOOP
+           // 如果ctrl socket接收到数据，则接收并处理。Ctrl通道中的数据内容建立连接、对方断开连接的通知、以及通过ctrl通道接收到的用户面数据等。
+           //  如果int通道接收到数据，则接收并处理。Int通道中传送用户面数据。比如鼠标移动，或者键盘按下等。如果此session使用hid设备，那么调用 hid_input_report将数据发送到HID框架，由hid框架发送到用户空间程序；如果使用的是input设备，那么最终调用 input_report_key等发送数据到用户空间。
+            // 如果控制通道有数据要发送，则发送到ctrl socket，比如主动发起的连接断开、连接建立等。
+           // 如果int通道有数据要发送，则发送。这里发送用户面数据，比如控制键盘上的LED灯等。
+ 
+下面再分析一下hidp_setup_hid函数，此函数初始化一个HID设备并登记到HID系统。
+static int hidp_setup_hid(struct hidp_session *session, struct hidp_connadd_req *req)
+      struct hid_device *hid;
+      。。。
+      hid = hid_allocate_device();
+      session-&gt;hid = hid;
+      hid-&gt;driver_data = session;
+      。。。
+      // 设置该hid的父设备为所属的HCI设备
+      hid-&gt;dev.parent = hidp_get_device(session);
+      // 设置HID设备对应的物理层驱动
+      hid-&gt;ll_driver = &amp;hidp_hid_driver;
+        // 当HID框架需要发送数据到设备时，会调用这里的hid_output_raw_report，
+      // 这里发送的数据会走ctrl socket
+hid-&gt;hid_output_raw_report = hidp_output_raw_report;
+      hid_add_device(hid);
+      。。。
+hidp_hid_driver是一个结构体，用来描述HID设备对应的物理层驱动。
+static struct hid_ll_driver hidp_hid_driver = {
+      // 最终会调用HID框架的hid_parse_report完成report描述符的解析
+.parse = hidp_parse, 
+      // start函数比较奇怪，可能是按照HID的协议规范实现的，没有细看
+.start = hidp_start,
+// 清除缓存的待发送数据
+      .stop = hidp_stop,
+      .open  = hidp_open,     // 空函数
+      .close = hidp_close, // 空函数
+      // 这里的input_event是从本地到设备，即发送数据时调用的函数，走int socket通道
+      .hidinput_input_event = hidp_hidinput_event,
+};
+ 
+综上，当从设备到本机有数据要接收时，会在hidp_session这个内核任务中处理；当从本机到设备有数据要发送时，HID框架会调用 hidp_hidinput_event或者hidp_output_raw_report，视该数据是ctrl数据还是int通道数据而定。所有数据的 发送、接收都通过ctrl socket和int socket完成，而这两个socket由用户空间创建后通过调用BTPROTO_HIDP  socket的ioctl HIDPCONNADD传入。
+
+</rich_text><rich_text scale="h1" weight="heavy">Bluez HID分析（二）</rich_text><rich_text scale="h1">  </rich_text><rich_text>
+本文分析了蓝牙bluez协议栈中HID协议的实现。
+
+</rich_text><rich_text scale="h2" weight="heavy">1.  基本概念</rich_text><rich_text>
+HID协议用于人机输入设备。Bluez中关于HID的实现代码在其根目录下的input目录。蓝牙规范中包含关于HID的profile，里面重用了USB中关于HID的一些协议规范。
+Bluez协议栈与上层应用之间使用dbus接口。
+Bluez与kernel之间使用AF_BLUETOOTH协议族的socket通信，并使用了gtk+中的glib库。
+
+</rich_text><rich_text scale="h2" weight="heavy">2.  初始化</rich_text><rich_text>
+HID的初始化在input目录的main.c中，input_manager_init函数。该函数会调用input_manager_init。在input_manager_init中，主要是做了三个操作：
+      btd_register_adapter_driver(&amp;input_server_driver);
+      btd_register_device_driver(&amp;input_hid_driver);
+      btd_register_device_driver(&amp;input_headset_driver);
+下面分别讨论。
+
+</rich_text><rich_text scale="h3" weight="heavy">2.1 btd_register_adapter_driver</rich_text><rich_text>
+btd_register_adapter_driver(&amp;input_server_driver);
+static struct btd_adapter_driver input_server_driver = {
+      .name   = &quot;input-server&quot;,
+      .probe  = hid_server_probe,
+      .remove = hid_server_remove,
+};
+这个调用的作用是注册一个adapter driver。系统启动后对每一个本地蓝牙的硬件实例，即每一个HCI设备，都会调用里面的probe函数hid_server_probe。
+static int hid_server_probe(struct btd_adapter *adapter)
+      // 得到hci设备的本地蓝牙地址
+adapter_get_address(adapter, &amp;src);
+// 启动hid服务
+server_start(&amp;src);
+。。。
+ 
+int server_start(const bdaddr_t *src)
+      struct input_server *server = g_new0(struct input_server, 1);
+      // 在ctrl通道（L2CAP_PSM_HIDP_CTRL）上listen，回调函数connect_event_cb
+      server-&gt;ctrl = bt_io_listen(BT_IO_L2CAP, connect_event_cb, NULL,
+                 server, NULL, &amp;err,
+                 BT_IO_OPT_SOURCE_BDADDR, src,
+                 BT_IO_OPT_PSM, L2CAP_PSM_HIDP_CTRL,
+                 BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_LOW,
+                 BT_IO_OPT_INVALID);
+      // 在intr通道（L2CAP_PSM_HIDP_INTR）listen，回调函数confirm_event_cb
+server-&gt;intr = bt_io_listen(BT_IO_L2CAP, NULL, confirm_event_cb,
+                 server, NULL, &amp;err,
+                 BT_IO_OPT_SOURCE_BDADDR, src,
+                 BT_IO_OPT_PSM, L2CAP_PSM_HIDP_INTR,
+                 BT_IO_OPT_SEC_LEVEL, BT_IO_SEC_LOW,
+                 BT_IO_OPT_INVALID);
+上面的ctrl通道和intr通道都是由蓝牙的HID spec规定。
+对于control通道，当设备端有主动连接本机时，会由glib调用回调函数connect_event_cb：
+static void connect_event_cb(GIOChannel *chan, GError *err, gpointer data)
+      // 得到该设备的源地址和目的地址，psm等
+      bt_io_get(chan, BT_IO_L2CAP, &amp;gerr, BT_IO_OPT_SOURCE_BDADDR, &amp;src,
+           BT_IO_OPT_DEST_BDADDR, &amp;dst, BT_IO_OPT_PSM, &amp;psm,
+           BT_IO_OPT_INVALID);
+      // 设置input_device
+      input_device_set_channel(&amp;src, &amp;dst, psm, chan);
+      // 如果是非法设备，并且当前是控制通道，那么根据HID协议，需要向对方发送“unplug virtual cable”消息
+      if (ret == -ENOENT &amp;&amp; psm == L2CAP_PSM_HIDP_CTRL) {
+           unsigned char unplug = 0x15;
+           int err, sk = g_io_channel_unix_get_fd(chan);
+           err = write(sk, &amp;unplug, sizeof(unplug));
+      }
+下面继续研究input_device_set_channel函数。
+int input_device_set_channel(const bdaddr_t *src, const bdaddr_t *dst, int psm, GIOChannel *io)
+      // 根据对方设备的地址，从HID设备链表中找到对应的input_dev设备。这里有一个问题，就是对应的input_dev设备是什么时候登记到链表中的，这一点稍后再讨论
+      struct input_device *idev = find_device(src, dst);
+      // 在该设备中，查找名为”hid”的连接
+      struct input_conn * iconn = find_connection(idev-&gt;connections, &quot;hid&quot;);
+      switch (psm) {
+            case L2CAP_PSM_HIDP_CTRL:
+                 if (iconn-&gt;ctrl_io)
+                       return -EALREADY;
+                 iconn-&gt;ctrl_io = g_io_channel_ref(io);
+                 break;
+            case L2CAP_PSM_HIDP_INTR:
+                  if (iconn-&gt;intr_io)
+                       return -EALREADY;
+                 iconn-&gt;intr_io = g_io_channel_ref(io);
+                 break;
+      }
+      // 当ctrl通道和intr通道都被设置后，才会进入input_device_connadd。目前我们是沿着L2CAP_PSM_HIDP_CTRL的回调函数connect_event_cb看到这里的，所以暂时先不深入研究
+      if (iconn-&gt;intr_io &amp;&amp; iconn-&gt;ctrl_io)
+           input_device_connadd(idev, iconn);
+      。。。
+下面再看一下server_start函数中对L2CAP_PSM_HIDP_INTR的情况，此时会调用到confirm_event_cb函 数。关于bt_io_listen中关于connect和confirm这两个函数的区别，可以自行查看glib的文档或者bluez的源代码。
+static void confirm_event_cb(GIOChannel *chan, gpointer user_data)
+      bt_io_get(chan, BT_IO_L2CAP, &amp;err, BT_IO_OPT_SOURCE_BDADDR, &amp;src,
+           BT_IO_OPT_DEST_BDADDR, &amp;dst, BT_IO_OPT_INVALID);
+      server-&gt;confirm = g_io_channel_ref(chan);
+      // 请求authorization操作，并指定完成后的回调函数为auth_callback
+      btd_request_authorization(&amp;src, &amp;dst, HID_UUID, auth_callback, server);
+static void auth_callback(DBusError *derr, void *user_data)
+      bt_io_get(server-&gt;confirm, BT_IO_L2CAP, &amp;err, 
+           BT_IO_OPT_SOURCE_BDADDR, &amp;src,
+           BT_IO_OPT_DEST_BDADDR, &amp;dst,
+           BT_IO_OPT_INVALID);
+      bt_io_accept(server-&gt;confirm, connect_event_cb, server, NULL, &amp;err)
+由此可见，authorization结束后，会调用bt_io_accept，并同样指定回调函数为connect_event_cb。此时connect_event_cb会设置intr通道，并最终调用input_device_connadd函数。
+static int input_device_connadd(struct input_device *idev, struct input_conn *iconn)
+      input_device_connected(idev, iconn)
+      。。。
+static int input_device_connected(struct input_device *idev, struct input_conn *iconn)
+      hidp_add_connection(idev, iconn)
+      。。。
+connected = TRUE;
+      // 通过dbus发送已连接的信号
+emit_property_changed(idev-&gt;conn, idev-&gt;path, INPUT_DEVICE_INTERFACE,
+                       &quot;Connected&quot;, DBUS_TYPE_BOOLEAN, &amp;connected);
+      。。。
+static int hidp_add_connection(const struct input_device *idev,            const struct input_conn *iconn)
+      struct hidp_connadd_req *req；
+      sdp_record_t *rec;
+      req = g_new0(struct hidp_connadd_req, 1);
+      req-&gt;ctrl_sock = g_io_channel_unix_get_fd(iconn-&gt;ctrl_io);
+      req-&gt;intr_sock = g_io_channel_unix_get_fd(iconn-&gt;intr_io);
+      req-&gt;flags     = 0;
+      req-&gt;idle_to   = iconn-&gt;timeout;
+      ba2str(&amp;idev-&gt;src, src_addr);
+      ba2str(&amp;idev-&gt;dst, dst_addr);
+      // 查找该设备对应的SDP
+rec = fetch_record(src_addr, dst_addr, idev-&gt;handle);
+// 从SDP record中得到一些属性从而设置req中某些域，具体可看代码，包括HID的设备描述符等都在这里设置
+extract_hid_record(rec, req);
+sdp_record_free(rec);
+// 根据SDP得到设备的vendor、product等信息
+read_device_id(src_addr, dst_addr, NULL,
+             &amp;req-&gt;vendor, &amp;req-&gt;product, &amp;req-&gt;version);
+// 下面是支持fakehid的代码，目前仅有PS3的设备支持，所以这里不分析
+struct fake_hid *fake_hid = get_fake_hid(req-&gt;vendor, req-&gt;product);
+。。。
+if (req-&gt;subclass &amp; 0x40) // 如果是键盘，则启动加密
+  bt_acl_encrypt(&amp;idev-&gt;src, &amp;idev-&gt;dst, encrypt_completed, req);
+  。。。
+//  ioctl_connadd中会建立一个BTPROTO_HIDP的socket，并调用HIDPCONNADD新建一个连接。到这里，与远端设备的连接 就建立了。建立之后，kernel会建立一个HID设备，此HID设备与bluez之间通过ctrl sock和intr sock进行数据交互
+ioctl_connadd(req);
+ 
+
+</rich_text><rich_text scale="h3" weight="heavy">2.2 btd_register_device_driver</rich_text><rich_text>
+btd_register_device_driver用于注册设备驱动，在bluez中使用这个函数注册的设备有两个，分别是input_headset_driver和input_hid_driver。
+其中input-headset与蓝牙耳机有关；input-hid则用于普通的HID设备。
+下面先看一下input_hid_driver设备。
+input_hid_driver
+static struct btd_device_driver input_hid_driver = {
+      .name   = &quot;input-hid&quot;,
+      .uuids   = BTD_UUIDS(HID_UUID),
+      .probe  = hid_device_probe,
+      .remove      = hid_device_remove,
+};
+当bluez检测到有一个hid设备，即uuid中包含HID_UUID的设备连接上时，就会调用其中的probe函数。
+static int hid_device_probe(struct btd_device *device, GSList *uuids)
+      。。。
+      input_device_register(connection, device, path, &amp;src, &amp;dst,
+                      HID_UUID, rec-&gt;handle, idle_timeout * 60);
+ 
+int input_device_register(DBusConnection *conn, struct btd_device *device,
+                 const char *path, const bdaddr_t *src,
+                 const bdaddr_t *dst, const char *uuid,
+                 uint32_t handle, int timeout)
+      。。。
+      // 分配一个新的input_device结构体，并添加到全局链表devices中
+      // 前文分析input_device_set_channel函数时，提到的添加idev的地方，就在这里
+idev = input_device_new(conn, device, path, src, dst, handle);
+      devices = g_slist_append(devices, idev);
+      。。。
+      // 添加一个名为”hid”的连接
+      iconn = input_conn_new(idev, uuid, &quot;hid&quot;, timeout);
+      idev-&gt;connections = g_slist_append(idev-&gt;connections, iconn);
+在函数input_device_new中，除了新建设备之外，还添加了一个dbus接口：
+g_dbus_register_interface(conn, idev-&gt;path, INPUT_DEVICE_INTERFACE,
+                            device_methods, device_signals, NULL,
+                            idev, device_unregister)
+static GDBusMethodTable device_methods[] = {
+      { &quot;Connect&quot;,           &quot;&quot;,  &quot;&quot;,  input_device_connect,
+                                  G_DBUS_METHOD_FLAG_ASYNC },
+      { &quot;Disconnect&quot;,        &quot;&quot;,  &quot;&quot;,  input_device_disconnect },
+      { &quot;VirtualUnplug&quot;,     &quot;&quot;,  &quot;&quot;,  input_device_unplug },
+      { &quot;GetProperties&quot;,    &quot;&quot;,  &quot;a{sv}&quot;,input_device_get_properties },
+      { }
+};
+前文分析HID连接的建立时，都是本机作为服务器，等待远端设备连接。有了这个dbus接口之后，本地应用程序就可以主动连接远端设备，只要调用”Connect”方法即可，此方法会被链接到input_device_connect函数。
+Input_device_connect中的流程与前文中本机作为服务器的流程基本相同。在此函数中，会先建立ctrl通道的连接，然后再建立 intr通道的连接。最终通过调用函数hidp_add_connection通知内核建立一个HID设备或者input设备(HID boot  protocol设备)。
+input-headset
+static struct btd_device_driver input_headset_driver = {
+      .name   = &quot;input-headset&quot;,
+      .uuids   = BTD_UUIDS(HSP_HS_UUID),
+      .probe  = headset_probe,
+      .remove      = headset_remove,
+};
+Input-headset的流程比较特殊，与input-hid的区别至少有以下几点：
+1.    HID设备的连接建立在l2cap上，headset的连接建立在rfcomm上。
+2.    HID设备会通知内核建立一个HID设备或input设备，headset则只是实例化一个uinput设备。
+3.    前文提到的ctrl通道、intr通道都不能适用于headset，因为他们都是在l2cap上的连接。
+如果是本地主动连接远端的headset设备，同样是由应用程序调用”connect”方法启动连接过程，具体实现可查看代码。
 </rich_text></node></node><node name="file system" prog_lang="custom-colors" readonly="False" tags="" unique_id="21"><rich_text></rich_text><node name="VFS" prog_lang="custom-colors" readonly="False" tags="" unique_id="25"><rich_text>先说明一下，linux内核中各种数据结构也不停的在变，所以不同版本的内核各个数据结构的定义可能会差别很大，这一组关于linux 文件系统的文章中的代码都摘自linux-2.6.34.1。
 
 

@@ -776,7 +776,7 @@ Bonjour技术在Mac OS以及Itunes、Iphone上都得到了广泛应用。为了�
 </rich_text><rich_text foreground="#333333">#include &lt;dns_sd.h&gt;  //必须包含此头文件</rich_text><rich_text>
 </rich_text><rich_text foreground="#333333">libmdnssd.so  //链接到此so</rich_text><rich_text>
 Bonjour中，服务注册的API为DNSServiceRegister，原型如图1所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图1  DNSServiceRegister原型
 该函数的解释如下：
 • sdRef：代表一个未初始化的DNSService实体。其类型DNSServiceRef是指针。该参数最终由DNSServiceRegister函数分配内存并初始化。
@@ -790,14 +790,14 @@ Bonjour中，服务注册的API为DNSServiceRegister，原型如图1所示：
 • callBack：设置回调函数。该服注册的请求结果都会通过它回调给客户端。
 • context：上下文指针，由应用程序设置。
 当客户端需要搜索网络内部特定服务时，需要使用DNSServiceBrowser API，其原型如图2所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图2  DNSServiceBrowser原型
 其中：
 • sdref、interfaceIndex、regtype、domain以及context含义与DNSServiceRegister一样。
 • flags：在本函数中没有作用。
 • callBack：为DNSServiceBrowser处理结果的回调通知接口。
 当客户端想获得指定服务的IP和端口号时，需要使用DNSServiceResolve API，其原型如图3所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图3  DNSServiceResolve原型
 其中：
 • name、regtype和domain都从DNSServiceBrowse函数的处理结果中获得。
@@ -806,7 +806,7 @@ Bonjour中，服务注册的API为DNSServiceRegister，原型如图1所示：
 
 </rich_text><rich_text scale="h2">二Android Says Bonjour</rich_text><rich_text>
 几乎能肯定的是，Bonjour想跑在Android平台上，还需要一番定制。不过这套定制不是针对mdnsd本身，而是针对Bonjour API的使用。Android平台的Bonjour架构可由图4表达：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图4  Android Bonjour架构
 由图4可知，Android拓展了原有的Bonjour架构，改变如下：
 • 在Netd中增加了MDnsSdListener对象，它一方面通过socket和上层对象通信，另一方面通过Bonjour API和mdnsd通信（也是基于Socket的跨进程通信）。从mdnsd角度来看，它是最懂Bonjour API的”人“了。
@@ -822,7 +822,7 @@ MDnsSdListener在Android Bonjour架构中扮演着转换器的角色：
 • 一方面它处理来自NsdService的请求，并通过Bonjour API将其转换成mdnsd能懂的“语言”以驱动其工作。
 • 另一方面它接收来自mdnsd的信息，并把它们通报给NsdService。
 图5所示为MDnsSdListener的家族成员示意图。
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图5  MDnsSdListener家族成员
 由图5可知：
 • MDnsSdListener的内部类Monitor用于和mdnsd进程通信，它将调用前面提到的Bonjour API。
@@ -833,24 +833,24 @@ MDnsSdListener在Android Bonjour架构中扮演着转换器的角色：
 • NsdService启动完毕后将向MDnsSdListener发送&quot;start-service&quot;命令。
 • NsdService响应应用程序的请求，向MDnsSdListener发送其他命令，例如&quot;discovery&quot;等。Monitor将最终处理这些请求。
 先来看第一步，当MDnsSdListener构造时，会创建一个Monitor对象，代码如图6所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图6  Monitor的构造
 由图6可知：
 • Monitor的threadStart线程将调用其run函数，该函数通过poll方式侦听包括mCtrlSocketPair在内的socket信息。这部分代码属于基本的Linux socket编程。对大部分读者来说，难度应该不大。
 • 当NsdService发送&quot;start-service&quot;命令后，Handler的runCommand将执行Monitor的startService函数。
 starService将启动mdnsd，其所使用的方法颇具Android特色，如图7所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图7  startService代码示意
 图7中，MDS_SERVICE_NAME宏代表字符串&quot;mdnsd&quot;。了解Android的读者，看完图7，您能很快知道Android启动mdnsd的方法吗？
 当NsdService发送注册服务请求时，Handler的serviceRegister函数将被调用，代码如图8所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图8  serviceRegister示意图
 DNSServiceRegister内部将把请求发送给mdnsd去处理，处理的结果通过MDnsSdListenerRegisterCallback返回，该函数最终会通过socket把信息传递给NsdService去处理。
 MDnsSdListener介绍暂且到此，感兴趣的读者不妨亲自看看代码以加深对Bonjour API用法的理解。
 
 </rich_text><rich_text scale="h3">2.2  NsdService介绍</rich_text><rich_text>
 对所有Android App来说，NsdService才是背后的Boss，其用法（当然，是NsdService客户端API的封装类NsdManager的用法）也是在SDK文档中白纸黑字列出来的。NsdService的内部结构可由图9表示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图9  NsdService内部结构示意图
 图9列出了NsdService中的几个重要成员，其中：
 • NsdService从INsdManager.stub派生。这个类也是Android的特色产品，由INsdManager.aidl文件生成。
@@ -863,18 +863,18 @@ MDnsSdListener介绍暂且到此，感兴趣的读者不妨亲自看看代码以
 </rich_text><rich_text scale="h3">2.3  NsdChat案例介绍</rich_text><rich_text>
 Android SDK新增了一个NsdChat例子用于向开发者介绍Android平台中Nsd的使用方法。相关文档位于</rich_text><rich_text link="webs http://developer.android.com/training/connect-devices-wirelessly/nsd.html">http://developer.android.com/training/connect-devices-wirelessly/nsd.html</rich_text><rich_text>。案例的源码位于Android4.1源码根目录/development/samples/training/NsdChat下。
 该例描述了一个简单的聊天程序，故其命名为NsdChat。Nsd在此例中的作用就是注册并搜索网络内的聊天服务。所以，在本例中有一个NsdChat进程将通过NsdService的registerService函数注册一个聊天服务。相关代码如图10所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图10  NsdChat注册聊天服务
 由图10可知：
 • 应用程序要注册的Nsd服务将通过NsdServiceInfo类来表达。结合前文背景知识，在此NsdServiceInfo中，最重要就是服务的端口号、服务名（根据Bonjour的要求，网络内部不能有同名服务）以及服务的类型。
 • 接着，应用程序通过NsdManager的registerService函数注册此服务。注册的结果通过NsdManager的内部接口类RegistrationListener来通知。
 两人聊天才有意义，所以另外一个运行着NsdChat的客户端进程将搜索网络内部的”NsdChat“服务，相关代码如图11所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图11  寻找“NsdChat”服务
 由图11可知：
 • 应用进程只需调用NsdManager的discoveryServices函数并传递要找的服务类型即可。搜索的结果通过NsdManager的内部接口类DiscoveryListener返回。
 注意，Nsd只能根据服务类型进行搜索。当网络中有多个同属于一种服务类型（本例中，服务类型是&quot;_http._tcp.&quot;）的服务时，应用程序还需根据DiscoveryListener返回的信息进行筛选。这部分代码如图12所示：
-
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 图12  NsdChat的DiscoveryListener处理
 由图12可知，discoveryServices的结果通过DiscoveryListener接口类提供的回调函数返回。注意其中onServiceFound函数对同类型服务的筛选处理（值得特别指出的是，Android SDK中并未对此处极易疏忽的地方做任何说明）。
 当客户端成功找到NsdChat服务后，下一步工作就是解析该服务的IP地址和端口号。这是通过NsdManager的resolveService函数（注意图12中的红框）来完成的。这个函数的处理结果将通过NsdManager定义的另外一个接口类ResolveListener返回。
@@ -1263,4 +1263,146 @@ Android SDK新增了一个NsdChat例子用于向开发者介绍Android平台中N
         再往上是java层的networkManagementSocketTagger和networkstatservice，他们 负责监听并更新uid列 表
         并将应用的uid传入kernel
     3.另外发现netd的带宽控制功能也是用iptables操作，需要打开netfilter的相关配置
-    </rich_text></node></cherrytree>
+    </rich_text></node><node name="network: android 网络判断 " prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>1. package mark.zhang;  
+2.   
+3. import java.util.List;  
+4.   
+5. import android.content.Context;  
+6. import android.location.LocationManager;  
+7. import android.net.ConnectivityManager;  
+8. import android.net.NetworkInfo;  
+9. import android.telephony.TelephonyManager;  
+10.   
+11. public class NetworkProber {  
+12.   
+13.     /** 
+14.      * 网络是否可用 
+15.      *  
+16.      * @param activity 
+17.      * @return 
+18.      */  
+19.     public static boolean isNetworkAvailable(Context context) {  
+20.         ConnectivityManager connectivity = (ConnectivityManager) context  
+21.                 .getSystemService(Context.CONNECTIVITY_SERVICE);  
+22.         if (connectivity == null) {  
+23.         } else {  
+24.             NetworkInfo[] info = connectivity.getAllNetworkInfo();  
+25.             if (info != null) {  
+26.                 for (int i = 0; i &lt; info.length; i++) {  
+27.                     if (info[i].getState() == NetworkInfo.State.CONNECTED) {  
+28.                         return true;  
+29.                     }  
+30.                 }  
+31.             }  
+32.         }  
+33.         return false;  
+34.     }  
+35.   
+36.     /** 
+37.      * Gps是否打开 
+38.      *  
+39.      * @param context 
+40.      * @return 
+41.      */  
+42.     public static boolean isGpsEnabled(Context context) {  
+43.         LocationManager locationManager = ((LocationManager) context  
+44.                 .getSystemService(Context.LOCATION_SERVICE));  
+45.         List&lt;String&gt; accessibleProviders = locationManager.getProviders(true);  
+46.         return accessibleProviders != null &amp;&amp; accessibleProviders.size() &gt; 0;  
+47.     }  
+48.   
+49.     /** 
+50.      * wifi是否打开 
+51.      */  
+52.     public static boolean isWifiEnabled(Context context) {  
+53.         ConnectivityManager mgrConn = (ConnectivityManager) context  
+54.                 .getSystemService(Context.CONNECTIVITY_SERVICE);  
+55.         TelephonyManager mgrTel = (TelephonyManager) context  
+56.                 .getSystemService(Context.TELEPHONY_SERVICE);  
+57.         return ((mgrConn.getActiveNetworkInfo() != null &amp;&amp; mgrConn  
+58.                 .getActiveNetworkInfo().getState() == NetworkInfo.State.CONNECTED) || mgrTel  
+59.                 .getNetworkType() == TelephonyManager.NETWORK_TYPE_UMTS);  
+60.     }  
+61.   
+62.     /** 
+63.      * 判断当前网络是否是wifi网络 
+64.      * if(activeNetInfo.getType()==ConnectivityManager.TYPE_MOBILE) { //判断3G网 
+65.      *  
+66.      * @param context 
+67.      * @return boolean 
+68.      */  
+69.     public static boolean isWifi(Context context) {  
+70.         ConnectivityManager connectivityManager = (ConnectivityManager) context  
+71.                 .getSystemService(Context.CONNECTIVITY_SERVICE);  
+72.         NetworkInfo activeNetInfo = connectivityManager.getActiveNetworkInfo();  
+73.         if (activeNetInfo != null  
+74.                 &amp;&amp; activeNetInfo.getType() == ConnectivityManager.TYPE_WIFI) {  
+75.             return true;  
+76.         }  
+77.         return false;  
+78.     }  
+79.   
+80.     /** 
+81.      * 判断当前网络是否是3G网络 
+82.      *  
+83.      * @param context 
+84.      * @return boolean 
+85.      */  
+86.     public static boolean is3G(Context context) {  
+87.         ConnectivityManager connectivityManager = (ConnectivityManager) context  
+88.                 .getSystemService(Context.CONNECTIVITY_SERVICE);  
+89.         NetworkInfo activeNetInfo = connectivityManager.getActiveNetworkInfo();  
+90.         if (activeNetInfo != null  
+91.                 &amp;&amp; activeNetInfo.getType() == ConnectivityManager.TYPE_MOBILE) {  
+92.             return true;  
+93.         }  
+94.         return false;  
+95.     }  
+96. }  
+
+另外还有两个方法判断网络是否可用：
+1. public static boolean isNetworkAvailable_00(Context context) {  
+2.         ConnectivityManager cm = ((ConnectivityManager) context  
+3.                 .getSystemService(Context.CONNECTIVITY_SERVICE));  
+4.         if (cm != null) {  
+5.             NetworkInfo info = cm.getActiveNetworkInfo();  
+6.             if (info != null &amp;&amp; info.isConnectedOrConnecting()) {  
+7.                 return true;  
+8.             }  
+9.         }  
+10.         return false;  
+11.     }  
+12.   
+13.     public static boolean isNetworkAvailable_01(Context context) {  
+14.         ConnectivityManager cm = (ConnectivityManager) context  
+15.                 .getSystemService(Context.CONNECTIVITY_SERVICE);  
+16.         NetworkInfo network = cm.getActiveNetworkInfo();  
+17.         if (network != null) {  
+18.             return network.isAvailable();  
+19.         }  
+20.         return false;  
+21.     }  
+
+更加严谨的写法：
+1. public static boolean checkNet(Context context) {  
+2.           
+3.         try {  
+4.             ConnectivityManager connectivity = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);  
+5.             if (connectivity != null) {  
+6.               
+7.                 NetworkInfo info = connectivity.getActiveNetworkInfo();  
+8.                 if (info != null &amp;&amp; info.isConnected()) {  
+9.                   
+10.                     if (info.getState() == NetworkInfo.State.CONNECTED) {  
+11.                         return true;  
+12.                     }  
+13.                 }  
+14.             }  
+15.         } catch (Exception e) {  
+16.             return false;  
+17.         }  
+18.         return false;  
+19.     }  
+
+ 
+</rich_text></node></cherrytree>
