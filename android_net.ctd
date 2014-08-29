@@ -565,7 +565,7 @@ wpa_cli.c
     D/EthernetStateTracker( 185): DhcpHandler: DHCP request started
 
 
-说明patch是好的能正常工作，能正常掉用dhcp，只是DHCP运行不成功。
+说明patch是好的能正常工作，能正常调用dhcp，只是DHCP运行不成功。
 
 然后我查了 getprop: 显示 init.svc.dhcpcd_eth0 = stop
 正常应该是running的，这样DHCP 才能运行成功。
@@ -1260,7 +1260,7 @@ Android SDK新增了一个NsdChat例子用于向开发者介绍Android平台中N
             文件(/proc/net/xt_qtaguid/stats)等待上层读取。
         在$android_source/system/core/libcutils中有qtaguid的接口，与kernel的 qtaguid对接
         之所以在libcutils中加入，是为了让所以的java和c程序都能使用到这个接口。
-        再往上是java层的networkManagementSocketTagger和networkstatservice，他们 负责监听并更新uid列 表
+        再往上是java层的networkManagementSocketTagger和networkstatservice，他们负责监听并更新uid列表
         并将应用的uid传入kernel
     3.另外发现netd的带宽控制功能也是用iptables操作，需要打开netfilter的相关配置
     </rich_text></node><node name="network: android 网络判断 " prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>1. package mark.zhang;  
