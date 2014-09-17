@@ -112,7 +112,17 @@ git config --global user.email "me@example.com"
 
 如果你有未提交的commit，与master同步:
 git pull --rebase origin master
-
+  rebase操作过程是把本地提交一次一个地迁移到更新了的中央仓库master分支之上
+  如果出现冲突，
+  运行git status命令来查看哪里有问题。冲突文件列在Unmerged paths（未合并路径）一节中
+  修改这些文件解决冲突，然后
+  git add
+  git rebase --continue
+  Git会继续一个一个地合并后面的提交，如其它的提交有冲突就重复这个过程
+  如果你碰到了冲突，但发现搞不定，不要惊慌。只要执行下面这条命令，就可以回到你执行git pull --rebase命令前的样子：
+  git rebase --abort
+  完成和中央仓库的同步后，就能成功发布修改:
+  git push origin master
 
 如果你要把你的分支合并到主干分支，从主干（master）分支上发送：
 git branch -d new_feature

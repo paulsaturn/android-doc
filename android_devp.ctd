@@ -766,7 +766,38 @@ frameworks/native/cmds/dumpsys/dumpsys.cpp
 	    } else {
 		    aerr &lt;&lt; &quot;Can't find service: &quot; &lt;&lt; services[i] &lt;&lt; endl;
 	    }
-    }</rich_text></node><node name="apktool使用" prog_lang="custom-colors" readonly="False" tags="" unique_id="91"><rich_text>Android反编译工具：Apktool，支持Linux 、Windows下工作
+    }
+    
+(2). Process State
+    Android 4.4 KitKat 提出了一个新系统服务，叫做procstats。它将帮助你更好的理解你app在后台（background）时的内存使用情况。Procstats可以去监视你app在一段时间的行为，包括在后台运行了多久，并在此段时间使用了多少内存
+    你可以通过adb shell命令去使用procstats（</rich_text><rich_text foreground="#ff0000">adb shell dumpsys procstats --hours 3</rich_text><rich_text>），或者更方便的方式是运行Process Stats开发者工具（在4.4版本的手机中点击Settings  &gt; Developer options &gt; Process Stats）
+
+输出:
+AGGREGATED OVER LAST 3 HOURS:
+  * system / 1000:
+           TOTAL: 100% (21MB-21MB-21MB/17MB-17MB-17MB over 8)
+      Persistent: 100% (21MB-21MB-21MB/17MB-17MB-17MB over 8)
+  * com.android.systemui / u0a5:
+           TOTAL: 100% (22MB-22MB-23MB/19MB-19MB-20MB over 8)
+      Persistent: 100% (22MB-22MB-23MB/19MB-19MB-20MB over 8)
+          Imp Fg: 0.01%
+  * com.android.inputmethod.latin / u0a23:
+           TOTAL: 100% (6.4MB-6.6MB-6.6MB/5.0MB-5.1MB-5.2MB over 9)
+          Imp Fg: 100% (6.4MB-6.6MB-6.6MB/5.0MB-5.1MB-5.2MB over 9)
+
+  ...
+  ...          
+          
+Run time Stats:
+  SOn /Norm: +2h2m26s831ms
+      TOTAL: +2h2m26s831ms
+
+          Start time: 1970-01-02 08:00:00
+  Total elapsed time: +2h2m29s704ms (partial) libdvm.so chromeview
+    
+(3). meminfo
+    它是根据PSS标准 （Proportional Set Size——实际物理内存）计算每个进程的内存使用并且按照重要程度排序。你可以通过命令行去执行它：（</rich_text><rich_text foreground="#ff0000">adb shell dumpsys meminfo</rich_text><rich_text>）或者使用在设备上点击Settings &gt; Apps &gt; Running（与Procstats不用，它也可以在老版本上运行）    
+    </rich_text></node><node name="apktool使用" prog_lang="custom-colors" readonly="False" tags="" unique_id="91"><rich_text>Android反编译工具：Apktool，支持Linux 、Windows下工作
 
 安装步骤如下：
 1.首先安装需要JAVA环境，先下载JDK/JRE，点击下载，已经有JAVA环境的可跳过此步
@@ -1783,7 +1814,9 @@ $(foreach __pass2_module,$(__ndk_modules),\
     $(eval LOCAL_MODULE := $(__pass2_module))\
     $(eval include $(BUILD_SYSTEM)/build-binary.mk)\
 )
-
+</rich_text><rich_text foreground="#00000000ffff">#$(eval include $(BUILD_SYSTEM)/build-binary.mk)
+#对build-binary.mk进行替换展开
+</rich_text><rich_text>
 </rich_text><rich_text foreground="#00000000ffff">#build-executable.mk
 #build-shared-library.mk
 #prebuilt-library.mk
@@ -1896,7 +1929,9 @@ $(call module-restore-locals,$(LOCAL_MODULE))
     $(foreach __local,$(modules-LOCALS),\
         $(eval LOCAL_$(__local) := $(__ndk_modules.$1.$(__local)))\
     )</rich_text><rich_text>
-
+</rich_text><rich_text foreground="#00000000ffff">#eval是替换展开, 使LOCAL_xxx当前有效(对make), 如果没有加eval, 那么在下一行加echo $LOCAL_xxx，
+#只会输出空值
+</rich_text><rich_text>
 # For now, only support target (device-specific modules).
 # We may want to introduce support for host modules in the future
 # but that is too experimental for now.
@@ -2372,6 +2407,11 @@ ALL_STATIC_LIBRARIES += $(LOCAL_BUILT_MODULE)
 
 endif
 
+</rich_text><rich_text foreground="#00000000ffff">#$(LOCAL_BUILT_MODULE): PRIVATE_ABI := $(TARGET_ARCH_ABI)
+#eval之后，$(LOCAL_BUILT_MODULE)会被替换成有意义的值, PRIVATE_ABI := $(TARGET_ARCH_ABI)在
+#make依赖的时候才执行(才赋值), 所以在ALL_STATIC_LIBRARIES += $(LOCAL_BUILT_MODULE)之前
+#$(call ndk_log,$(PRIVATE_ABI)), 输出是空值。
+</rich_text><rich_text>
 ifneq (,$(filter SHARED_LIBRARY EXECUTABLE,$(call module-get-class,$(LOCAL_MODULE))))
 
 #
@@ -2626,6 +2666,197 @@ endef</rich_text><rich_text>
 
 LOCAL_MODULE_CLASS := SHARED_LIBRARY
 include $(BUILD_SYSTEM)/build-module.mk 
+</rich_text></node><node name="makefile规则说明" prog_lang="custom-colors" readonly="False" tags="" unique_id="6"><rich_text scale="h2" weight="heavy">3.4目录搜索 </rich_text><rich_text>
+对于大的系统，通常将源文件和目标文件放在不同的目录中。目录搜索功能可以让make自动在多个目录中搜寻依赖文件，当你将文件重新分布是，不需要改变规则，更改搜索路径即可。 
+</rich_text><rich_text scale="h3" weight="heavy">3.4.1‘VPATH' </rich_text><rich_text>
+make变量'VPATH'列出make应当搜索的目录列表。很多情况下，当前目录不包含依赖文件，'VPATH'描述一个对所有文件的搜索列表，包含那些是规则的目标的文件。 
+如果一个目标或者依赖文件在当前目录没找到的话，'make'在'VPATH'中列出的目录中查找同名的文件。如果找到的话，那个文件成为依赖文件；规则可以象这些文件在当前目录中一样来使用他们。 
+在'VPATH'变量中，目录名以冒号或空格隔开；目录列出的顺序决定make查找的顺序。（注：在pSOSystem 2.5移植到Win32的GNU make目录名必须使用分号隔开，以下均简称Win32 GNU make）。举例说明： VPATH = src:../headers 则规则 
+foo.o : foo.c 
+被解释为 
+foo.o : src/foo.c 
+假设'foo.c'在当前目录不存在，在'src'目录中可以找到。 
+</rich_text><rich_text scale="h3" weight="heavy">3.4.2选择性搜索 </rich_text><rich_text>
+与'VPATH'变量相似但更具选择性的是'vpath'指令（注意是小写），可以指定对于符合特定模式文件的查找路径。这样可以为不同类型的文件指定不同的搜索路径。 
+‘vpath'指令共有三中形式： 
+?;‘vpath PATTERN DIRECTORIES' 
+为匹配PATTERN的文件名指定搜索路径DIRECTORIES，目录的分隔和'VPATH'的相同 
+?;‘vpath PATTERN' 
+清除为匹配PATTERN的文件名指定的搜索路径 
+?;‘vpath' 
+清除所有以前用'vpath'指定的搜索路径 
+‘vpath'的模式是包含'%'的字符串：这个字符串必须匹配需要搜索的依赖文件名，'%'字符匹配0个或多个任意字符。例如：'%.h'匹配任何以'.h'结尾的文件（如果没有%，则PATTERN必须和依赖文件完全一致，这种用法不太多）。 
+当当前目录中不存在依赖文件时，如果'vpath'中的PATTERN匹配依赖文件名，则指令中DIRECTORIES列出的目录和'VPATH'中同样处理。举例： 
+vpath %.h ../headers 
+告诉make在当前目录中未找到的'.h'文件在../headers目录中查找。 
+如果多个'vapth'的模式匹配依赖文件名，make将逐一处理，在所有指定的目录中搜索。Make按照'vapth'在makefile中的次序；来处理它们，多个相同模式的'vapth'是相互独立的。 
+vpath %.c foo 
+vpath % blish 
+vpath %.c bar 
+将按照'foo'，‘blish'，'bar'的次序查找'.c'文件。而 
+vpath %.c foo:bar 
+vpath % blish 
+按照'foo'，'bar'，'blish'的顺序搜索。 
+</rich_text><rich_text scale="h3" weight="heavy">3.4.3使用自动变量 </rich_text><rich_text>
+目录搜索的结果并不改变规则中的命令：命令按原样被执行。因此，必须写出与目录搜索功相适应的命令。这可以通过使用'$^'这样的自动变量来完成。'$^'表示规则中的所有依赖文件，包含它们所在的目录名（参见目录搜索）；'$@'表示目标。例如： 
+foo.o : foo.c 
+cc -c $(CFLAGS) $^ -o $@ 
+通常情况下，依赖文件也包含头文件，但命令中并不提及这些文件：变量'$&lt;'表示第一个依赖文件： 
+VPATH = src:../headers 
+foo.o : foo.c defs.h hack.h 
+cc –c $(CFLAGS) $&lt; -o $@ 
+</rich_text><rich_text scale="h3" weight="heavy">3.4.4目录搜索和隐含规则 </rich_text><rich_text>
+使 用'VPATH'和'vpath'指定目录搜索也会影响隐含规则。例如：文件'foo.o'没有显式规则，make会考虑隐式规则：如果'foo.c'存在则编译它；如果这个文件不存在，则在相应的目录中查找；如果'foo.c'在任一的目录中存在，则C编译的隐式规则被应用。 
+隐式规则的命令使用自动变量通常是必要的，这样无需其它努力即可以使用目录搜索得到的文件名。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.5 PHONY目标</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+Phony目标并非实际的文件名：只是在显式请求时执行命令的名字。有两种理由需要使用phony目标：避免和同名文件冲突，改善性能。 
+如果编写一个规则，并不产生目标文件，则其命令在每次make该目标时都执行。例如： 
+clean: 
+rm *.o temp 
+因 为'rm'命令并不产生'clean'文件，则每次执行'make  clean'的时候，该命令都会执行。如果目录中出现了'clean'文件，则规则失效了：没有依赖文件，文件'clean'始终是最新的，命令永远不会 执行；为避免这个问题，可使用'.PHONY'指明该目标。如： 
+.PHONY : clean 
+这样执行'make clean'会无视'clean'文件存在与否。 
+已知phony目标并非是由其它文件生成的实际文件，make会跳过隐含规则搜索。这就是声明phony目标会改善性能的原因，即使你并不担心实际文件存在与否。完整的例子如下： 
+.PHONY : clean 
+clean : 
+rm *.o temp 
+phony目标不应是真正目标文件的依赖。如果这样，每次make在更新此文件时，命令都会执行。只要phony目标不是真正目标的依赖，规则的命令只有在指定此目标时才执行。 
+Phony目标可以有依赖关系。当一个目录中有多个程序是，将其放在一个makefile中会更方便。因为缺省目标是makefile中的第一个目标，通常将这个phony目标叫做'all'，其依赖文件为各个程序： 
+all : prog1 prog2 prog3 
+.PHONY : all 
+prog1 : prog1.o utils.o 
+cc -o prog1 prog1.o utils.o 
+prog2 : prog2.o 
+cc -o prog2 prog2.o 
+prog3 : prog3.o sort.o utils.o 
+cc -o prog3 prog3.o sort.o utils.o 
+这样，使用'make'将可以将三个程序都生成了。 
+当一个phony目标是另一个的依赖，其作用相当于子程序，例如： 
+.PHONY: cleanall cleanobj cleandiff 
+cleanall : cleanobj cleandiff 
+rm program 
+cleanobj : 
+rm *.o 
+cleandiff : 
+rm *.diff
+ 
+</rich_text><rich_text scale="h2" weight="heavy">3.6 FORCE目标</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+当规则没有依赖关系也没有命令，而且其目标不是存在的文件名，make认为此规则运行时这个目标总是被更新。这意味着如果规则依赖于此目标，其命令总是被执行。 
+clean: FORCE 
+rm $(objects) 
+FORCE: 
+例中目标'FORCE'满足这种特殊条件，这样依赖于它的目标'clean'被强制执行其命令。名字'FORCE'没有特殊含义，只不过通常这样用而已。这种方式使用'FORCE'和'.PHONY :  clean'效果相同。使用'.PHONY'更加明确高效，担不是所有的'make'都支持；这样许多makefile中使用了'FORCE'。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.7 空目标</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+空 目标（empty  target）是phony目标的变种：用来执行显式请求的一个动作。和phony目标不同的是：这个目标文件可以真实存在，担文件的内容无关紧要，通常是空的。空目标文件的目的是利用其最后修改时间来记录命令最近一次执行的时间，这是通过使用'touch'命令更新目标文件来达到的。 
+print: foo.c bar.c 
+lpr -p $? 
+touch print 
+利用这条规则，执行'make print'时如果自上次'make print'之后任一文件改变了，'lpr'命令会执行。自动变量'$?'是为了只打印出那些变化了的文件。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.8内建的特殊目标</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+某些名字作为目标存在时有特殊含义。 
+★.PHONY该目标的依赖被认为是phony目标，处理这些目标时，命令无条件被执行，不管文件名是否存在及其最后修改时间 
+★.SUFFIXES该目标的依赖被认为是一个后缀列表，在检查后缀规则时使用 
+★.DEFAULT该目标的规则被使用在没有规则（显式的或隐含的）的目标上。如果'DEFAULT'命令定义了，则对所有不是规则目标的依赖文件都会执行该组命令 
+★.PRECIOUS 该目标的依赖文件会受到特别对待：如果make被kill或命令的执行被中止，这些目标并不删除；而且如果该目标是中间文件，在不需要时不会被删除。可以 将隐含规则的目标模式（如%.o）做为'.PRECIOUS'的依赖文件，这样可以保存这些规则产生的中间文件。 
+★.INTERMEDIATE该目标的依赖文件被当作中间文件；如果该目标没有依赖文件，则makefile中所有的目标文件均被认为是中间文件。 
+★.IGNORE在执行该目标的依赖规则的命令时，make会忽略错误，此规则本身的命令没有意义。如果该规则没有依赖关系，表示忽略所有命令执行的错误，这种用法只是为了向后兼容；由于会影响到所有的命令，所以不是特别有用，推荐使用其它更有选择性忽略错误的方法。 
+★.SILENT在执行该目标的依赖规则的命令时，make并不打印命令本身。该规则的命令没有意义。在'.SILIENT'没有依赖关系时，表示执行makefile中的所有命令都不会打印，该规则只是为了向后兼容提供的。 
+★.EXPORT_ALL_VARIABLES只是作为一个目标存在，指示make将所有变量输出到子进程中。 
+定义的隐含规则的后缀作为目标时，也认为它是特殊目标；两个后缀的连接也是一样，比如'.c.o'。这些目标是后缀规则，一中定义隐式规则的过时方法（但仍然广泛使用）。后缀通常以'.'开始，所以特殊目标也以'.'开始。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.9一个规则多个目标</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+一条有多个目标的规则和写多条规则，每条一个目标作用是等同的。同样的命令应用于所有目标，但其效用会因将实际目标以'$@'代替而不同。规则中所有目标的依赖关系是一样的。 
+这在两种情况下有用： 
+★只有依赖关系，不需要命令。例如： 
+kbd.o command.o files.o: command.h 
+★所有的目标同样的命令。命令不需要完全相同，因为在命令中可以使用'$@'： 
+bigoutput littleoutput : text.g 
+generate text.g -$(subst output,,$@) &gt; $@ 
+和 
+bigoutput : text.g 
+generate text.g -big &gt; bigoutput 
+littleoutput : text.g 
+generate text.g -little &gt; littleoutput 
+等同。这里假设程序'generate'产生两种输出：一种使用'-big'选项，一种使用'-little'选项。如果想象使用'$@'变化命令那样来变化依赖关系，不能通过多目标的普通规则实现，但是可以通过模式规则来实现。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.10一个目标多条规则</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+一个文件可以是多条规则的目标，所有规则的依赖关系被合并。如果目标比任一个依赖文件旧，命令被执行。 
+一 个文件只能有一组命令执行。如果多个规则对于同一个文件都给出了命令，make使用最后一组并打印错误信息（特殊情况：如果文件名以'.'开始，并不打印 错误信息，这一点是为了和其它make兼容）。没有任何理由需要将makefile写成这样，这是make给出错误信息的理由。 
+一条只有依赖关系的附加规则可以一次给出许多文件的附加依赖文件。例如'objects'变量表示系统中编译器的所有输出.，说明当'config.h'更改时所有文件必须重做的简单方法如下： 
+objects = foo.o bar.o 
+foo.o : defs.h 
+bar.o : defs.h test.h 
+$(objects) : config.h 
+不用改变实际目标文件生成的规则，这条规则可以在需要增删附加的依赖关系时插入或提出。另一个诀窍是附加的依赖关系可以用变量表示，在make执行时，可以给变量赋值： 
+extradeps= 
+$(objects) : $(extradeps) 
+当命令`make extradeps=foo.h'执行时会认为'foo.h'是每个目标文件的依赖文件，但简单的'make'命令不是这样。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">3.11静态模式规则</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+静态模式规则（static pattern rules）可以指定多个目标，并且使用目标名字来建议依赖文件的名字；比普通多目标规则更通用因为不需要依赖关系是相同的：依赖关系必须类似但不需要相同。 
+</rich_text><rich_text scale="h3" weight="heavy">3.11.1语法 </rich_text><rich_text>
+TARGETS ...: TARGET-PATTERN: DEP-PATTERNS ... 
+COMMANDS 
+... 
+TARGETS 列表指出规则应用的目标，可以包含通配符，于普通规则的目标相同。TARGET-PATTERN和DEP-PATTERNS来表明目标的依赖关系如何计算：匹配TARGET-PATTERN的目标从名字中抽出一部分，叫做词干（stem），词干被替换到DEP-PATTERNS来形成依赖文件名。 
+每 个模式通常包含一个'%'字符。当TARGET-PATTERN匹配一个目标时，'%'字符可以匹配目标名中的任何部分；这部分即是词干，模式的其余部分 必须完全匹配。例如'foo.o'匹配'%.o'，'foo'是词干；目标'foo.c'和'foo.out'并不匹配这个模式。 
+目标的依赖文件名通过将DEP-PATTERNS中的'%'替换为词干形成：如果依赖模式为'%.c'，在替换词干'foo'可以得到'foo.c'。依赖模式中不包含'%'也是合法的，此依赖文件对所有的目标均有效。 
+如 果需要在模式规则中使用'%'字符，必须在其前面加'\'字符，如果'%'前的'\'字符是有实际意义的，必须在其前面加'\'，其它的'\'不必如此处 理。如'the\%weird\\%pattern\\'在有效的'%'前是'the%weird\'，其后是'pattern\\'。最后的'\\'保 持原样是因为其并不影响'%'字符。 
+以下例子从相应的'.c'文件编译'foo.o'和'bar.o'： 
+objects = foo.o bar.o 
+$(objects): %.o: %.c 
+$(CC) -c $(CFLAGS) $&lt; -o $@ 
+每个目标必须匹配目标模式，对于不匹配的目标会给出警告。如果列表中只有部分文件匹配模式，可以使用filter函数移去不匹配的文件名： 
+files = foo.elc bar.o lose.o  
+$(filter %.o,$(files)): %.o: %.c 
+$(CC) -c $(CFLAGS) $&lt; -o $@ 
+$(filter %.elc,$(files)): %.elc: %.el 
+emacs -f batch-byte-compile $&lt; 
+例子中`$(filter %.o,$(files))' 结果是`bar.o lose.o'； `$(filter %.elc,$(files))' 的结果是`foo.elc'。以下例子说明'$*'的使用： 
+bigoutput littleoutput : %output : text.g 
+generate text.g -$* &gt; $@ 
+命令`generate'执行时，'$*'扩展为词干'big'或'little'。 
+</rich_text><rich_text scale="h3" weight="heavy">3.11.2静态模式规则和隐式规则 </rich_text><rich_text>
+静态模式规则和隐式规则在作为模式规则是具有很多共同点，都有目标模式和构造依赖文件名的模式，不同之处在于make决定何时应用规则的方法。 
+隐式规则可应用于匹配其模式的任何目标，但只限于没有指定命令的目标，如果有多条可应用的隐式规则，只有一条被使用，取决于规则的顺序。 
+反之，静态模式规则适用于规则中明确目标列表，不适用于其它目标且总是适用于指定的每个目标。如果有两条冲突的规则，且都有命令，这是一个错误。 
+静态模式规则比隐式规则优越之处如下： 
+★可为一些不能按句法分类，但可以显式列出的文件重载隐式规则 
+★不能判定目录中的精确内容，一些无关的文件可能导致make适用错误的隐式规则；最终结果可能依赖于隐式规则的次序。适用静态模式规则时，这种不确定性是不存在的：规则适用于明确指定的目标。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.12双冒号规则</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+双冒号规则（Double-colon rules）的目标后是'::'而不是':'，当一个目标出现在多条规则中时，其处理和普通规则的处理不同。 
+当一个目标出现在多条规则中时，所有规则必须是相同类型的：都是普通的或者都是双冒号的。如果是双冒号，规则之间相互独立；如果目标需要更新，则规则的命令被执行；结果可能是没有执行，或者执行了其中一些，或者所有的规则都执行了。 
+同一目标的双冒号规则事实是完全孤立的，每条规则被被单独处理，就象不同目标的规则一样；规则按照在makefile中出现的次序被处理，此类规则真正有意义的是那些于命令执行次序无关的。 
+这种规则有时比较晦涩不是特别有用；它提供了一种机制：通过不同依赖文件的更新来对目标进行不同的处理，这种情形很罕见。每个这种规则应当提供命令，如果没有，适用的隐式规则将使用。 
+
+</rich_text><rich_text scale="h2" weight="heavy">3.13自动生成依赖关系</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+在makefile中，许多规则都是一些目标文件依赖于一些头文件。例如：'main.c' 通过'#include'使用'defs.h'，这样规则： 
+main.o: defs.h 
+告诉make在'defs.h'变化时更新'main.o'。在程序比较大时，需要写许多这样的规则；而且当每次增删'#include'时，必须小心的更新makefile。许多现代的编译器可以帮你写这些规则，通常这是通过编译器的'-M'选项，例如命令： 
+cc –M main.c 
+输出以下内容： 
+main.o : main.c defs.h 
+这样就不必写这些规则，有编译器代劳了。 
+注 意这样的依赖关系中提及'main.o'，不会被隐式规则认为是中间文件，这意味这make在使用过它之后不会将其删除。使用老的'make'程序时，习 惯做法是使用'make  depend'命令利用编译器的功能产生依赖关系，该命令会产生一个'depend'文件包含所有自动产生的依赖关系，然后在makefile中使用 'include'将其读入。 
+使用GNU的make时，重新生成makefile的功能使得这种做法变得过时：从不需要显式请求更新依赖关系，因为它总是重新生成任何过时的makefile。 
+自 动依赖关系生成推荐的做法是对每个源文件做一个makefile。对每个源文件'NAME.c'，有一个makefile  'NAME.d'，其中列出了目标文件'NAME.o'依赖的所有文件，这样在源文件更新时，需要扫描来产生新的依赖关系。例子是一个从'NAME.c' 产生依赖关系文件'NAME.d'的模式规则： 
+%.d: %.c 
+$(SHELL) -ec '$(CC) -M $(CPPFLAGS) $&lt; \ 
+| sed '\''s/\($*\)\.o[ :]*/\1 $@/g'\'' &gt; $@' 
+-e选项是当$(CC)命令失败时（exit状态非0），shell立刻退出。通常shell的返回值是管道中最后一条命令（sed）的返回值，这样make不会注意到编译器出错。 
+使用GNU的C编译器时（gcc），可以用'-MM'选项来代替'-M'选项，这样省略系统头文件的依赖关系。'sed'命令的目的是将 
+main.o : main.c defs.h 
+转换为 
+main.o main.d : main.c defs.h 
+这样使得每个'.d'文件依赖于'.o'文件相应源文件和头文件，make则可以在原文间或头文件变化时更新依赖关系文件。 
+如果定义了生成'.d'文件的规则，可以使用'include'指令来读入所有的文件： 
+sources = foo.c bar.c 
+include $(sources:.c=.d) 
+例中使用替换变量来将源文件列表' foo.c bar.c'转换为依赖关系文件的列表。因为'.d'文件和其它文件一样，不需要更多工作，make会在需要时重新生成它们。 
 </rich_text></node><node name="makefile函数说明" prog_lang="custom-colors" readonly="False" tags="" unique_id="5"><rich_text scale="h2" weight="heavy">eval</rich_text><rich_text scale="h2">函数       </rich_text><rich_text>
  Ø        </rich_text><rich_text weight="heavy">函数功能：</rich_text><rich_text>函数“eval”是一个比较特殊的函数。使用它可以在Makefile中构造一个可变的规则结构关系（依赖关系链），其中可以使用其它变量和函数。函数“eval”对它的参数进行展开，展开的结果作为Makefile的一部分，make可以对展开内容进行语法解析。展开的结果可以包含一个新变量、目标、隐含规则或者是明确规则等。也就是说此函数的功能主要是：根据其参数的关系、结构，对它们进行替换展开。
  Ø        </rich_text><rich_text weight="heavy">返回值：</rich_text><rich_text>函数“eval”的返回值时空，也可以说没有返回值。
@@ -2709,7 +2940,8 @@ all:
     在上面的 Makefile 文件中，
     第1层 call 是 $(call map,k,are you ok) ，在这里 $(1) 和 $(2) 分别为 </rich_text><rich_text foreground="#0000FF">k</rich_text><rich_text> 和 </rich_text><rich_text foreground="#0000FF">are you ok</rich_text><rich_text> ，所以对已经定义的表达式 map 进行展开后得：$(foreach a,are you ok,$(call k,$(a),good-))
     第2层 call 为 $(call k,$(a),good-)，在这里，它有自己的 $(1) 和 $(2)；$(1) 就是 $(a) -- 就是 foreach 函数捡取的值(依次为 are you ok)，$(2) 为 good- 。
-    </rich_text><rich_text foreground="#ffff00000000">要非常小心的是，在对 call 和 foreach 这些函数应用时，一定要注意空格，如果不小心多了空格，看到的结果基本上不是你所期望的</rich_text><rich_text>    
+    </rich_text><rich_text foreground="#ffff00000000">要非常小心的是，在对 call 和 foreach 这些函数应用时，一定要注意空格，如果不小心多了空格，看到的结果基本上不是你所期望的</rich_text><rich_text>
+            
         </rich_text></node></node><node name="ant" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>Android使用ant对项目进行编译签名优化打包
 Android本身是支持ant打包项目的，并且SDK中自带一个build.xml文件。
 通过该文件，可以对文件进行编译、打包、安装等。并且支持多种方式打包，如debug或者release。
