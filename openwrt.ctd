@@ -1,0 +1,1637 @@
+<?xml version="1.0" ?><cherrytree><node name="配置编译" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1.配置
+  $cp feeds.conf.default feeds.conf
+ 然后编辑feeds.conf文件，前面加注释符号＃表示该软件源不会被下载和安装。需要安装何种软件源就去掉相应的＃：
+	src-svn packages svn://svn.openwrt.org.cn/dreambox/feeds/packages_10.03.2
+	src-svn qpe svn://svn.openwrt.org.cn/dreambox/feeds/qpe
+	src-svn device svn://svn.openwrt.org.cn/dreambox/feeds/device
+	src-svn dreambox_packages svn://svn.openwrt.org.cn/dreambox/feeds/dreambox_packages
+	src-svn luci_cn svn://svn.openwrt.org.cn/dreambox/feeds/luci/trunk
+	#src-svn luci </rich_text><rich_text link="webs http://svn.luci.subsignal.org/luci/tags/0.10.0/contrib/package">http://svn.luci.subsignal.org/luci/tags/0.10.0/contrib/package</rich_text><rich_text>
+	#src-svn xwrt </rich_text><rich_text link="webs http://x-wrt.googlecode.com/svn/branches/backfire_10.03/package">http://x-wrt.googlecode.com/svn/branches/backfire_10.03/package</rich_text><rich_text>
+	#src-svn phone svn://svn.openwrt.org/openwrt/feeds/phone
+	#src-svn efl svn://svn.openwrt.org/openwrt/feeds/efl
+	#src-svn desktop svn://svn.openwrt.org/openwrt/feeds/desktop
+	#src-svn xfce svn://svn.openwrt.org/openwrt/feeds/xfce
+	#src-link custom /usr/src/openwrt/custom-feed
+
+  $./scripts/feeds update -a
+  $./scripts/feeds install -a
+  
+  下一步是检查编译环境，若可进行编译则生成默认配置： 
+  $make defconfig
+  若defconfig回显提示缺少软件包或编译库等依赖，则按提示安装所缺软件包或库等即可，不难的，细心点就行。
+
+  现在开始配置OpenWrt-DreamBox，选择你需要目标平台，以及选择将要编译和添加进固件的软件包。运行命令：
+  $make menuconfig
+  
+  Target System:Samsung S3C24XX
+  Subtarget:Subtarget(QQ2440 Development Board)
+  Target Profile:(router)QQ2440 Development Board
+  Target Images: 只选squashfs
+  
+  如果需要单独配置OpenWrt-DreamBox的linux kernel，可以使用下面命令配置：
+  $make kernel_menuconfig
+  
+  清除缓存 
+	make dirclean
+  彻底清理 (包括下载的文件)
+	make distclean   
+	
+2.编译
+  make
+      
+  make -j 3 V=99
+  V=99表示输出详细的debug信息
+  用法为-j &lt;cpu处理器的数目 + 1&gt; 
+  
+  make world表示编译所有     
+  
+  
+  mkyaffs2image rootfs/ rootfs_qq2440.yaffs
+  
+3.烧写
+#kernel
+sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-mini2440-zImage-64M
+
+sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-dev-qq2440-zImage
+sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-dev-qq2440-uImage
+
+#rootfs
+sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-squashfs.img
+
+sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-dev-qq2440-s3c24xx-squashfs.img
+
+sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-squashfs.img
+
+#测试ernel
+sudo ~/bin/dnw -a 0x30008000 openwrt-s3c24xx-mini2440-uImage	</rich_text></node><node name="makefile分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>顶级Makefile:
+# Makefile for OpenWrt
+#
+# Copyright (C) 2007 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+TOPDIR:=${CURDIR}
+LC_ALL:=C
+LANG:=C
+export TOPDIR LC_ALL LANG
+
+</rich_text><rich_text foreground="#00000000ffff">#调用make时的入口</rich_text><rich_text>
+world:
+
+include $(TOPDIR)/include/host.mk
+</rich_text><rich_text foreground="#00000000ffff">#生成tmp/.host.mk</rich_text><rich_text>:
+</rich_text><rich_text foreground="#ffff00000000">HOST_OS:=Linux
+HOST_ARCH:=x86_64
+GNU_HOST_NAME:=x86_64-linux-gnu
+TAR:=/bin/tar
+FIND:=/usr/bin/find
+BASH:=/bin/bash
+FIND_L=/usr/bin/find -L $(1)
+XARGS:=xargs -r</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">#执行make, 默认OPENWRT_BUILD = 0</rich_text><rich_text>
+ifneq ($(OPENWRT_BUILD),1)
+  # XXX: these three lines are normally defined by rules.mk
+  # but we can't include that file in this context
+  empty:=
+  space:= $(empty) $(empty)
+  _SINGLE=export MAKEFLAGS=$(space);
+
+  override OPENWRT_BUILD=1
+  export OPENWRT_BUILD
+  include $(TOPDIR)/include/debug.mk
+  include $(TOPDIR)/include/depends.mk
+  include $(TOPDIR)/include/toplevel.mk
+else
+  </rich_text><rich_text foreground="#00000000ffff">#rules.mk定义工具和选项</rich_text><rich_text>  
+  include rules.mk
+  include $(INCLUDE_DIR)/depends.mk
+  include $(INCLUDE_DIR)/subdir.mk
+  include target/Makefile
+  include package/Makefile
+  include tools/Makefile
+  include toolchain/Makefile
+
+$(toolchain/stamp-install): $(tools/stamp-install)
+$(target/stamp-compile): $(toolchain/stamp-install) $(tools/stamp-install) $(BUILD_DIR)/.prepared
+$(package/stamp-cleanup): $(target/stamp-compile)
+$(package/stamp-compile): $(target/stamp-compile) $(package/stamp-cleanup)
+$(package/stamp-install): $(package/stamp-compile)
+$(package/stamp-rootfs-prepare): $(package/stamp-install)
+$(target/stamp-install): $(package/stamp-compile) $(package/stamp-install) $(package/stamp-rootfs-prepare)
+
+$(BUILD_DIR)/.prepared: Makefile
+	@mkdir -p $$(dirname $@)
+	@touch $@
+
+prepare: $(target/stamp-compile)
+
+clean: FORCE
+	$(_SINGLE)$(SUBMAKE) target/linux/clean
+	rm -rf $(BUILD_DIR) $(BIN_DIR) $(BUILD_LOG_DIR)
+
+dirclean: clean
+	rm -rf $(STAGING_DIR) $(STAGING_DIR_HOST) $(STAGING_DIR_TOOLCHAIN) $(TOOLCHAIN_DIR) $(BUILD_DIR_HOST) $(BUILD_DIR_TOOLCHAIN)
+	rm -rf $(TMP_DIR)
+
+tmp/.prereq_packages: .config
+	unset ERROR; \
+	for package in $(sort $(prereq-y) $(prereq-m)); do \
+		$(_SINGLE)$(NO_TRACE_MAKE) -s -r -C package/$$package prereq || ERROR=1; \
+	done; \
+	if [ -n &quot;$$ERROR&quot; ]; then \
+		echo &quot;Package prerequisite check failed.&quot;; \
+		false; \
+	fi
+	touch $@
+
+# check prerequisites before starting to build
+prereq: $(target/stamp-prereq) tmp/.prereq_packages
+
+prepare: .config $(tools/stamp-install) $(toolchain/stamp-install)
+</rich_text><rich_text foreground="#00000000ffff">#$(target/stamp-prereq), $(target/stamp-compile), $(target/stamp-install) 定义在target/Makefile中</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#$(target/stamp-prereq)调用make target/prereq -&gt; make -C target/linux prereq; make -C target/sdk prereq; 
+#                                                                                 make -C target/imagebuilder prereq; make -C target/toolchain prereq;
+#package/stamp-cleanup, $(package/stamp-compile), $(package/stamp-install), $(package/stamp-rootfs-prepare)定义在package/Makefile中</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#package/index也定义在package/Makefile中</rich_text><rich_text>
+world: prepare $(target/stamp-compile) $(package/stamp-cleanup) $(package/stamp-compile) $(package/stamp-install) $(package/stamp-rootfs-prepare) $(target/stamp-install) FORCE
+	$(_SINGLE)$(SUBMAKE) -r package/index
+
+# update all feeds, re-create index files, install symlinks
+package/symlinks:
+	$(SCRIPT_DIR)/feeds update -a
+	$(SCRIPT_DIR)/feeds install -a
+
+# re-create index files, install symlinks
+package/symlinks-install:
+	$(SCRIPT_DIR)/feeds update -i
+	$(SCRIPT_DIR)/feeds install -a
+
+# remove all symlinks, don't touch ./feeds
+package/symlinks-clean:
+	$(SCRIPT_DIR)/feeds uninstall -a
+
+.PHONY: clean dirclean prereq prepare world package/symlinks package/symlinks-install package/symlinks-clean
+
+endif</rich_text><node name="target/Makefile" prog_lang="custom-colors" readonly="False" tags="" unique_id="5"><rich_text>curdir:=target
+
+$(curdir)/builddirs:=linux sdk imagebuilder toolchain
+$(curdir)/builddirs-default:=linux
+$(curdir)/builddirs-install:=linux $(if $(CONFIG_SDK),sdk) $(if $(CONFIG_IB),imagebuilder) $(if $(CONFIG_MAKE_TOOLCHAIN),toolchain)
+
+$(curdir)/imagebuilder/prepare:=$(curdir)/linux/install
+
+</rich_text><rich_text foreground="#00000000ffff">#stampfile和subdir函数定义在include/subdir.mk下</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),target,prereq,.config))
+</rich_text><rich_text foreground="#00000000ffff">#$(target/stamp-prereq):</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#   staging_dir/target-arm_v4t_eglibc-2.8_eabi/stamp生成.target_prereq</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#   $(MAKE) $(target/flags-prereq) target/prereq   </rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000"># Parameters: &lt;subdir&gt; &lt;name&gt; &lt;target&gt; &lt;depends&gt; &lt;config options&gt; &lt;stampfile location&gt;
+define stampfile
+  $(1)/stamp-$(3):=$(if $(6),$(6),$(STAGING_DIR))/stamp/.$(2)_$(3)$(if $(5),_$(call confvar,$(5)))
+  $$($(1)/stamp-$(3)): $(TMP_DIR)/.build $(4)
+	@+$(SCRIPT_DIR)/timestamp.pl -n $$($(1)/stamp-$(3)) $(1) $(4) || \
+		$(MAKE) $$($(1)/flags-$(3)) $(1)/$(3)
+	@mkdir -p $$$$(dirname $$($(1)/stamp-$(3)))
+	@touch $$($(1)/stamp-$(3))
+
+  $$(if $(call debug,$(1),v),,.SILENT: $$($(1)/stamp-$(3)))
+
+  .PRECIOUS: $$($(1)/stamp-$(3)) # work around a make bug
+
+  $(1)//clean:=$(1)/stamp-$(3)/clean
+  $(1)/stamp-$(3)/clean: FORCE
+	@rm -f $$($(1)/stamp-$(3))
+
+endef</rich_text><rich_text>
+
+$(eval $(call stampfile,$(curdir),target,compile,$(TMP_DIR)/.build))
+</rich_text><rich_text foreground="#00000000ffff">#$(target/stamp-compile):</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#   staging_dir/target-arm_v4t_eglibc-2.8_eabi/stamp生成.target_compile</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#   $(MAKE) $(target/flags-compile) target/compile</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#target/flags-compile没有定义，空值</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),target,install,$(TMP_DIR)/.build))
+</rich_text><rich_text foreground="#00000000ffff">#$(target/stamp-install):</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#   staging_dir/target-arm_v4t_eglibc-2.8_eabi/stamp生成.target_install</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#   $(MAKE) $(target/flags-install) target/install</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#target/flags-install没有定义，空值</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">#$(target/stamp-install): $(target/stamp-compile)</rich_text><rich_text>
+$($(curdir)/stamp-install): $($(curdir)/stamp-compile) 
+
+$(eval $(call subdir,$(curdir)))
+</rich_text><rich_text foreground="#00000000ffff">#subdir.mk</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">SUBTARGETS:=clean download prepare compile install update refresh prereq dist distcheck</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">
+subtarget-default = $(filter-out ., \
+	$(if $($(1)/builddirs-$(2)),$($(1)/builddirs-$(2)), \
+	$(if $($(1)/builddirs-default),$($(1)/builddirs-default), \
+	$($(1)/builddirs))))
+</rich_text><rich_text foreground="#00000000ffff">#如果存在$(target/builddirs-compile), 则返回$(builddirs-compile); 否则
+#如果存在$(target/builddirs-default),则返回$(builddirs-default);  否则
+#返回$(target/builddirs); 并去掉.
+</rich_text><rich_text foreground="#ffff00000000">
+define subtarget
+  $(call warn_eval,$(1),t,T,$(1)/$(2): $($(1)/) $(foreach bd,$(call subtarget-default,$(1),$(2)),$(1)/$(bd)/$(2)))
+
+endef
+
+lastdir=$(word $(words $(subst /, ,$(1))),$(subst /, ,$(1)))
+diralias=$(if $(findstring $(1),$(call lastdir,$(1))),,$(call lastdir,$(1)))
+
+# Parameters: &lt;subdir&gt;
+define subdir
+  $(call warn,$(1),d,D $(1))
+  $(foreach bd,$($(1)/builddirs),
+    $(call warn,$(1),d,BD $(1)/$(bd))
+    $(foreach target,$(SUBTARGETS),
+      $(foreach btype,$(buildtypes-$(bd)),
+        $(call warn_eval,$(1)/$(bd),t,T,$(1)/$(bd)/$(btype)/$(target): $(if $(QUILT),,$($(1)/$(bd)/$(btype)/$(target)) $(call $(1)//$(btype)/$(target),$(1)/$(bd)/$(btype))))
+		  +$$(SUBMAKE) -C $(1)/$(bd) $(btype)-$(target) $(if $(findstring $(bd),$($(1)/builddirs-ignore-$(btype)-$(target))), || $(call MESSAGE,   ERROR: $(1)/$(bd) [$(btype)] failed to build.))
+        $$(if $(call debug,$(1)/$(bd),v),,.SILENT: $(1)/$(bd)/$(btype)/$(target))
+        $(if $(call diralias,$(bd)),$(call warn_eval,$(1)/$(bd),l,T,$(1)/$(call diralias,$(bd))/$(btype)/$(target): $(1)/$(bd)/$(btype)/$(target)))
+      )
+      $(call warn_eval,$(1)/$(bd),t,T,$(1)/$(bd)/$(target): $(if $(QUILT),,$($(1)/$(bd)/$(target)) $(call $(1)//$(target),$(1)/$(bd))))
+	  	$(if $(BUILD_LOG),@mkdir -p $(BUILD_LOG_DIR)/$(1)/$(bd))
+        $(foreach variant,$(if $(BUILD_VARIANT),$(BUILD_VARIANT),$(if $($(1)/$(bd)/variants),$($(1)/$(bd)/variants),__default)),
+			+$(if $(BUILD_LOG),set -o pipefail;) $$(SUBMAKE) -C $(1)/$(bd) $(target) BUILD_VARIANT=&quot;$(filter-out __default,$(variant))&quot; $(if $(BUILD_LOG),SILENT= 2&gt;&amp;1 | tee $(BUILD_LOG_DIR)/$(1)/$(bd)/$(target).txt) $(if $(findstring $(bd),$($(1)/builddirs-ignore-$(target))), || $(call MESSAGE,   ERROR: $(1)/$(bd) failed to build$(if $(filter-out __default,$(variant)), (build variant: $(variant))).))
+        )
+        $$(if $(call debug,$(1)/$(bd),v),,.SILENT: $(1)/$(bd)/$(target))
+
+      # legacy targets
+      $(call warn_eval,$(1)/$(bd),l,T,$(1)/$(bd)-$(target): $(1)/$(bd)/$(target))
+      # aliases
+      $(if $(call diralias,$(bd)),$(call warn_eval,$(1)/$(bd),l,T,$(1)/$(call diralias,$(bd))/$(target): $(1)/$(bd)/$(target)))
+	)
+  )
+  $(foreach target,$(SUBTARGETS),$(call subtarget,$(1),$(target)))
+endef</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#target/builddirs:=linux sdk imagebuilder toolchain</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#$(buildtypes-$(bd)定义在tmp/.packagedeps
+# 在toplevel.mk的prepare-tmpinfo:
+#    ./scripts/metadata.pl package_mk tmp/.packageinfo &gt; tmp/.packagedeps || { rm -f tmp/.packagedeps; false; }
+#但是target目录下的没有定义buildtypes-xxx这个变量
+#所以不会执行$(foreach btype,$(buildtypes-$(bd))
+#如：
+target/linux/clean:  $(if $(QUILT),,$(target/linux/clean) $(call target//clean,target/linux))
+    $(foreach variant, __default,  $(SUBMAKE) -C target/linux clean BUILD_VARIANT=&quot;$(filter-out __default,$(variant))&quot; || $(call  MESSAGE,   ERROR: ))
+
+target/linux-clean: target/linux/clean
+//target/&lt;alise&gt;/clean: target/linux/clean
+
+target/linux/download:
+...
+...    </rich_text><rich_text>
+
+</rich_text><rich_text foreground="#ffff00000000">$(foreach target,$(SUBTARGETS),$(call subtarget,$(1),$(target)))
+</rich_text><rich_text foreground="#00000000ffff">生成：
+target/clean: $(target/) target/linux/clean
+target/download: $(target/) target/linux/download
+...</rich_text></node><node name="target/linux/Makefile" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text scale="h3" weight="heavy">1. target/linux/Makefile</rich_text><rich_text>
+include $(TOPDIR)/rules.mk
+include $(INCLUDE_DIR)/target.mk
+
+export TARGET_BUILD=1
+
+prereq clean download prepare compile install menuconfig oldconfig update refresh: FORCE
+	@+$(NO_TRACE_MAKE) -C $(BOARD) $@
+	
+	
+</rich_text><rich_text scale="h3" weight="heavy">2. target/linux/s3c24xx/Makefile </rich_text><rich_text>
+include $(TOPDIR)/rules.mk
+
+ARCH:=arm
+BOARD:=s3c24xx
+BOARDNAME:=Samsung S3C24xx
+FEATURES:=jffs2 squashfs
+CFLAGS:=-O2 -pipe -march=armv4t -mtune=arm920t -funit-at-a-time
+SUBTARGETS:=dev-s3c2440 dev-s3c2410 dev-fs2410 dev-mini2440 dev-gec2410 dev-gec2440 dev-qq2440
+
+LINUX_VERSION:=2.6.32.27
+#LINUX_VERSION:=2.6.32.59
+
+
+define Target/Description
+	S3C24xx arm
+endef
+
+include $(INCLUDE_DIR)/target.mk
+DEFAULT_PACKAGES += wpad-mini kmod-gpio-dev gpioctl\
+		kmod-usb-core kmod-usb-storage kmod-usb-ohci \
+		kmod-sound-core kmod-sound-soc-s3c24xx-uda134x \
+		kmod-mmc-s3c24xx  \
+		kmod-i2c-core kmod-i2c-s3c24xx \
+		kmod-spi-s3c24xx kmod-spi-s3c24xx-gpio \
+		kmod-leds-gpio kmod-ledtrig-netdev kmod-ledtrig-usbdev \
+		kmod-button-hotplug kmod-input-gpio-keys \
+		kmod-fs-ext2 kmod-fs-ext3 kmod-fs-ext2 kmod-nls-utf8 kmod-nls-cp936 kmod-nls-iso8859-1 kmod-nls-cp437 kmod-fs-vfat
+
+$(eval $(call BuildTarget))
+
+</rich_text><rich_text foreground="#00000000ffff">(1).DUMP = 1 -&gt; dumpinfo</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">BuildTarget = $(BuildTargets/DumpCurrent)
+
+define BuildTargets/DumpCurrent
+  .PHONY: dumpinfo
+  dumpinfo:
+	@echo 'Target: $(TARGETID)'; \
+	 echo 'Target-Board: $(BOARD)'; \
+	 echo 'Target-Kernel: $(KERNEL)'; \
+	 echo 'Target-Name: $(BOARDNAME)$(if $(SUBTARGETS),$(if $(SUBTARGET),))'; \
+	 echo 'Target-Path: $(subst $(TOPDIR)/,,$(PWD))'; \
+	 echo 'Target-Arch: $(ARCH)'; \
+	 echo 'Target-Arch-Packages: $(if $(ARCH_PACKAGES),$(ARCH_PACKAGES),$(BOARD))'; \
+	 echo 'Target-Features: $(FEATURES)'; \
+	 echo 'Target-Depends: $(DEPENDS)'; \
+	 echo 'Target-Optimization: $(if $(CFLAGS),$(CFLAGS),$(DEFAULT_CFLAGS))'; \
+	 echo 'Linux-Version: $(LINUX_VERSION)'; \
+	 echo 'Linux-Release: $(LINUX_RELEASE)'; \
+	 echo 'Linux-Kernel-Arch: $(LINUX_KARCH)'; \
+	 echo 'Target-Description:'; \
+	 getvar $(call shvar,Target/Description); \
+	 echo '@@'; \
+	 echo 'Default-Packages: $(DEFAULT_PACKAGES)'; \
+	 $(DUMPINFO)
+	$(if $(SUBTARGET),,@$(foreach SUBTARGET,$(SUBTARGETS),$(SUBMAKE) -s DUMP=1 SUBTARGET=$(SUBTARGET); ))
+endef</rich_text><rich_text>
+	
+</rich_text><rich_text foreground="#00000000ffff">(2).DUMP = 0 -&gt; compile</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">include $(INCLUDE_DIR)/kernel.mk
+ifeq ($(TARGET_BUILD),1)
+  include $(INCLUDE_DIR)/kernel-build.mk
+  BuildTarget?=$(BuildKernel)
+endif
+
+#kernel-build.mk
+define BuildKernel
+  $(if $(QUILT),$(Build/Quilt))
+  </rich_text><rich_text foreground="#00000000ffff">#下载kernel</rich_text><rich_text foreground="#ffff00000000">
+  $(if $(LINUX_SITE),$(call Download,kernel))
+
+  </rich_text><rich_text foreground="#00000000ffff">#创建$(KERNEL_BUILD_DIR)目录, 解压或git clone源码</rich_text><rich_text foreground="#ffff00000000">
+  $(STAMP_PREPARED): $(DL_DIR)/$(LINUX_SOURCE)
+	-rm -rf $(KERNEL_BUILD_DIR)
+	-mkdir -p $(KERNEL_BUILD_DIR)
+	$(Kernel/Prepare)
+	touch $$@
+
+  $(KERNEL_BUILD_DIR)/symtab.txt: FORCE
+	find $(LINUX_DIR) $(STAGING_DIR_ROOT)/lib/modules -name \*.ko | \
+		xargs $(TARGET_CROSS)nm | \
+		awk '$$$$1 == &quot;U&quot; { print $$$$2 } ' | \
+		sort -u &gt; $$@
+
+  $(KERNEL_BUILD_DIR)/symtab.h: $(KERNEL_BUILD_DIR)/symtab.txt
+	( \
+		echo '#define SYMTAB_KEEP \'; \
+		cat $(KERNEL_BUILD_DIR)/symtab.txt | \
+			awk '{print &quot;*(__ksymtab.&quot; $$$$1 &quot;) \\&quot; }'; \
+		echo; \
+		echo '#define SYMTAB_KEEP_GPL \'; \
+		cat $(KERNEL_BUILD_DIR)/symtab.txt | \
+			awk '{print &quot;*(__ksymtab_gpl.&quot; $$$$1 &quot;) \\&quot; }'; \
+		echo; \
+		echo '#define SYMTAB_KEEP_STR \'; \
+		cat $(KERNEL_BUILD_DIR)/symtab.txt | \
+			awk '{print &quot;*(__ksymtab_strings.&quot; $$$$1 &quot;) \\&quot; }'; \
+		echo; \
+	) &gt; $$@
+
+  $(STAMP_CONFIGURED): $(STAMP_PREPARED) $(LINUX_CONFIG) $(GENERIC_LINUX_CONFIG) $(TOPDIR)/.config
+	$(Kernel/Configure)
+	touch $$@
+
+  </rich_text><rich_text foreground="#00000000ffff">#编译linux模块</rich_text><rich_text foreground="#ffff00000000">  
+  $(LINUX_DIR)/.modules: $(STAMP_CONFIGURED) $(LINUX_DIR)/.config FORCE
+	$(Kernel/CompileModules)
+	touch $$@
+
+  </rich_text><rich_text foreground="#00000000ffff">#编译kernel源码, 在make install, 才调用这里</rich_text><rich_text foreground="#ffff00000000"> 
+  $(LINUX_DIR)/.image: $(STAMP_CONFIGURED) $(if $(CONFIG_STRIP_KERNEL_EXPORTS),$(KERNEL_BUILD_DIR)/symtab.h) FORCE
+	$(Kernel/CompileImage)
+	$(Kernel/CollectDebug)
+	touch $$@
+	
+  mostlyclean: FORCE
+	$(Kernel/Clean)
+
+  define BuildKernel
+  endef
+
+  download: $(DL_DIR)/$(LINUX_SOURCE)
+  prepare: $(STAMP_CONFIGURED)
+  compile: $(LINUX_DIR)/.modules
+	$(MAKE) -C image compile TARGET_BUILD=
+
+  oldconfig menuconfig: $(STAMP_PREPARED) $(STAMP_CHECKED) FORCE
+	[ -e &quot;$(LINUX_CONFIG)&quot; ] || touch &quot;$(LINUX_CONFIG)&quot;
+	$(LINUX_CONFCMD) &gt; $(LINUX_DIR)/.config
+	touch $(LINUX_CONFIG)
+	$(_SINGLE)$(MAKE) -C $(LINUX_DIR) $(KERNEL_MAKEOPTS) $$@
+	$(SCRIPT_DIR)/kconfig.pl '&gt;' $(if $(LINUX_SUBCONFIG),'+' $(GENERIC_LINUX_CONFIG) $(LINUX_CONFIG),$(GENERIC_LINUX_CONFIG)) \
+		$(LINUX_DIR)/.config &gt; $(if $(LINUX_SUBCONFIG),$(LINUX_SUBCONFIG),$(LINUX_CONFIG))
+	$(Kernel/Configure)
+
+  install: $(LINUX_DIR)/.image
+	+$(MAKE) -C image compile install TARGET_BUILD=
+
+  clean: FORCE
+	rm -rf $(KERNEL_BUILD_DIR)
+
+  image-prereq:
+	@+$(NO_TRACE_MAKE) -s -C image prereq TARGET_BUILD=
+
+  prereq: image-prereq
+
+endef</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">#kernel-build.mk</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">define Kernel/Prepare
+	$(call Kernel/Prepare/Default)
+endef
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">define Kernel/Configure
+	$(call Kernel/Configure/Default)
+endef
+
+define Kernel/CompileModules
+	$(call Kernel/CompileModules/Default)
+endef
+
+define Kernel/CompileImage
+	$(call Kernel/CompileImage/Default)
+endef
+
+define Kernel/Clean
+	$(call Kernel/Clean/Default)
+endef
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">#kernel-defaults.mk</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000"># defined in quilt.mk
+Kernel/Patch:=$(Kernel/Patch/Default)
+ifeq ($(strip $(CONFIG_EXTERNAL_KERNEL_TREE)),&quot;&quot;)
+  ifeq ($(strip $(CONFIG_KERNEL_GIT_CLONE_URI)),&quot;&quot;)
+    </rich_text><rich_text foreground="#00000000ffff">#解压$(DL_DIR)/$(LINUX_SOURCE)到$(KERNEL_BUILD_DIR)</rich_text><rich_text foreground="#ffff00000000">
+    define Kernel/Prepare/Default
+	bzcat $(DL_DIR)/$(LINUX_SOURCE) | $(TAR) -C $(KERNEL_BUILD_DIR) $(TAR_OPTIONS)
+	$(Kernel/Patch)
+	touch $(LINUX_DIR)/.quilt_used
+    endef
+  else
+    </rich_text><rich_text foreground="#00000000ffff">#git clone kernel源码</rich_text><rich_text foreground="#ffff00000000"> </rich_text><rich_text>
+    ifeq ($(strip $(CONFIG_KERNEL_GIT_LOCAL_REPOSITORY)),&quot;&quot;)
+    define Kernel/Prepare/Default
+	git clone $(CONFIG_KERNEL_GIT_CLONE_URI) $(LINUX_DIR)
+    endef
+    else
+    define Kernel/Prepare/Default
+	git clone --reference $(CONFIG_KERNEL_GIT_LOCAL_REPOSITORY) $(CONFIG_KERNEL_GIT_CLONE_URI) $(LINUX_DIR)
+    endef
+  endif
+endif
+else
+  </rich_text><rich_text foreground="#00000000ffff">#链接外部kernel目录</rich_text><rich_text foreground="#ffff00000000">
+  define Kernel/Prepare/Default
+	mkdir -p $(KERNEL_BUILD_DIR)
+	if [ -d $(LINUX_DIR) ]; then \
+		rmdir $(LINUX_DIR); \
+	fi
+	ln -s $(CONFIG_EXTERNAL_KERNEL_TREE) $(LINUX_DIR)
+  endef
+endif</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#ffff00000000">KERNEL_MAKEOPTS := -C $(LINUX_DIR) \
+	CROSS_COMPILE=&quot;$(KERNEL_CROSS)&quot; \
+	ARCH=&quot;$(LINUX_KARCH)&quot; \
+	KBUILD_HAVE_NLS=no \
+	CONFIG_SHELL=&quot;$(BASH)&quot;
+	
+define Kernel/Configure/Default
+	$(LINUX_CONFCMD) &gt; $(LINUX_DIR)/.config.target
+# copy CONFIG_KERNEL_* settings over to .config.target
+	awk '/^(#[[:space:]]+)?CONFIG_KERNEL/{sub(&quot;CONFIG_KERNEL_&quot;,&quot;CONFIG_&quot;);print}' $(TOPDIR)/.config &gt;&gt; $(LINUX_DIR)/.config.target
+	echo &quot;# CONFIG_KALLSYMS_EXTRA_PASS is not set&quot; &gt;&gt; $(LINUX_DIR)/.config.target
+	echo &quot;# CONFIG_KALLSYMS_ALL is not set&quot; &gt;&gt; $(LINUX_DIR)/.config.target
+	echo &quot;# CONFIG_KPROBES is not set&quot; &gt;&gt; $(LINUX_DIR)/.config.target
+	$(SED) 's,.*CONFIG_AEABI.*,$(if $(CONFIG_EABI_SUPPORT),CONFIG_AEABI=y,# CONFIG_AEABI is not set),' $(LINUX_DIR)/.config.target
+	$(if $(CONFIG_EABI_SUPPORT),echo '# CONFIG_OABI_COMPAT is not set' &gt;&gt; $(LINUX_DIR)/.config.target)
+	$(SCRIPT_DIR)/metadata.pl kconfig $(TMP_DIR)/.packageinfo $(TOPDIR)/.config &gt; $(LINUX_DIR)/.config.override
+	$(SCRIPT_DIR)/kconfig.pl 'm+' '+' $(LINUX_DIR)/.config.target /dev/null $(LINUX_DIR)/.config.override &gt; $(LINUX_DIR)/.config
+	$(call Kernel/SetInitramfs)
+	$(call Kernel/Configure/$(KERNEL))
+	rm -rf $(KERNEL_BUILD_DIR)/modules
+endef	
+
+</rich_text><rich_text foreground="#00000000ffff">#make -C $(LINUX_DIR) modules </rich_text><rich_text foreground="#ffff00000000">
+define Kernel/CompileModules/Default
+	rm -f $(LINUX_DIR)/vmlinux $(LINUX_DIR)/System.map
+	+$(MAKE) $(KERNEL_MAKEOPTS) modules
+endef
+
+OBJCOPY_STRIP = -R .reginfo -R .notes -R .note -R .comment -R .mdebug -R .note.gnu.build-id
+
+</rich_text><rich_text foreground="#00000000ffff">#make -C $(LINUX_DIR) </rich_text><rich_text foreground="#ffff00000000">
+define Kernel/CompileImage/Default
+	$(if $(CONFIG_TARGET_ROOTFS_INITRAMFS),,rm -f $(TARGET_DIR)/init)
+	+$(MAKE) $(KERNEL_MAKEOPTS) $(KERNELNAME)
+	$(KERNEL_CROSS)objcopy -O binary $(OBJCOPY_STRIP) -S $(LINUX_DIR)/vmlinux $(LINUX_KERNEL)
+	$(KERNEL_CROSS)objcopy $(OBJCOPY_STRIP) -S $(LINUX_DIR)/vmlinux $(KERNEL_BUILD_DIR)/vmlinux.elf
+endef
+
+</rich_text><rich_text foreground="#00000000ffff">#make -C $(LINUX_DIR) clean</rich_text><rich_text foreground="#ffff00000000">
+define Kernel/Clean/Default
+	rm -f $(KERNEL_BUILD_DIR)/linux-$(LINUX_VERSION)/.configured
+	rm -f $(LINUX_KERNEL)
+	$(_SINGLE)$(MAKE) -C $(KERNEL_BUILD_DIR)/linux-$(LINUX_VERSION) clean
+endef</rich_text><rich_text>	
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">#quilt.mk</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">ifeq ($(TARGET_BUILD),1)    </rich_text><rich_text foreground="#00000000ffff">//true</rich_text><rich_text foreground="#ffff00000000">
+  PKG_BUILD_DIR:=$(LINUX_DIR)
+endif
+PATCH_DIR?=./patches
+FILES_DIR?=./files
+HOST_PATCH_DIR?=$(PATCH_DIR)
+HOST_FILES_DIR?=$(FILES_DIR)
+
+define PatchDir/Quilt
+    </rich_text><rich_text foreground="#00000000ffff">#创建$(LINUX_DIR)/patches/generic目录</rich_text><rich_text foreground="#ffff00000000">
+	@mkdir -p &quot;$(1)/patches$(if $(3),/$(patsubst %/,%,$(3)))&quot;
+	@if [ -s &quot;$(2)/series&quot; ]; then \
+		mkdir -p &quot;$(1)/patches/$(3)&quot;; \
+		cp &quot;$(2)/series&quot; &quot;$(1)/patches/$(3)&quot;; \
+	fi
+	@for patch in $$$$( (cd &quot;$(2)&quot; &amp;&amp; if [ -f series ]; then $(call filter_series,series); else ls | sort; fi; ) 2&gt;/dev/null ); do ( \
+		cp &quot;$(2)/$$$$patch&quot; &quot;$(1)/patches/$(3)&quot;; \
+		echo &quot;$(3)$$$$patch&quot; &gt;&gt; &quot;$(1)/patches/series&quot;; \
+	); done
+	$(if $(3),@echo $(3) &gt;&gt; &quot;$(1)/patches/.subdirs&quot;)
+endef
+
+define PatchDir/Default
+	@if [ -d &quot;$(2)&quot; -a &quot;$$$$(ls $(2) | wc -l)&quot; -gt 0 ]; then \
+		if [ -s &quot;$(2)/series&quot; ]; then \
+			$(call filter_series,$(2)/series) | xargs -n1 \
+				$(PATCH) &quot;$(1)&quot; &quot;$(2)&quot;; \
+		else \
+			$(PATCH) &quot;$(1)&quot; &quot;$(2)&quot;; \
+		fi; \
+	fi
+endef
+
+</rich_text><rich_text foreground="#00000000ffff">#kernel-build.mk中export QUILT = 1</rich_text><rich_text foreground="#ffff00000000">
+define PatchDir
+$(call PatchDir/$(if $(strip $(QUILT)),Quilt,Default),$(strip $(1)),$(strip $(2)),$(strip $(3)))
+endef
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">kernel_files=$(foreach fdir,$(GENERIC_FILES_DIR) $(FILES_DIR),$(fdir)/.)</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">define Kernel/Patch/Default
+	rm -rf $(PKG_BUILD_DIR)/patches; mkdir -p $(PKG_BUILD_DIR)/patches
+	$(if $(kernel_files),$(CP) $(kernel_files) $(LINUX_DIR)/)
+	</rich_text><rich_text foreground="#00000000ffff">#删除补丁冲突文件</rich_text><rich_text foreground="#ffff00000000">
+	find $(LINUX_DIR)/ -name \*.rej -or -name \*.orig | $(XARGS) rm -f
+	</rich_text><rich_text foreground="#00000000ffff">#复制target/linux/generic-2.6/patches-2.6.32/目录下的所有文件到$(LINUX_LINUX)/patches/generic/， 并打补丁</rich_text><rich_text foreground="#ffff00000000">
+	$(call PatchDir,$(PKG_BUILD_DIR),$(GENERIC_PATCH_DIR),generic/)
+	</rich_text><rich_text foreground="#00000000ffff">#复制target/linux/s3c24xx/patches-2.6.32/目录下的所有文件到$(LINUX_LINUX)/patches/platform/， 并打补丁</rich_text><rich_text foreground="#ffff00000000">
+	$(call PatchDir,$(PKG_BUILD_DIR),$(PATCH_DIR),platform/)
+endef
+</rich_text><rich_text foreground="#00000000ffff">#PKG_BUILD_DIR = $(LINUX_DIR)</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">#target.mk </rich_text><rich_text foreground="#00000000ffff">
+#target/linux/generic-2.6</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">GENERIC_PLATFORM_DIR := $(TOPDIR)/target/linux/generic-$(KERNEL)
+GENERIC_PATCH_DIR := $(GENERIC_PLATFORM_DIR)/patches$(if $(wildcard $(GENERIC_PLATFORM_DIR)/patches-$(KERNEL_PATCHVER)),-$(KERNEL_PATCHVER))
+GENERIC_FILES_DIR := $(foreach dir,$(wildcard $(GENERIC_PLATFORM_DIR)/files $(GENERIC_PLATFORM_DIR)/files-$(KERNEL_PATCHVER)),&quot;$(dir)&quot;)</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">#kernel.mk</rich_text><rich_text weight="heavy"> </rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#target/linux/s3c24xxx</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">  ifeq ($(TARGET_BUILD),1)  </rich_text><rich_text foreground="#00000000ffff">//true</rich_text><rich_text foreground="#ffff00000000">
+    PATCH_DIR ?= ./patches$(if $(wildcard ./patches-$(KERNEL_PATCHVER)),-$(KERNEL_PATCHVER))
+    FILES_DIR ?= $(foreach dir,$(wildcard ./files ./files-$(KERNEL_PATCHVER)),&quot;$(dir)&quot;)
+  endif</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">3. target/linux/s3c24xx/image/Makefile</rich_text><rich_text>    
+</rich_text><rich_text foreground="#00000000ffff">    target/linux/Makefile中的目标
+    complie:
+        $(MAKE) -C image compile TARGET_BUILD=
+
+    #编译，并生成image
+    install: $(LINUX_DIR)/.image
+	    +$(MAKE) -C image compile install TARGET_BUILD=
+    
+</rich_text><rich_text>include $(TOPDIR)/rules.mk
+include $(INCLUDE_DIR)/image.mk
+
+
+define Image/Build/S3C24XX
+  BIN_DIR=$(BIN_DIR) $(TOPDIR)/scripts/combined-image.sh \
+  	 $(UIMAGE) \
+  	 $(BIN_DIR)/$(IMG_PREFIX)-$(1).img \
+  	 $(BIN_DIR)/openwrt-$(2)-$(1).bin
+#  BIN_DIR=$(BIN_DIR) $(TOPDIR)/scripts/slugimage.pl \
+#  	-F -L $(BIN_DIR)/apex/apex-$(2)-16mb-armeb.bin \
+#  	-k $(BIN_DIR)/openwrt-$(2)-zImage \
+#  	-r rootfs:$(BIN_DIR)/$(IMG_PREFIX)-$(1).img \
+#  	-p -o $(BIN_DIR)/openwrt-$(2)-$(1)-16mb.bin
+endef
+
+define imgname
+$(BIN_DIR)/$(IMG_PREFIX)-$(2)-$(patsubst jffs2-%,jffs2,$(patsubst squashfs-%,squashfs,$(1)))
+endef
+
+VMLINUX:=$(BIN_DIR)/$(IMG_PREFIX)-vmlinux
+UIMAGE:=$(BIN_DIR)/$(IMG_PREFIX)-uImage
+
+#fs_squash:=squashfs-only
+#fs_all:=all
+#fs_4k:=4k
+#fs_64k:=64k
+#fs_128k:=128k
+#ifeq ($(CONFIG_TARGET_ROOTFS_INITRAMFS),y)
+#	fs_squash:=initramfs
+#	fs_all:=initramfs
+#	fs_4k:=initramfs
+#	fs_64k:=initramfs
+#	fs_128k:=initramfs
+#	VMLINUX:=$(BIN_DIR)/$(IMG_PREFIX)-vmlinux-initramfs
+#	UIMAGE:=$(BIN_DIR)/$(IMG_PREFIX)-uImage-initramfs
+#endif
+
+# specifics for the samsung NAND flash 64M
+#JFFS2_BLOCKSIZE=16k
+#JFFS2OPTS += -s 0x200 -n --little-endian
+
+# specifics for the samsung NAND flash 128M
+#JFFS2_BLOCKSIZE=128k
+#JFFS2OPTS += -s 0x800 -n --little-endian
+
+# sudo /home/opt/build/openwrt/staging_dir/host/bin/mkfs.jffs2 
+# --pad --little-endian --squash -s 0x200 -e 0x4000 -n 
+# -o /home/opt/build/openwrt/build_dir/linux-s3c24xx/root.jffs2-16k 
+# -d /home/opt/build/openwrt/build_dir/target-arm_glibc-2.6.1/root-s3c24xx
+#
+
+define MkuImage
+	mkimage -A arm -O linux -T kernel -a 0x30008000 -C none \
+		-e 0x30008040 -n 'OpenWrt S3C24XX Linux-$(LINUX_VERSION)' \
+		-d $(1) $(2)
+endef
+
+define Image/Prepare
+    cp $(LINUX_DIR)/arch/arm/boot/zImage $(KDIR)/zImage
+endef
+
+define Image/BuildKernel
+	$(call MkuImage,$(KDIR)/zImage,$(UIMAGE))
+	cp $(KDIR)/zImage $(BIN_DIR)/$(IMG_PREFIX)-zImage
+endef
+
+define Image/Build
+	$(call Image/Build/$(1),$(1))
+endef
+
+
+define Image/Build/jffs2-64k
+	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/$(IMG_PREFIX)-$(1).img bs=65536 conv=sync
+	$(call Image/Build/S3C24XX,$(1),s3c24xx,$(1))
+endef
+
+define Image/Build/jffs2-128k
+	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/$(IMG_PREFIX)-$(1).img bs=131072 conv=sync
+	$(call Image/Build/S3C24XX,$(1),s3c24xx,$(1))
+#	$(call Image/Build/Freecom,$(1),fsg3,$(1))
+endef
+
+#define Image/Build/squashfs
+#	$(call prepare_generic_squashfs,$(KDIR)/root.squashfs)
+#	dd if=$(KDIR)/root.$(1) of=$(BIN_DIR)/$(IMG_PREFIX)-$(1).img bs=131072 conv=sync
+#	$(call Image/Build/Linksys,$(1),nslu2,$(1))
+#	$(call Image/Build/Freecom,$(1),fsg3,$(1))
+#endef
+
+define Image/Build/squashfs
+	$(call prepare_generic_squashfs,$(KDIR)/root.squashfs)
+	( \
+		dd if=$(KDIR)/uImage bs=1024k conv=sync; \
+		dd if=$(KDIR)/root.$(1) bs=64k conv=sync; \
+	) &gt; $(BIN_DIR)/$(IMG_PREFIX)-$(BOARD)-$(1).img
+endef
+
+$(eval $(call BuildImage))
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">#image.mk</rich_text><rich_text foreground="#00000000ffff"> 
+#默认IB没有定义</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">define BuildImage
+
+  download:
+  prepare:
+
+  ifeq ($(IB),)
+    compile: compile-targets FORCE
+        </rich_text><rich_text foreground="#00000000ffff">#空指令</rich_text><rich_text foreground="#ffff00000000">
+		$(call Build/Compile)   
+  else
+    compile:
+  endif
+
+  ifeq ($(IB),)
+    install: compile install-targets FORCE
+		$(call Image/Prepare)
+		$(call Image/mkfs/prepare)
+		$(call Image/BuildKernel)
+		$(call Image/mkfs/cpiogz)
+		$(call Image/mkfs/targz)
+		$(call Image/mkfs/ext2)
+		$(call Image/mkfs/iso)
+		$(call Image/mkfs/jffs2)
+		$(call Image/mkfs/squashfs)
+		$(call Image/mkfs/ubifs)
+		$(call Image/Checksum)
+  else
+    install: compile install-targets
+		$(call Image/BuildKernel)
+		$(call Image/mkfs/cpiogz)
+		$(call Image/mkfs/targz)
+		$(call Image/mkfs/ext2)
+		$(call Image/mkfs/iso)
+		$(call Image/mkfs/jffs2)
+		$(call Image/mkfs/squashfs)
+		$(call Image/mkfs/ubifs)
+		$(call Image/Checksum)
+  endif
+
+  ifeq ($(IB),)
+    clean: clean-targets
+		$(call Build/Clean)
+  else
+    clean:
+  endif
+
+  compile-targets:
+  install-targets:
+  clean-targets:
+
+endef
+</rich_text></node><node name="package/Makefile" prog_lang="custom-colors" readonly="False" tags="" unique_id="6"><rich_text>#
+# Copyright (C) 2006-2010 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+curdir:=package
+
+</rich_text><rich_text foreground="#00000000ffff">#package- package-y package-m prereq-y prereq-m这些变量包含在$(TMP_DIR)/.packagedeps
+#如：</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">package-$(CONFIG_PACKAGE_ppp) += ppp</rich_text><rich_text>
+
+-include $(TMP_DIR)/.packagedeps
+$(curdir)/builddirs:=$(sort $(package-) $(package-y) $(package-m))
+ifeq ($(SDK),1)
+  $(curdir)/builddirs-install:=.
+else
+  $(curdir)/builddirs-default:=. $(sort $(package-y) $(package-m))
+  $(curdir)/builddirs-prereq:=. $(sort $(prereq-y) $(prereq-m))
+  $(curdir)/builddirs-install:=. $(sort $(package-y))
+endif
+ifneq ($(IGNORE_ERRORS),)
+  $(curdir)/builddirs-ignore-compile:= $(if $(filter n m y, $(IGNORE_ERRORS)),$(foreach m,$(IGNORE_ERRORS),$(package-$(subst n,,$(m)))),$(package-m) $(package-))
+endif
+
+$(curdir)/install:=$(curdir)/install-cleanup
+
+$(curdir)/cleanup: $(TMP_DIR)/.build
+	- find $(STAGING_DIR_ROOT) -type d | $(XARGS) chmod 0755
+	rm -rf $(TARGET_DIR) $(STAGING_DIR_ROOT)
+
+ifdef CONFIG_USE_MKLIBS
+  define mklibs
+	rm -rf $(TMP_DIR)/mklibs-progs $(TMP_DIR)/mklibs-out
+	# first find all programs and add them to the mklibs list
+	find $(STAGING_DIR_ROOT) -type f -perm +100 -exec \
+		file -r -N -F '' {} + | \
+		awk ' /executable.*dynamically/ { print $$1 }' &gt; $(TMP_DIR)/mklibs-progs
+	# find all loadable objects that are not regular libraries and add them to the list as well
+	find $(STAGING_DIR_ROOT) -type f -name \*.so\* -exec \
+		file -r -N -F '' {} + | \
+		awk ' /shared object/ { print $$1 }' &gt;&gt; $(TMP_DIR)/mklibs-progs
+	mkdir -p $(TMP_DIR)/mklibs-out
+	$(STAGING_DIR_HOST)/bin/mklibs.py -D \
+		-d $(TMP_DIR)/mklibs-out \
+		--sysroot $(STAGING_DIR_ROOT) \
+		-L /lib \
+		-L /usr/lib \
+		-L /usr/lib/ebtables \
+		--ldlib $(patsubst $(STAGING_DIR_ROOT)/%,/%,$(firstword $(wildcard \
+			$(foreach name,ld-uClibc.so.* ld-linux.so.* ld-*.so, \
+			  $(STAGING_DIR_ROOT)/lib/$(name) \
+			)))) \
+		--target $(REAL_GNU_TARGET_NAME) \
+		`cat $(TMP_DIR)/mklibs-progs` 2&gt;&amp;1
+	$(RSTRIP) $(TMP_DIR)/mklibs-out
+	for lib in `ls $(TMP_DIR)/mklibs-out/*.so.* 2&gt;/dev/null`; do \
+		LIB=&quot;$${lib##*/}&quot;; \
+		DEST=&quot;`ls &quot;$(TARGET_DIR)/lib/$$LIB&quot; &quot;$(TARGET_DIR)/usr/lib/$$LIB&quot; 2&gt;/dev/null`&quot;; \
+		[ -n &quot;$$DEST&quot; ] || continue; \
+		echo &quot;Copying stripped library $$lib to $$DEST&quot;; \
+		cp &quot;$$lib&quot; &quot;$$DEST&quot; || exit 1; \
+	done
+  endef
+endif
+
+$(curdir)/rootfs-prepare: $(TMP_DIR)/.build
+	@-$(MAKE) package/preconfig
+	@if [ -d $(TOPDIR)/files ]; then \
+		( cd $(TOPDIR)/files; find -type f ) | \
+			( cd $(TARGET_DIR); while :; do \
+				read FILE; \
+				[ -z &quot;$$FILE&quot; ] &amp;&amp; break; \
+				[ -L &quot;$$FILE&quot; ] || continue; \
+				echo &quot;Removing symlink $(TARGET_DIR)/$$FILE&quot;; \
+				rm -f &quot;$$FILE&quot;; \
+			done; ); \
+		$(CP) $(TOPDIR)/files/. $(TARGET_DIR); \
+	fi
+	@mkdir -p $(TARGET_DIR)/etc/rc.d
+	@( \
+		cd $(TARGET_DIR); \
+		for script in ./etc/init.d/*; do \
+			grep '#!/bin/sh /etc/rc.common' $$script &gt;/dev/null || continue; \
+			IPKG_INSTROOT=$(TARGET_DIR) $$(which bash) ./etc/rc.common $$script enable; \
+		done || true \
+	)
+	@-find $(TARGET_DIR) -name CVS   | $(XARGS) rm -rf
+	@-find $(TARGET_DIR) -name .svn  | $(XARGS) rm -rf
+	@-find $(TARGET_DIR) -name '.#*' | $(XARGS) rm -f
+	$(if $(CONFIG_CLEAN_IPKG),rm -rf $(TARGET_DIR)/usr/lib/opkg)
+	$(call mklibs)
+
+$(curdir)/index: FORCE
+	@(cd $(PACKAGE_DIR); $(SCRIPT_DIR)/ipkg-make-index.sh . &gt; Packages &amp;&amp; \
+		gzip -9c Packages &gt; Packages.gz \
+	)
+
+$(curdir)/flags-install:= -j1
+</rich_text><rich_text foreground="#00000000ffff">#$(package/stamp-prereq):</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),package,prereq,.config))
+</rich_text><rich_text foreground="#00000000ffff">#$(package/stamp-cleanup):.package_cleanup</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),package,cleanup,$(TMP_DIR)/.build))
+</rich_text><rich_text foreground="#00000000ffff">#$(package/stamp-compile):.package_compile</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),package,compile,$(TMP_DIR)/.build))
+</rich_text><rich_text foreground="#00000000ffff">#$(package/stamp-install):.package_install</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),package,install,$(TMP_DIR)/.build))
+</rich_text><rich_text foreground="#00000000ffff">#$(package/stamp-rootfs-prepare):.package_rootfs-prepare</rich_text><rich_text>
+$(eval $(call stampfile,$(curdir),package,rootfs-prepare,$(TMP_DIR)/.build))
+
+$(eval $(call subdir,$(curdir)))
+</rich_text></node><node name="toplevel.mk分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text># Makefile for OpenWrt
+#
+# Copyright (C) 2007 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+RELEASE:=Backfire
+SHELL:=/usr/bin/env bash
+PREP_MK= OPENWRT_BUILD= QUIET=0
+
+include $(TOPDIR)/include/verbose.mk
+
+ifeq ($(SDK),1)
+  include $(TOPDIR)/include/version.mk
+else
+  REVISION:=$(shell $(TOPDIR)/scripts/getver.sh)
+endif
+
+OPENWRTVERSION:=$(RELEASE)$(if $(REVISION), ($(REVISION)))
+export RELEASE
+export REVISION
+export OPENWRTVERSION
+export IS_TTY=$(shell tty -s &amp;&amp; echo 1 || echo 0)
+export LD_LIBRARY_PATH:=$(if $(LD_LIBRARY_PATH),$(LD_LIBRARY_PATH):)$(STAGING_DIR_HOST)/lib
+export DYLD_LIBRARY_PATH:=$(if $(DYLD_LIBRARY_PATH),$(DYLD_LIBRARY_PATH):)$(STAGING_DIR_HOST)/lib
+
+# prevent perforce from messing with the patch utility
+unexport P4PORT P4USER P4CONFIG P4CLIENT
+
+# prevent user defaults for quilt from interfering
+unexport QUILT_PATCHES QUILT_PATCH_OPTS
+
+# make sure that a predefined CFLAGS variable does not disturb packages
+export CFLAGS=
+
+ifeq ($(FORCE),)
+  .config scripts/config/conf scripts/config/mconf: tmp/.prereq-build
+endif
+
+SCAN_COOKIE?=$(shell echo $$$$)
+export SCAN_COOKIE
+
+SUBMAKE:=umask 022; $(SUBMAKE)
+
+prepare-mk: FORCE ;
+
+prepare-tmpinfo: FORCE
+	mkdir -p tmp/info
+	$(_SINGLE)$(NO_TRACE_MAKE) -j1 -r -s -f include/scan.mk SCAN_TARGET=&quot;packageinfo&quot; SCAN_DIR=&quot;package&quot; SCAN_NAME=&quot;package&quot; SCAN_DEPS=&quot;$(TOPDIR)/include/package*.mk $(TOPDIR)/overlay/*/*.mk&quot; SCAN_DEPTH=5 SCAN_EXTRA=&quot;&quot;
+	$(_SINGLE)$(NO_TRACE_MAKE) -j1 -r -s -f include/scan.mk SCAN_TARGET=&quot;targetinfo&quot; SCAN_DIR=&quot;target/linux&quot; SCAN_NAME=&quot;target&quot; SCAN_DEPS=&quot;profiles/*.mk $(TOPDIR)/include/kernel*.mk $(TOPDIR)/include/target.mk&quot; SCAN_DEPTH=2 SCAN_EXTRA=&quot;&quot; SCAN_MAKEOPTS=&quot;TARGET_BUILD=1&quot;
+	for type in package target; do \
+		f=tmp/.$${type}info; t=tmp/.config-$${type}.in; \
+		[ &quot;$$t&quot; -nt &quot;$$f&quot; ] || ./scripts/metadata.pl $${type}_config &quot;$$f&quot; &gt; &quot;$$t&quot; || { rm -f &quot;$$t&quot;; echo &quot;Failed to build $$t&quot;; false; break; }; \
+	done
+	./scripts/metadata.pl package_mk tmp/.packageinfo &gt; tmp/.packagedeps || { rm -f tmp/.packagedeps; false; }
+	touch $(TOPDIR)/tmp/.build
+</rich_text><rich_text foreground="#00000000ffff">#(1) ./scripts/metadata.pl $${type}_config &quot;$$f&quot; &gt; &quot;$$t&quot;
+#    生成tmp/.config-package.in, 这个文件会在根目录的Config.in的最后被包含
+</rich_text><rich_text foreground="#ffff00000000">menuconfig IMAGEOPT
+	bool &quot;Image configuration&quot;
+	default n
+	config UCI_PRECONFIG_network_lan_dns
+		string &quot;LAN DNS server&quot; if IMAGEOPT
+		depends PACKAGE_base-files
+		default &quot;&quot;
+...
+</rich_text><rich_text foreground="#00000000ffff">#    生成tmp/.config-tagert.in(对开发板硬件配置), 这个文件会在target/Config.in被包含， target/Config.in在根目录的Config.in的开始被包含
+</rich_text><rich_text foreground="#ffff00000000">choice
+	prompt &quot;Target System&quot;
+	default TARGET_x86
+	reset if !DEVEL
+...
+</rich_text><rich_text foreground="#00000000ffff">#(2) 生成tmp/.packagedeps, 格式如下:</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">package-$(CONFIG_PACKAGE_libopenssl) += openssl
+...
+</rich_text><rich_text>
+.config: ./scripts/config/conf $(if $(CONFIG_HAVE_DOT_CONFIG),,prepare-tmpinfo)
+	@+if [ \! -e .config ] || ! grep CONFIG_HAVE_DOT_CONFIG .config &gt;/dev/null; then \
+		[ -e $(HOME)/.openwrt/defconfig ] &amp;&amp; cp $(HOME)/.openwrt/defconfig .config; \
+		$(_SINGLE)$(NO_TRACE_MAKE) menuconfig $(PREP_MK); \
+	fi
+
+scripts/config/mconf:
+	@$(_SINGLE)$(SUBMAKE) -s -C scripts/config all
+
+$(eval $(call rdep,scripts/config,scripts/config/mconf))
+
+scripts/config/conf:
+	@$(_SINGLE)$(SUBMAKE) -s -C scripts/config conf
+
+config: scripts/config/conf prepare-tmpinfo FORCE
+	$&lt; Config.in
+
+config-clean: FORCE
+	$(_SINGLE)$(NO_TRACE_MAKE) -C scripts/config clean
+
+defconfig: scripts/config/conf prepare-tmpinfo FORCE
+	touch .config
+	$&lt; -D .config Config.in
+
+oldconfig: scripts/config/conf prepare-tmpinfo FORCE
+	$&lt; -$(if $(CONFDEFAULT),$(CONFDEFAULT),o) Config.in
+
+menuconfig: scripts/config/mconf prepare-tmpinfo FORCE
+	if [ \! -e .config -a -e $(HOME)/.openwrt/defconfig ]; then \
+		cp $(HOME)/.openwrt/defconfig .config; \
+	fi
+	$&lt; Config.in
+
+prepare_kernel_conf: .config FORCE
+
+ifeq ($(wildcard staging_dir/host/bin/sed),)
+  prepare_kernel_conf:
+	@+$(SUBMAKE) -r tools/sed/install
+else
+  prepare_kernel_conf: ;
+endif
+
+kernel_oldconfig: prepare_kernel_conf
+	$(_SINGLE)$(NO_TRACE_MAKE) -C target/linux oldconfig
+
+kernel_menuconfig: prepare_kernel_conf
+	$(_SINGLE)$(NO_TRACE_MAKE) -C target/linux menuconfig
+
+tmp/.prereq-build: include/prereq-build.mk
+	mkdir -p tmp
+	rm -f tmp/.host.mk
+	@$(_SINGLE)$(NO_TRACE_MAKE) -j1 -r -s -f $(TOPDIR)/include/prereq-build.mk prereq 2&gt;/dev/null || { \
+		echo &quot;Prerequisite check failed. Use FORCE=1 to override.&quot;; \
+		false; \
+	}
+	touch $@
+
+download: .config FORCE
+	@+$(SUBMAKE) tools/download
+	@+$(SUBMAKE) toolchain/download
+	@+$(SUBMAKE) package/download
+	@+$(SUBMAKE) target/download
+
+clean dirclean: .config
+	@+$(SUBMAKE) -r $@ 
+
+prereq:: prepare-tmpinfo .config
+	@+$(MAKE) -r -s tmp/.prereq-build $(PREP_MK)
+	@+$(NO_TRACE_MAKE) -r -s $@
+
+%::
+	@+$(PREP_MK) $(NO_TRACE_MAKE) -r -s prereq
+	@+$(SUBMAKE) -r $@
+
+help:
+	cat README
+
+docs docs/compile: FORCE
+	@$(_SINGLE)$(SUBMAKE) -C docs compile
+
+docs/clean: FORCE
+	@$(_SINGLE)$(SUBMAKE) -C docs clean
+
+distclean:
+	rm -rf tmp build_dir staging_dir dl .config* feeds package/feeds package/openwrt-packages bin
+	@$(_SINGLE)$(SUBMAKE) -C scripts/config clean
+
+ifeq ($(findstring v,$(DEBUG)),)
+  .SILENT: symlinkclean clean dirclean distclean config-clean download help tmpinfo-clean .config scripts/config/mconf scripts/config/conf menuconfig tmp/.prereq-build tmp/.prereq-package prepare-tmpinfo
+endif
+.PHONY: help FORCE
+.NOTPARALLEL:
+
+</rich_text></node><node name="scan.mk分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>1.
+1). package下的目录结构(openssl为例)
+package -&gt; openssl -&gt; Config.in
+                                 -&gt; Makefile
+                                 -&gt; patches -&gt; 110-optimize-for-size.patch
+                                                        120-makedepend.patch
+                                                        130-perl-path.patch
+                                                        140-makefile-dirs.patch
+                                                        150-no_engines.patch
+                                                        160-disable_doc_tests.patch
+                                                        170-bash_path.patch
+                                                        180-fix_link_segfault.patch
+                                                        190-remove_timestamp_check.patch
+                                                        200-ocf-20100325.patch
+                                                        300-etrax_support.patch
+2). Config.in                                                                                    
+menu &quot;Configuration&quot;
+	depends on PACKAGE_libopenssl
+
+config OPENSSL_ENGINE
+	bool
+	prompt &quot;Crypto acceleration support&quot;
+
+endmenu
+
+3). Makefile
+#
+# Copyright (C) 2006-2011 OpenWrt.org
+#
+# This is free software, licensed under the GNU General Public License v2.
+# See /LICENSE for more information.
+#
+
+include $(TOPDIR)/rules.mk
+
+PKG_NAME:=openssl
+PKG_VERSION:=0.9.8r
+PKG_RELEASE:=1
+
+PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
+PKG_SOURCE_URL:=</rich_text><rich_text link="webs http://www.openssl.org/source/">http://www.openssl.org/source/</rich_text><rich_text> \
+	</rich_text><rich_text link="webs ftp://ftp.funet.fi/pub/crypt/cryptography/libs/openssl/source/">ftp://ftp.funet.fi/pub/crypt/cryptography/libs/openssl/source/</rich_text><rich_text> \
+	</rich_text><rich_text link="webs ftp://ftp.webmonster.de/pub/openssl/source/">ftp://ftp.webmonster.de/pub/openssl/source/</rich_text><rich_text> \
+	</rich_text><rich_text link="webs ftp://ftp.sunet.se/pub/security/tools/net/openssl/source/">ftp://ftp.sunet.se/pub/security/tools/net/openssl/source/</rich_text><rich_text>
+PKG_MD5SUM:=0352932ea863bc02b056cda7c9ac5b79
+
+PKG_BUILD_DEPENDS:=ocf-crypto-headers
+PKG_CONFIG_DEPENDS:=CONFIG_OPENSSL_ENGINE
+
+include $(INCLUDE_DIR)/package.mk
+
+define Package/openssl/Default
+  TITLE:=Open source SSL toolkit
+  URL:=</rich_text><rich_text link="webs http://www.openssl.org/">http://www.openssl.org/</rich_text><rich_text>
+endef
+
+define Package/libopenssl/config
+source &quot;$(SOURCE)/Config.in&quot;
+endef
+
+define Package/openssl/Default/description
+The OpenSSL Project is a collaborative effort to develop a robust,
+commercial-grade, full-featured, and Open Source toolkit implementing the Secure
+Sockets Layer (SSL v2/v3) and Transport Layer Security (TLS v1) protocols as well
+as a full-strength general purpose cryptography library.
+endef
+
+define Package/libopenssl
+$(call Package/openssl/Default)
+  SECTION:=libs
+  SUBMENU:=SSL
+  CATEGORY:=Libraries
+  DEPENDS:=+zlib
+  TITLE+= (libraries)
+  MENU:=1
+endef
+
+define Package/libopenssl/description
+$(call Package/openssl/Default/description)
+This package contains the OpenSSL shared libraries, needed by other programs.
+endef
+
+define Package/openssl-util
+  $(call Package/openssl/Default)
+  SECTION:=utils
+  CATEGORY:=Utilities
+  DEPENDS:=+libopenssl
+  TITLE+= (utility)
+endef
+
+define Package/openssl-util/conffiles
+/etc/ssl/openssl.cnf
+endef
+
+define Package/openssl-util/description
+$(call Package/openssl/Default/description)
+This package contains the OpenSSL command-line utility.
+endef
+
+
+OPENSSL_NO_CIPHERS:= no-idea no-md2 no-mdc2 no-rc5 no-sha0 no-smime \
+					no-rmd160 no-aes192 no-ripemd no-camellia no-ans1 no-krb5
+OPENSSL_OPTIONS:= shared no-ec no-err no-hw no-threads zlib-dynamic no-sse2
+
+ifdef CONFIG_OPENSSL_ENGINE
+  OPENSSL_OPTIONS += --with-cryptodev
+else
+  OPENSSL_OPTIONS += no-engines
+endif
+
+OPENSSL_OPTIONS += no-perlasm
+
+define Build/Configure
+	(cd $(PKG_BUILD_DIR); \
+		./Configure linux-openwrt \
+			--prefix=/usr \
+			--openssldir=/etc/ssl \
+			$(TARGET_CPPFLAGS) \
+			$(TARGET_LDFLAGS) -ldl \
+			-DOPENSSL_SMALL_FOOTPRINT \
+			$(OPENSSL_NO_CIPHERS) \
+			$(OPENSSL_OPTIONS) \
+	)
+endef
+
+TARGET_CFLAGS += $(FPIC)
+
+define Build/Compile
+	# XXX: OpenSSL &quot;make depend&quot; will look for installed headers before its own,
+	# so remove installed stuff first
+	-$(SUBMAKE) -j1 clean-staging
+	$(MAKE) -C $(PKG_BUILD_DIR) \
+		MAKEDEPPROG=&quot;$(TARGET_CROSS)gcc&quot; \
+		OPENWRT_OPTIMIZATION_FLAGS=&quot;$(TARGET_CFLAGS)&quot; \
+		$(OPENSSL_MAKEFLAGS) \
+		depend
+	$(_SINGLE)$(MAKE) -C $(PKG_BUILD_DIR) \
+		CC=&quot;$(TARGET_CC)&quot; \
+		AR=&quot;$(TARGET_CROSS)ar r&quot; \
+		RANLIB=&quot;$(TARGET_CROSS)ranlib&quot; \
+		OPENWRT_OPTIMIZATION_FLAGS=&quot;$(TARGET_CFLAGS)&quot; \
+		$(OPENSSL_MAKEFLAGS) \
+		all
+	$(MAKE) -C $(PKG_BUILD_DIR) \
+		CC=&quot;$(TARGET_CC)&quot; \
+		AR=&quot;$(TARGET_CROSS)ar r&quot; \
+		RANLIB=&quot;$(TARGET_CROSS)ranlib&quot; \
+		OPENWRT_OPTIMIZATION_FLAGS=&quot;$(TARGET_CFLAGS)&quot; \
+		$(OPENSSL_MAKEFLAGS) \
+		build-shared
+	# Work around openssl build bug to link libssl.so with libcrypto.so.
+	-rm $(PKG_BUILD_DIR)/libssl.so.*.*.*
+	$(MAKE) -C $(PKG_BUILD_DIR) \
+		CC=&quot;$(TARGET_CC)&quot; \
+		OPENWRT_OPTIMIZATION_FLAGS=&quot;$(TARGET_CFLAGS)&quot; \
+		$(OPENSSL_MAKEFLAGS) \
+		do_linux-shared
+	$(MAKE) -C $(PKG_BUILD_DIR) \
+		INSTALL_PREFIX=&quot;$(PKG_INSTALL_DIR)&quot; \
+		$(OPENSSL_MAKEFLAGS) \
+		install
+endef
+
+define Build/InstallDev
+	$(INSTALL_DIR) $(1)/usr/include
+	$(CP) $(PKG_INSTALL_DIR)/usr/include/openssl $(1)/usr/include/
+	$(INSTALL_DIR) $(1)/usr/lib/
+	$(CP) $(PKG_INSTALL_DIR)/usr/lib/lib{crypto,ssl}.{a,so*} $(1)/usr/lib/
+	$(INSTALL_DIR) $(1)/usr/lib/pkgconfig
+	$(CP) $(PKG_INSTALL_DIR)/usr/lib/pkgconfig/{openssl,libcrypto,libssl}.pc $(1)/usr/lib/pkgconfig/
+	$(SED) 's#$(TARGET_LDFLAGS)##g' $(1)/usr/lib/pkgconfig/{openssl,libcrypto,libssl}.pc
+endef
+
+define Package/libopenssl/install
+	$(INSTALL_DIR) $(1)/usr/lib
+	$(INSTALL_DATA) $(PKG_INSTALL_DIR)/usr/lib/libcrypto.so.* $(1)/usr/lib/
+	$(INSTALL_DATA) $(PKG_INSTALL_DIR)/usr/lib/libssl.so.* $(1)/usr/lib/
+endef
+
+define Package/openssl-util/install
+	$(INSTALL_DIR) $(1)/etc/ssl
+	$(CP) $(PKG_INSTALL_DIR)/etc/ssl/openssl.cnf $(1)/etc/ssl/
+	$(INSTALL_DIR) $(1)/etc/ssl/certs
+	$(INSTALL_DIR) $(1)/etc/ssl/private
+	chmod 0700 $(1)/etc/ssl/private
+	$(INSTALL_DIR) $(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/openssl $(1)/usr/bin/
+endef
+
+$(eval $(call BuildPackage,libopenssl))
+$(eval $(call BuildPackage,openssl-util))
+
+</rich_text><rich_text foreground="#00000000ffff">#package.mk定义BuildPackage</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">define BuildPackage
+  $(Build/IncludeOverlay)
+  $(eval $(Package/Default))
+  $(eval $(Package/$(1)))
+
+ifdef DESCRIPTION
+$$(error DESCRIPTION:= is obsolete, use Package/PKG_NAME/description)
+endif
+
+ifndef Package/$(1)/description
+define Package/$(1)/description
+	$(TITLE)
+endef
+endif
+
+  $(foreach FIELD, TITLE CATEGORY PRIORITY SECTION VERSION,
+    ifeq ($($(FIELD)),)
+      $$(error Package/$(1) is missing the $(FIELD) field)
+    endif
+  )
+
+  $(call shexport,Package/$(1)/description)
+  $(call shexport,Package/$(1)/config)
+
+  $(if $(DUMP), \
+    $(Dumpinfo/Package), \
+    $(foreach target, \
+      $(if $(Package/$(1)/targets),$(Package/$(1)/targets), \
+        $(if $(PKG_TARGETS),$(PKG_TARGETS), ipkg) \
+      ), $(BuildTarget/$(target)) \
+    ) \
+  )
+  $(if $(PKG_HOST_ONLY)$(DUMP),,$(call Build/DefaultTargets,$(1)))
+endef</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">#如果DUMP=1, 调用Dumpinfo/Package</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#ffff00000000">define Build/IncludeOverlay
+  $(eval -include $(wildcard $(TOPDIR)/overlay/*/$(PKG_NAME).mk))
+  define Build/IncludeOverlay
+  endef
+endef
+</rich_text><rich_text foreground="#00000000ffff">#现在没有$(TOPDIR)/overlay这个目录，用户自行定义这个mk来覆盖package/*/$(PKG_NAME).mk目录上的Makefile定义</rich_text><rich_text>
+
+2.   在toplevel.mk中的prepare-tmpinfo中的下面
+</rich_text><rich_text foreground="#ffff00000000">    $(_SINGLE)$(NO_TRACE_MAKE) -j1 -r -s -f include/scan.mk SCAN_TARGET=&quot;packageinfo&quot; SCAN_DIR=&quot;package&quot; SCAN_NAME=&quot;package&quot; SCAN_DEPS=&quot;$(TOPDIR)/include/package*.mk $(TOPDIR)/overlay/*/*.mk&quot; SCAN_DEPTH=5 SCAN_EXTRA=&quot;&quot;
+	$(_SINGLE)$(NO_TRACE_MAKE) -j1 -r -s -f include/scan.mk SCAN_TARGET=&quot;targetinfo&quot; SCAN_DIR=&quot;target/linux&quot; SCAN_NAME=&quot;target&quot; SCAN_DEPS=&quot;profiles/*.mk $(TOPDIR)/include/kernel*.mk $(TOPDIR)/include/target.mk&quot; SCAN_DEPTH=2 SCAN_EXTRA=&quot;&quot; SCAN_MAKEOPTS=&quot;TARGET_BUILD=1&quot;</rich_text><rich_text>
+	
+	prepare-tmpinfo是menuconfig, config, oldconfig等的依赖
+	   
+  下面的分析是以SCAN_TARGET = packageinfo, SCAN_NAME = package, SCAN_DIR = package为例
+include $(TOPDIR)/include/verbose.mk
+TMP_DIR:=$(TOPDIR)/tmp
+
+all: $(TMP_DIR)/.$(SCAN_TARGET)
+
+include $(TOPDIR)/include/host.mk
+
+SCAN_TARGET ?= packageinfo
+SCAN_NAME ?= package
+SCAN_DIR ?= package
+TARGET_STAMP:=$(TMP_DIR)/info/.files-$(SCAN_TARGET).stamp
+FILELIST:=$(TMP_DIR)/info/.files-$(SCAN_TARGET)-$(SCAN_COOKIE)
+
+ifeq ($(IS_TTY),1)
+  define progress
+	printf &quot;\033[M\r$(1)&quot; &gt;&amp;2;
+  endef
+else
+  define progress
+	:;
+  endef
+endif
+
+define PackageDir
+  $(TMP_DIR)/.$(SCAN_TARGET): $(TMP_DIR)/info/.$(SCAN_TARGET)-$(1)
+  $(TMP_DIR)/info/.$(SCAN_TARGET)-$(1): $(SCAN_DIR)/$(2)/Makefile $(SCAN_STAMP) $(foreach DEP,$(DEPS_$(SCAN_DIR)/$(1)/Makefile) $(SCAN_DEPS),$(wildcard $(if $(filter /%,$(DEP)),$(DEP),$(SCAN_DIR)/$(1)/$(DEP))))
+	{ \
+		$$(call progress,Collecting $(SCAN_NAME) info: $(SCAN_DIR)/$(2)) \
+		echo Source-Makefile: $(SCAN_DIR)/$(2)/Makefile; \
+		$(NO_TRACE_MAKE) --no-print-dir -r DUMP=1 -C $(SCAN_DIR)/$(2) $(SCAN_MAKEOPTS) 2&gt;/dev/null || { $$(call progress,ERROR: please fix $(SCAN_DIR)/$(2)/Makefile\n) rm -f $$@; }; \
+		echo; \
+	} &gt; $$@ || true
+endef
+</rich_text><rich_text foreground="#00000000ffff">#
+#$1 -&gt; package tag 
+#$2 -&gt; package dir
+#生成类似tmp/info/.packageinfo-openssl, 内容如下:
+</rich_text><rich_text foreground="#ffff00000000">Source-Makefile: package/openssl/Makefile
+Package: libopenssl
+Menu: 1
+Submenu: SSL
+Version: 0.9.8r-1
+Depends: +zlib
+Provides: 
+Build-Depends: ocf-crypto-headers
+Section: libs
+Category: Libraries
+Title: Open source SSL toolkit (libraries)
+Maintainer: OpenWrt Developers Team &lt;openwrt-devel@openwrt.org&gt;
+Source: openssl-0.9.8r.tar.gz
+Type: ipkg
+Description: The OpenSSL Project is a collaborative effort to develop a robust,
+commercial-grade, full-featured, and Open Source toolkit implementing the Secure
+Sockets Layer (SSL v2/v3) and Transport Layer Security (TLS v1) protocols as well
+as a full-strength general purpose cryptography library.
+This package contains the OpenSSL shared libraries, needed by other programs.
+</rich_text><rich_text foreground="#ffff00000000" link="webs http://www.openssl.org/">http://www.openssl.org/</rich_text><rich_text foreground="#ffff00000000">
+@@
+Config:
+source &quot;package/openssl/Config.in&quot;
+@@
+
+Package: openssl-util
+Version: 0.9.8r-1
+Depends: +libopenssl
+Provides: 
+Build-Depends: ocf-crypto-headers
+Section: utils
+Category: Utilities
+Title: Open source SSL toolkit (utility)
+Maintainer: OpenWrt Developers Team &lt;openwrt-devel@openwrt.org&gt;
+Source: openssl-0.9.8r.tar.gz
+Type: ipkg
+Description: The OpenSSL Project is a collaborative effort to develop a robust,
+commercial-grade, full-featured, and Open Source toolkit implementing the Secure
+Sockets Layer (SSL v2/v3) and Transport Layer Security (TLS v1) protocols as well
+as a full-strength general purpose cryptography library.
+This package contains the OpenSSL command-line utility.
+</rich_text><rich_text foreground="#ffff00000000" link="webs http://www.openssl.org/">http://www.openssl.org/</rich_text><rich_text foreground="#ffff00000000">
+@@
+
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#在每个package的Makefile都有include $(INCLUDE_DIR)/package.mk, 而package.mk有</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">all: $(if $(DUMP),dumpinfo,compile)</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#在上面的Make语句中有DUMP=1, dumpinfo为没有命令和依赖(空输出)
+#而是调用BuildPackage -&gt; Dumpinfo/Package来输出上面的信息
+</rich_text><rich_text>
+$(FILELIST):
+	rm -f $(TMP_DIR)/info/.files-$(SCAN_TARGET)-*
+	$(call FIND_L, $(SCAN_DIR)) $(SCAN_EXTRA) -mindepth 1 $(if $(SCAN_DEPTH),-maxdepth $(SCAN_DEPTH)) -name Makefile | xargs grep -HE 'call (Build/DefaultTargets|Build(Package|Target)|.+Package)' | sed -e 's#^$(SCAN_DIR)/##' -e 's#/Makefile:.*##' | uniq &gt; $@
+
+</rich_text><rich_text foreground="#00000000ffff">#(1) FIND_L查找package目录的Makefile文件
+#(2) grep -HE 'call (Build/DefaultTargets|Build(Package|Target)|.+Package)'
+#	-H	Print the file name for each match
+#	-E	Interpret PATTERN as an extended regular expression
+#	匹配call Build/DefaultTargets,call BuildPackage,call BuildTarget,call *Package
+#(3) sed -e 's#^$(SCAN_DIR)/##' -e 's#/Makefile:.*##'
+#	把grep的打印开头package/和/Makefile:.*结尾的部分去掉，获取Makefile所在相对目录名	
+#(4) uniq &gt; $@
+#	去掉重复行，然后输出到tmp/info/.files-packageinfo-&lt;cookie&gt; 比如tmp/info/.files-packageinfo-3182</rich_text><rich_text>
+	
+$(TMP_DIR)/info/.files-$(SCAN_TARGET).mk: $(FILELIST)
+	( \
+		cat $&lt; | awk '{print &quot;$(SCAN_DIR)/&quot; $$0 &quot;/Makefile&quot; }' | xargs grep -HE '^ *SCAN_DEPS *= *' | awk -F: '{ gsub(/^.*DEPS *= */, &quot;&quot;, $$2); print &quot;DEPS_&quot; $$1 &quot;=&quot; $$2 }'; \
+		awk -v deps=&quot;$$DEPS&quot; '{ \
+			info=$$0; \
+			gsub(/\//, &quot;_&quot;, info); \
+			print &quot;$$(eval $$(call PackageDir,&quot; info &quot;,&quot; $$0 &quot;))&quot;; \
+		} ' &lt; $&lt;; \
+		true; \
+	) &gt; $@
+</rich_text><rich_text foreground="#00000000ffff">#生成.files-packageinfo.mk
+#(1) cat $&lt; | awk '{print &quot;$(SCAN_DIR)/&quot; $$0 &quot;/Makefile&quot; }' | xargs grep -HE '^ *SCAN_DEPS *= *'
+#	查找Makefile内容, 输出package/kernel/Makefile:SCAN_DEPS=modules/*.mk
+#	^表示行开头, *表示任意个空格.
+#(2) awk -F: '{ gsub(/^.*DEPS *= */, &quot;&quot;, $$2); print &quot;DEPS_&quot; $$1 &quot;=&quot; $$2 }';
+#	输出DEPS_package/kernel/Makefile=modules/*.mk
+#	-F:表示分割符是:</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#(3) 输出类似$(eval $(call PackageDir,libreadline,libreadline))内容到$(TMP_DIR)/info/.files-$(SCAN_TARGET).mk
+# -v是把&quot;$$DEPS&quot;的值赋给变量deps</rich_text><rich_text>
+
+-include $(TMP_DIR)/info/.files-$(SCAN_TARGET).mk
+</rich_text><rich_text foreground="#00000000ffff">#调用$(TMP_DIR)/info/.files-$(SCAN_TARGET).mk目标，并展开
+#.files-packageinfo.mk内容如下(不包括行开头的#)：
+#DEPS_package/kernel/Makefile=modules/*.mk
+#$(eval $(call PackageDir,libreadline,libreadline))
+#...
+</rich_text><rich_text>
+$(TARGET_STAMP)::
+	+( \
+		$(NO_TRACE_MAKE) $(FILELIST); \
+		MD5SUM=$$(cat $(FILELIST) | (md5sum || md5) 2&gt;/dev/null | awk '{print $$1}'); \
+		[ -f &quot;$@.$$MD5SUM&quot; ] || { \
+			rm -f $@.*; \
+			touch $@.$$MD5SUM; \
+			touch $@; \
+		} \
+	)
+</rich_text><rich_text foreground="#00000000ffff">#(1) make $(FILELIST)跳到$(FILELIST)执行, 生成$(FILELIST)文件
+#(2) 生成$(TARGET_STAMP)和$(TARGET_STAMP).$(MD5SUM)</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">######################
+#从all跳到下面的入口，依赖$(TARGET_STAMP)和$(SCAN_STAMP)
+######################</rich_text><rich_text>
+$(TMP_DIR)/.$(SCAN_TARGET): $(TARGET_STAMP) $(SCAN_STAMP)
+	$(call progress,Collecting $(SCAN_NAME) info: merging...)
+	-cat $(FILELIST) | awk '{gsub(/\//, &quot;_&quot;, $$0);print &quot;$(TMP_DIR)/info/.$(SCAN_TARGET)-&quot; $$0}' | xargs cat &gt; $@ 2&gt;/dev/null
+	$(call progress,Collecting $(SCAN_NAME) info: done)
+	echo
+</rich_text><rich_text foreground="#00000000ffff">#(1) awk '{gsub(/\//, &quot;_&quot;, $$0);print &quot;$(TMP_DIR)/info/.$(SCAN_TARGET)-&quot; $$0}'
+#	把/改为_, 并输出/tmp/info/.packageinfo-&lt;name&gt;
+#(2) cat &gt; $@ 2&gt;/dev/null
+#	把tmp/info/.packageinfo-&lt;name&gt;的内容输出到/tmp/.packageinfo, 屏蔽出错输出</rich_text><rich_text>
+
+FORCE:
+.PHONY: FORCE
+.NOTPARALLEL:
+
+3.
+    (1).添加wifi配置, 先在package/mac80211/Makefile
+ $(eval $(call KernelPackage,rtl8187))
+</rich_text><rich_text foreground="#00000000ffff">#kernel.mk</rich_text><rich_text> 
+</rich_text><rich_text foreground="#ffff00000000">define KernelPackage
+  NAME:=$(1)
+  $(eval $(call Package/Default))
+  $(eval $(call KernelPackage/Defaults))
+  $(eval $(call KernelPackage/$(1)))
+  $(eval $(call KernelPackage/$(1)/$(KERNEL)))
+  $(eval $(call KernelPackage/$(1)/$(BOARD)))
+
+  define Package/kmod-$(1)
+    TITLE:=$(TITLE)
+    SECTION:=kernel
+    CATEGORY:=Kernel modules
+    DESCRIPTION:=$(DESCRIPTION)
+    EXTRA_DEPENDS:=kernel (=$(LINUX_VERSION)-$(LINUX_RELEASE))
+    VERSION:=$(LINUX_VERSION)$(if $(PKG_VERSION),+$(PKG_VERSION))-$(if $(PKG_RELEASE),$(PKG_RELEASE),$(LINUX_RELEASE))
+    $(call KernelPackage/$(1))
+    $(call KernelPackage/$(1)/$(KERNEL))
+    $(call KernelPackage/$(1)/$(BOARD))
+  endef
+
+  ifdef KernelPackage/$(1)/description
+    define Package/kmod-$(1)/description
+$(call KernelPackage/$(1)/description)
+    endef
+  endif
+
+  ifdef KernelPackage/$(1)/config
+    define Package/kmod-$(1)/config
+$(call KernelPackage/$(1)/config)
+    endef
+  endif
+
+  $(call KernelPackage/depends)
+
+  ifneq ($(if $(filter-out %=y %=n %=m,$(KCONFIG)),$(filter m,$(foreach c,$(filter-out %=y %=n %=m,$(KCONFIG)),$($(c)))),.),)
+    ifneq ($(strip $(FILES)),)
+      define Package/kmod-$(1)/install
+		  mkdir -p $$(1)/lib/modules/$(LINUX_VERSION)
+		  $(CP) -L $$(FILES) $$(1)/lib/modules/$(LINUX_VERSION)/
+		  $(call ModuleAutoLoad,$(1),$$(1),$(AUTOLOAD))
+		  $(call KernelPackage/$(1)/install,$$(1))
+      endef
+    endif
+  $(if $(CONFIG_PACKAGE_kmod-$(1)),
+    else
+      compile: kmod-$(1)-unavailable
+      kmod-$(1)-unavailable:
+		@echo &quot;WARNING: kmod-$(1) is not available in the kernel config&quot;
+  )
+  endif
+  $$(eval $$(call BuildPackage,kmod-$(1)))
+
+  $$(IPKG_kmod-$(1)): $$(wildcard $$(FILES))
+endef</rich_text><rich_text>
+
+4. $(eval $(call BuildTarget))
+BuildTarget (target.mk)
+</rich_text><rich_text foreground="#ffff00000000">target_conf=$(subst .,_,$(subst -,_,$(subst /,_,$(1))))</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#把/,-,.改为_</rich_text><rich_text> 
+
+</rich_text><rich_text foreground="#ffff00000000">ifeq ($(DUMP),)
+  PLATFORM_DIR:=$(TOPDIR)/target/linux/$(BOARD)
+  SUBTARGET:=$(strip $(foreach subdir,$(patsubst $(PLATFORM_DIR)/%/target.mk,%,$(wildcard $(PLATFORM_DIR)/*/target.mk)),$(if $(CONFIG_TARGET_$(call target_conf,$(BOARD)_$(subdir))),$(subdir))))
+else
+  PLATFORM_DIR:=${CURDIR}
+endif
+
+TARGETID:=$(BOARD)$(if $(SUBTARGET),/$(SUBTARGET))
+PLATFORM_SUBDIR:=$(PLATFORM_DIR)$(if $(SUBTARGET),/$(SUBTARGET))
+</rich_text><rich_text foreground="#00000000ffff">#BOARD=s3c24xx, KERNEL=2.6, KERNEL_PATCHVER=2.6.32</rich_text><rich_text foreground="#ffff00000000">
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">GENERIC_PLATFORM_DIR := $(TOPDIR)/target/linux/generic-$(KERNEL)
+GENERIC_PATCH_DIR := $(GENERIC_PLATFORM_DIR)/patches$(if $(wildcard $(GENERIC_PLATFORM_DIR)/patches-$(KERNEL_PATCHVER)),-$(KERNEL_PATCHVER))
+GENERIC_FILES_DIR := $(foreach dir,$(wildcard $(GENERIC_PLATFORM_DIR)/files $(GENERIC_PLATFORM_DIR)/files-$(KERNEL_PATCHVER)),&quot;$(dir)&quot;)
+
+GENERIC_LINUX_CONFIG?=$(firstword $(wildcard $(GENERIC_PLATFORM_DIR)/config-$(KERNEL_PATCHVER) $(GENERIC_PLATFORM_DIR)/config-default))
+LINUX_CONFIG?=$(firstword $(wildcard $(foreach subdir,$(PLATFORM_DIR) $(PLATFORM_SUBDIR),$(subdir)/config-$(KERNEL_PATCHVER) $(subdir)/config-default)) $(PLATFORM_DIR)/config-$(KERNEL_PATCHVER))
+LINUX_SUBCONFIG?=$(if $(SHARED_LINUX_CONFIG),,$(firstword $(wildcard $(PLATFORM_SUBDIR)/config-$(KERNEL_PATCHVER) $(PLATFORM_SUBDIR)/config-default)))
+</rich_text><rich_text foreground="#00000000ffff">#LINUX_SUBCONFIG为空</rich_text><rich_text foreground="#ffff00000000">
+ifeq ($(LINUX_CONFIG),$(LINUX_SUBCONFIG))
+  LINUX_SUBCONFIG:=
+endif
+LINUX_CONFCMD=$(if $(LINUX_CONFIG), \
+	$(if $(GENERIC_LINUX_CONFIG),,$(error The generic kernel config for your kernel version is missing)) \
+	$(if $(LINUX_CONFIG),,$(error The target kernel config for your kernel version is missing)) \
+	$(SCRIPT_DIR)/kconfig.pl \
+		+ $(GENERIC_LINUX_CONFIG) \
+		$(if $(LINUX_SUBCONFIG),+ $(LINUX_CONFIG) $(LINUX_SUBCONFIG),$(LINUX_CONFIG)), \
+	true)
+</rich_text><rich_text foreground="#00000000ffff">#+表示add, 把GENERIC_LINUX_CONFIG和$(LINUX_CONFIG)或$(LINUX_CONFIG)$(LINUX_SUBCONFIG)合并输出到
+#	TMP_CONFIG	
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">ifeq ($(DUMP),1)
+  BuildTarget=$(BuildTargets/DumpCurrent)
+
+  ifneq ($(BOARD),)
+    TMP_CONFIG:=$(TMP_DIR)/.kconfig-$(call target_conf,$(TARGETID))
+    </rich_text><rich_text foreground="#00000000ffff">#如tmp/.kconfig-s3c24xx_dev_qq2440</rich_text><rich_text foreground="#ffff00000000">
+    $(TMP_CONFIG): $(GENERIC_LINUX_CONFIG) $(LINUX_CONFIG) $(LINUX_SUBCONFIG)
+		$(LINUX_CONFCMD) &gt; $@ || rm -f $@
+    -include $(TMP_CONFIG)
+    .SILENT: $(TMP_CONFIG)
+    .PRECIOUS: $(TMP_CONFIG)
+
+    ifneq ($(CONFIG_GENERIC_GPIO),)
+      FEATURES += gpio
+    endif
+    ifneq ($(CONFIG_PCI),)
+      FEATURES += pci
+    endif
+    ifneq ($(CONFIG_PCIEPORTBUS),)
+      FEATURES += pcie
+    endif
+    ifneq ($(CONFIG_USB)$(CONFIG_USB_SUPPORT),)
+      ifneq ($(CONFIG_USB_ARCH_HAS_HCD)$(CONFIG_USB_EHCI_HCD),)
+        FEATURES += usb
+      endif
+    endif
+    ifneq ($(CONFIG_PCMCIA)$(CONFIG_PCCARD),)
+      FEATURES += pcmcia
+    endif
+    ifneq ($(CONFIG_VGA_CONSOLE)$(CONFIG_FB),)
+      FEATURES += display
+    endif
+
+    # remove duplicates
+    FEATURES:=$(sort $(FEATURES))
+  endif
+  DEFAULT_CFLAGS_i386=-O2 -pipe -march=i486 -funit-at-a-time
+  DEFAULT_CFLAGS_x86_64=-O2 -pipe -march=athlon64 -funit-at-a-time
+  DEFAULT_CFLAGS_m68k=-Os -pipe -mcfv4e -funit-at-a-time
+  DEFAULT_CFLAGS_mips=-Os -pipe -mips32 -mtune=mips32 -funit-at-a-time
+  DEFAULT_CFLAGS_mipsel=$(DEFAULT_CFLAGS_mips)
+  DEFAULT_CFLAGS_mips64=-Os -pipe -mips64 -mtune=mips64 -mabi=64 -funit-at-a-time
+  DEFAULT_CFLAGS_mips64el=$(DEFAULT_CFLAGS_mips64)
+  DEFAULT_CFLAGS_arm=-Os -pipe -march=armv5te -mtune=xscale -funit-at-a-time
+  DEFAULT_CFLAGS_armeb=$(DEFAULT_CFLAGS_arm)
+  DEFAULT_CFLAGS=$(if $(DEFAULT_CFLAGS_$(ARCH)),$(DEFAULT_CFLAGS_$(ARCH)),-Os -pipe -funit-at-a-time)
+endif
+
+define BuildTargets/DumpCurrent
+  .PHONY: dumpinfo
+  dumpinfo:
+	@echo 'Target: $(TARGETID)'; \
+	 echo 'Target-Board: $(BOARD)'; \
+	 echo 'Target-Kernel: $(KERNEL)'; \
+	 echo 'Target-Name: $(BOARDNAME)$(if $(SUBTARGETS),$(if $(SUBTARGET),))'; \
+	 echo 'Target-Path: $(subst $(TOPDIR)/,,$(PWD))'; \
+	 echo 'Target-Arch: $(ARCH)'; \
+	 echo 'Target-Arch-Packages: $(if $(ARCH_PACKAGES),$(ARCH_PACKAGES),$(BOARD))'; \
+	 echo 'Target-Features: $(FEATURES)'; \
+	 echo 'Target-Depends: $(DEPENDS)'; \
+	 echo 'Target-Optimization: $(if $(CFLAGS),$(CFLAGS),$(DEFAULT_CFLAGS))'; \
+	 echo 'Linux-Version: $(LINUX_VERSION)'; \
+	 echo 'Linux-Release: $(LINUX_RELEASE)'; \
+	 echo 'Linux-Kernel-Arch: $(LINUX_KARCH)'; \
+	 echo 'Target-Description:'; \
+	 getvar $(call shvar,Target/Description); \
+	 echo '@@'; \
+	 echo 'Default-Packages: $(DEFAULT_PACKAGES)'; \
+	 $(DUMPINFO)
+	$(if $(SUBTARGET),,@$(foreach SUBTARGET,$(SUBTARGETS),$(SUBMAKE) -s DUMP=1 SUBTARGET=$(SUBTARGET); ))
+endef
+
+</rich_text><rich_text foreground="#00000000ffff">#getvar是在shell.sh定义, 而shell.sh是在rules.mk中导入
+#export SHELL=/usr/bin/env bash -c '. $(TOPDIR)/include/shell.sh; eval &quot;$$2&quot;' --
+</rich_text><rich_text foreground="#ffff00000000">
+include $(INCLUDE_DIR)/kernel.mk
+ifeq ($(TARGET_BUILD),1)
+  include $(INCLUDE_DIR)/kernel-build.mk
+  BuildTarget?=$(BuildKernel)
+endif</rich_text><rich_text>
+</rich_text></node></node></cherrytree>
