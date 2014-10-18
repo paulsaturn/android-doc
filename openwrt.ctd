@@ -50,6 +50,15 @@
   mkyaffs2image rootfs/ rootfs_qq2440.yaffs
   
 3.烧写
+1). 加载驱动
+sudo insmo secbulk.ko
+
+2). 烧写img
+(1). 启动按ctrl+C进入u-boot.
+</rich_text><rich_text foreground="#ffff00000000">注意：连接jtag之后， 开机之后，才插入连接PC的usb线， 那时串口输入才有效; 还有jtag和usb线同时连上，是进不了系统的, 要先把其中一个拔掉。</rich_text><rich_text>
+
+(2). u-boot中选择menu item.
+(3). PC端输入下面命令，烧写相应的img.
 #kernel
 sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-mini2440-zImage-64M
 
@@ -63,8 +72,36 @@ sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-dev-qq2440-s3c24xx-squashfs.img
 
 sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-squashfs.img
 
-#测试ernel
-sudo ~/bin/dnw -a 0x30008000 openwrt-s3c24xx-mini2440-uImage	</rich_text></node><node name="s3c24xx" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1. qq2440的分区：</rich_text><rich_text>
+#测试kernel
+sudo ~/bin/dnw -a 0x30008000 openwrt-s3c24xx-mini2440-uImage	
+
+4. 
+#mount SD
+mount -t vfat /dev/mmcblk0p1 /mnt 
+
+#测试spi 直接连接CON4(红灯数过去第5排)pin-25(MISO) pin-26(MOSI)
+spidev_test -D /dev/spidev0.0
+
+#输出：
+spi mode: 0
+bits per word: 8
+max speed: 500000 Hz (500 KHz)
+
+FF FF FF FF FF FF 
+40 00 00 00 00 95 
+FF FF FF FF FF FF 
+FF FF FF FF FF FF 
+FF FF FF FF FF FF 
+DE AD BE EF BA AD 
+F0 0D 
+#数据测试OK
+
+5. 支持sysfs gpio操作
+kernel中定义CONFIG_GPIO_SYSFS
+	Device Drivers -&gt; GPIO Support -&gt; (sysfs interface)
+重新编译kernel, 烧录uImage
+进入系统， 可以看到/sys/class/gpio
+</rich_text></node><node name="s3c24xx" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1. qq2440的分区：</rich_text><rich_text>
 </rich_text><rich_text weight="heavy">cat /proc/mtd</rich_text><rich_text>
 mtd0: 00060000 00004000 &quot;u-boot&quot;
 mtd1: 00020000 00004000 &quot;u-boot-env&quot;
@@ -139,7 +176,7 @@ opkg install  软件包名称
 25. return m  
  
  效果：   
-  
+  </rich_text><rich_text justification="left"></rich_text><rich_text>
  
 </rich_text><rich_text scale="h2"> </rich_text><rich_text scale="h2" weight="heavy">3. 添加配置文件</rich_text><rich_text>
  操作：在/etc/config中添加ipv6config文件
