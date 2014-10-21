@@ -57,6 +57,8 @@ sudo insmo secbulk.ko
 (1). 启动按ctrl+C进入u-boot.
 </rich_text><rich_text foreground="#ffff00000000">注意：连接jtag之后， 开机之后，才插入连接PC的usb线， 那时串口输入才有效; 还有jtag和usb线同时连上，是进不了系统的, 要先把其中一个拔掉。</rich_text><rich_text>
 
+</rich_text><rich_text foreground="#ffff00000000">如果开机的时候没有串口信息输出，先要把连接PC的usb线断开，然后再上电开机，再插入连接PC的usb线(如果没有插入，只能输出，不能输入)。</rich_text><rich_text>
+
 (2). u-boot中选择menu item.
 (3). PC端输入下面命令，烧写相应的img.
 #kernel
@@ -2721,4 +2723,1245 @@ echo 32 &gt; /sys/class/gpio/export
 
 
 
-</rich_text></node></node></cherrytree>
+</rich_text></node><node name="spi" prog_lang="custom-colors" readonly="False" tags="" unique_id="16"><rich_text scale="h2" weight="heavy">1. spi驱动和设备注册过程</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">drivers/spi/spi_s3c24xx.c</rich_text><rich_text>
+static int __init s3c24xx_spi_probe(struct platform_device *pdev)
+{
+	struct s3c2410_spi_info *pdata;
+	struct s3c24xx_spi *hw;
+	struct spi_master *master;
+	struct resource *res;
+	int err = 0;
+
+	master = spi_alloc_master(&amp;pdev-&gt;dev, sizeof(struct s3c24xx_spi));  </rich_text><rich_text foreground="#00000000ffff">//分配了空间(spi_master + s3c24xx_spi) </rich_text><rich_text> 
+	if (master == NULL) {
+		dev_err(&amp;pdev-&gt;dev, &quot;No memory for spi_master\n&quot;);
+		err = -ENOMEM;
+		goto err_nomem;
+	}
+
+	hw = spi_master_get_devdata(master);    
+	memset(hw, 0, sizeof(struct s3c24xx_spi));
+
+	hw-&gt;master = spi_master_get(master);
+	hw-&gt;pdata = pdata = pdev-&gt;dev.platform_data;
+	hw-&gt;dev = &amp;pdev-&gt;dev;
+
+	if (pdata == NULL) {
+		dev_err(&amp;pdev-&gt;dev, &quot;No platform data supplied\n&quot;);
+		err = -ENOENT;
+		goto err_no_pdata;
+	}
+
+	platform_set_drvdata(pdev, hw);
+	init_completion(&amp;hw-&gt;done);
+
+	/* setup the master state. */
+
+	/* the spi-&gt;mode bits understood by this driver: */
+	master-&gt;mode_bits = SPI_CPOL | SPI_CPHA | SPI_CS_HIGH;
+
+	master-&gt;num_chipselect = hw-&gt;pdata-&gt;num_cs;
+	master-&gt;bus_num = pdata-&gt;bus_num;
+
+	/* setup the state for the bitbang driver */
+
+	hw-&gt;bitbang.master         = hw-&gt;master;
+	hw-&gt;bitbang.setup_transfer = s3c24xx_spi_setupxfer;
+	hw-&gt;bitbang.chipselect     = s3c24xx_spi_chipsel;
+	hw-&gt;bitbang.txrx_bufs      = s3c24xx_spi_txrx;
+
+	hw-&gt;master-&gt;setup  = s3c24xx_spi_setup;
+	hw-&gt;master-&gt;cleanup = s3c24xx_spi_cleanup;
+
+	dev_dbg(hw-&gt;dev, &quot;bitbang at %p\n&quot;, &amp;hw-&gt;bitbang);
+
+	/* find and map our resources */
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (res == NULL) {
+		dev_err(&amp;pdev-&gt;dev, &quot;Cannot get IORESOURCE_MEM\n&quot;);
+		err = -ENOENT;
+		goto err_no_iores;
+	}
+
+	hw-&gt;ioarea = request_mem_region(res-&gt;start, resource_size(res),
+					pdev-&gt;name);
+
+	if (hw-&gt;ioarea == NULL) {
+		dev_err(&amp;pdev-&gt;dev, &quot;Cannot reserve region\n&quot;);
+		err = -ENXIO;
+		goto err_no_iores;
+	}
+
+	hw-&gt;regs = ioremap(res-&gt;start, resource_size(res));
+	if (hw-&gt;regs == NULL) {
+		dev_err(&amp;pdev-&gt;dev, &quot;Cannot map IO\n&quot;);
+		err = -ENXIO;
+		goto err_no_iomap;
+	}
+
+	hw-&gt;irq = platform_get_irq(pdev, 0);
+	if (hw-&gt;irq &lt; 0) {
+		dev_err(&amp;pdev-&gt;dev, &quot;No IRQ specified\n&quot;);
+		err = -ENOENT;
+		goto err_no_irq;
+	}
+
+	err = request_irq(hw-&gt;irq, s3c24xx_spi_irq, 0, pdev-&gt;name, hw);
+	if (err) {
+		dev_err(&amp;pdev-&gt;dev, &quot;Cannot claim IRQ\n&quot;);
+		goto err_no_irq;
+	}
+
+	hw-&gt;clk = clk_get(&amp;pdev-&gt;dev, &quot;spi&quot;);
+	if (IS_ERR(hw-&gt;clk)) {
+		dev_err(&amp;pdev-&gt;dev, &quot;No clock for device\n&quot;);
+		err = PTR_ERR(hw-&gt;clk);
+		goto err_no_clk;
+	}
+
+	/* setup any gpio we can */
+
+	if (!pdata-&gt;set_cs) {
+		if (pdata-&gt;pin_cs &lt; 0) {
+			dev_err(&amp;pdev-&gt;dev, &quot;No chipselect pin\n&quot;);
+			goto err_register;
+		}
+
+		err = gpio_request(pdata-&gt;pin_cs, dev_name(&amp;pdev-&gt;dev));
+		if (err) {
+			dev_err(&amp;pdev-&gt;dev, &quot;Failed to get gpio for cs\n&quot;);
+			goto err_register;
+		}
+
+		hw-&gt;set_cs = s3c24xx_spi_gpiocs;
+		gpio_direction_output(pdata-&gt;pin_cs, 1);
+	} else
+		hw-&gt;set_cs = pdata-&gt;set_cs;
+
+	s3c24xx_spi_initialsetup(hw);
+
+	/* register our spi controller */
+
+	err = spi_bitbang_start(&amp;hw-&gt;bitbang);
+	if (err) {
+		dev_err(&amp;pdev-&gt;dev, &quot;Failed to register SPI master\n&quot;);
+		goto err_register;
+	}
+
+	return 0;
+
+ err_register:
+	if (hw-&gt;set_cs == s3c24xx_spi_gpiocs)
+		gpio_free(pdata-&gt;pin_cs);
+
+	clk_disable(hw-&gt;clk);
+	clk_put(hw-&gt;clk);
+
+ err_no_clk:
+	free_irq(hw-&gt;irq, hw);
+
+ err_no_irq:
+	iounmap(hw-&gt;regs);
+
+ err_no_iomap:
+	release_resource(hw-&gt;ioarea);
+	kfree(hw-&gt;ioarea);
+
+ err_no_iores:
+ err_no_pdata:
+	spi_master_put(hw-&gt;master);
+
+ err_nomem:
+	return err;
+}
+
+static int __exit s3c24xx_spi_remove(struct platform_device *dev)
+{
+	struct s3c24xx_spi *hw = platform_get_drvdata(dev);
+
+	platform_set_drvdata(dev, NULL);
+
+	spi_unregister_master(hw-&gt;master);
+
+	clk_disable(hw-&gt;clk);
+	clk_put(hw-&gt;clk);
+
+	free_irq(hw-&gt;irq, hw);
+	iounmap(hw-&gt;regs);
+
+	if (hw-&gt;set_cs == s3c24xx_spi_gpiocs)
+		gpio_free(hw-&gt;pdata-&gt;pin_cs);
+
+	release_resource(hw-&gt;ioarea);
+	kfree(hw-&gt;ioarea);
+
+	spi_master_put(hw-&gt;master);
+	return 0;
+}
+
+static struct platform_driver s3c24xx_spi_driver = {
+	.remove		= __exit_p(s3c24xx_spi_remove),
+	.driver		= {
+		.name	= &quot;s3c2410-spi&quot;,
+		.owner	= THIS_MODULE,
+		.pm	= S3C24XX_SPI_PMOPS,
+	},
+};
+
+static int __init s3c24xx_spi_init(void)
+{
+        return platform_driver_probe(&amp;s3c24xx_spi_driver, s3c24xx_spi_probe);
+}
+
+static void __exit s3c24xx_spi_exit(void)
+{
+        platform_driver_unregister(&amp;s3c24xx_spi_driver);
+}
+
+</rich_text><rich_text weight="heavy">arch/arm/plat-s3c24xx/devs.c</rich_text><rich_text>
+/* SPI (0) */
+
+static struct resource s3c_spi0_resource[] = {
+	[0] = {
+		.start = S3C24XX_PA_SPI,
+		.end   = S3C24XX_PA_SPI + 0x1f,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = IRQ_SPI0,
+		.end   = IRQ_SPI0,
+		.flags = IORESOURCE_IRQ,
+	}
+
+};
+
+static u64 s3c_device_spi0_dmamask = 0xffffffffUL;
+
+struct platform_device s3c_device_spi0 = {
+	.name		  = &quot;s3c2410-spi&quot;,                  
+	.id		  = 0,                                              </rich_text><rich_text foreground="#00000000ffff">//生成/sys/devices/platform/spi/s3c2410-spi.0</rich_text><rich_text>
+	.num_resources	  = ARRAY_SIZE(s3c_spi0_resource),
+	.resource	  = s3c_spi0_resource,
+        .dev              = {
+                .dma_mask = &amp;s3c_device_spi0_dmamask,
+                .coherent_dma_mask = 0xffffffffUL
+        }
+};
+
+EXPORT_SYMBOL(s3c_device_spi0);
+
+/* SPI (1) */
+
+static struct resource s3c_spi1_resource[] = {
+	[0] = {
+		.start = S3C24XX_PA_SPI + S3C2410_SPI1,
+		.end   = S3C24XX_PA_SPI + S3C2410_SPI1 + 0x1f,
+		.flags = IORESOURCE_MEM,
+	},
+	[1] = {
+		.start = IRQ_SPI1,
+		.end   = IRQ_SPI1,
+		.flags = IORESOURCE_IRQ,
+	}
+
+};
+
+static u64 s3c_device_spi1_dmamask = 0xffffffffUL;
+
+struct platform_device s3c_device_spi1 = {
+	.name		  = &quot;s3c2410-spi&quot;,
+	.id		  = 1,                                          </rich_text><rich_text foreground="#00000000ffff">//生成/sys/devices/platform/spi/s3c2410-spi.1</rich_text><rich_text>
+	.num_resources	  = ARRAY_SIZE(s3c_spi1_resource),
+	.resource	  = s3c_spi1_resource,
+        .dev              = {
+                .dma_mask = &amp;s3c_device_spi1_dmamask,
+                .coherent_dma_mask = 0xffffffffUL
+        }
+};
+
+EXPORT_SYMBOL(s3c_device_spi1);
+
+</rich_text><rich_text weight="heavy">arch/arm/mach-s3c2440/mach-qq2440.c</rich_text><rich_text>
+static struct resource gpiodev_resource = {
+	.start			= 0xFFFFFFFF,
+};
+
+</rich_text><rich_text foreground="#00000000ffff">//设置spi0的CS脚</rich_text><rich_text>
+static struct s3c2410_spi_info s3c2410_spi0_platdata={
+      .pin_cs = S3C2410_GPG(2),
+      .num_cs = 1,
+      .bus_num = 0,
+};
+
+</rich_text><rich_text foreground="#ffff00000000">struct s3c2410_spi_info {
+	int			 pin_cs;	/* simple gpio cs */
+	unsigned int		 num_cs;	/* total chipselects */
+	int			 bus_num;       /* bus number to use. */
+
+	void (*gpio_setup)(struct s3c2410_spi_info *spi, int enable);
+	void (*set_cs)(struct s3c2410_spi_info *spi, int cs, int pol);
+};</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">//生成/dev/spidev0.0</rich_text><rich_text>
+static struct spi_board_info s3c2410_spi0_board[]={
+   [0] = {
+             .modalias = &quot;spidev&quot;,                     </rich_text><rich_text foreground="#00000000ffff">//这个和spidev_spi.driver.name对应</rich_text><rich_text>
+             .bus_num = 0,
+             .chip_select = 0,
+             .irq = IRQ_EINT10,
+             .max_speed_hz = 500 * 1000,
+    },
+};
+
+</rich_text><rich_text foreground="#00000000ffff">如果一条spi总线上有多个设备(通过cs来决定通信)，那么s3c2410_spi0_platdata要定义set_cs()函数来根据cs来设置cs pin， 定义num_cs等于设备数， pin_cs没有用。
+那么s3c2410_spi0_board要定义为：
+static struct spi_board_info s3c2410_spi0_board[]={
+   [0] = {
+             .modalias = &quot;spidev&quot;,                     
+             .bus_num = 0,
+             .chip_select = 0,
+             ...
+    },
+   [1] = {
+             .modalias = &quot;spidev&quot;,                     
+             .bus_num = 0,
+             .chip_select = 1,
+             ...
+    },    
+    ...
+};</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#ffff00000000">struct spi_board_info {
+	/* the device name and module name are coupled, like platform_bus;
+	 * &quot;modalias&quot; is normally the driver name.
+	 *
+	 * platform_data goes to spi_device.dev.platform_data,
+	 * controller_data goes to spi_device.controller_data,
+	 * irq is copied too
+	 */
+	char		modalias[SPI_NAME_SIZE];
+	const void	*platform_data;
+	void		*controller_data;
+	int		irq;
+
+	/* slower signaling on noisy or low voltage boards */
+	u32		max_speed_hz;
+
+
+	/* bus_num is board specific and matches the bus_num of some
+	 * spi_master that will probably be registered later.
+	 *
+	 * chip_select reflects how this chip is wired to that master;
+	 * it's less than num_chipselect.
+	 */
+	u16		bus_num;
+	u16		chip_select;
+
+	/* mode becomes spi_device.mode, and is essential for chips
+	 * where the default of SPI_CS_HIGH = 0 is wrong.
+	 */
+	u8		mode;
+
+	/* ... may need additional spi_device chip config data here.
+	 * avoid stuff protocol drivers can set; but include stuff
+	 * needed to behave without being bound to a driver:
+	 *  - quirks like clock rate mattering when not selected
+	 */
+};</rich_text><rich_text>
+
+static struct platform_device *qq2440_devices[] __initdata = {
+    ...
+    &amp;s3c_device_spi0,
+    ...
+};
+
+static void __init qq2440_machine_init(void)
+{
+    ...
+	s3c_device_spi0.dev.platform_data=&amp;s3c2410_spi0_platdata;
+	spi_register_board_info(s3c2410_spi0_board,ARRAY_SIZE(s3c2410_spi0_board));
+    ...
+    platform_add_devices(qq2440_devices, ARRAY_SIZE(qq2440_devices));   </rich_text><rich_text foreground="#00000000ffff">//触发spi_s3c24xx.c驱动</rich_text><rich_text>
+}
+
+</rich_text><rich_text weight="heavy">drivers/spi/spi_bitbang.c</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">在s3c24xx_spi_probe的最后调用了下面的函数</rich_text><rich_text>
+int spi_bitbang_start(struct spi_bitbang *bitbang)
+{
+	int	status;
+
+	if (!bitbang-&gt;master || !bitbang-&gt;chipselect)
+		return -EINVAL;
+
+	INIT_WORK(&amp;bitbang-&gt;work, bitbang_work);
+	spin_lock_init(&amp;bitbang-&gt;lock);
+	INIT_LIST_HEAD(&amp;bitbang-&gt;queue);
+
+	if (!bitbang-&gt;master-&gt;mode_bits)
+		bitbang-&gt;master-&gt;mode_bits = SPI_CPOL | SPI_CPHA | bitbang-&gt;flags;
+
+	if (!bitbang-&gt;master-&gt;transfer)
+		bitbang-&gt;master-&gt;transfer = spi_bitbang_transfer;
+	if (!bitbang-&gt;txrx_bufs) {
+		bitbang-&gt;use_dma = 0;
+		bitbang-&gt;txrx_bufs = spi_bitbang_bufs;
+		if (!bitbang-&gt;master-&gt;setup) {
+			if (!bitbang-&gt;setup_transfer)
+				bitbang-&gt;setup_transfer =
+					 spi_bitbang_setup_transfer;
+			bitbang-&gt;master-&gt;setup = spi_bitbang_setup;
+			bitbang-&gt;master-&gt;cleanup = spi_bitbang_cleanup;
+		}
+	} else if (!bitbang-&gt;master-&gt;setup)
+		return -EINVAL;
+
+	/* this task is the only thing to touch the SPI bits */
+	bitbang-&gt;busy = 0;    
+	bitbang-&gt;workqueue = create_singlethread_workqueue(
+			dev_name(bitbang-&gt;master-&gt;dev.parent));
+    ...
+    status = spi_register_master(bitbang-&gt;master);
+    ...    
+}
+
+</rich_text><rich_text weight="heavy">drivers/spi/spi.c</rich_text><rich_text>
+static void spi_master_release(struct device *dev)
+{
+	struct spi_master *master;
+
+	master = container_of(dev, struct spi_master, dev);
+	kfree(master);
+}
+
+static struct class spi_master_class = {
+	.name		= &quot;spi_master&quot;,
+	.owner		= THIS_MODULE,
+	.dev_release	= spi_master_release,
+};
+
+struct spi_master *spi_alloc_master(struct device *dev, unsigned size)
+{
+	struct spi_master	*master;
+
+	if (!dev)
+		return NULL;
+
+	master = kzalloc(size + sizeof *master, GFP_KERNEL);
+	if (!master)
+		return NULL;
+
+	device_initialize(&amp;master-&gt;dev);
+	master-&gt;dev.class = &amp;spi_master_class;      
+	master-&gt;dev.parent = get_device(dev);
+	spi_master_set_devdata(master, &amp;master[1]);
+
+	return master;
+}
+
+int __init
+spi_register_board_info(struct spi_board_info const *info, unsigned n)
+{
+	struct boardinfo	*bi;
+
+	bi = kmalloc(sizeof(*bi) + n * sizeof *info, GFP_KERNEL);
+	if (!bi)
+		return -ENOMEM;
+	bi-&gt;n_board_info = n;
+	memcpy(bi-&gt;board_info, info, n * sizeof *info);
+
+	mutex_lock(&amp;board_lock);
+	list_add_tail(&amp;bi-&gt;list, &amp;board_list);
+	mutex_unlock(&amp;board_lock);
+	return 0;
+}
+
+int spi_register_master(struct spi_master *master)
+{
+    ...
+	dev_set_name(&amp;master-&gt;dev, &quot;spi%u&quot;, master-&gt;bus_num);
+	status = device_add(&amp;master-&gt;dev);              </rich_text><rich_text foreground="#00000000ffff">//在/sys/class/spi_master/生成spi0</rich_text><rich_text>
+	if (status &lt; 0)
+		goto done;
+	dev_dbg(dev, &quot;registered master %s%s\n&quot;, dev_name(&amp;master-&gt;dev),
+			dynamic ? &quot; (dynamic)&quot; : &quot;&quot;);
+
+	/* populate children from any spi device tables */
+	scan_boardinfo(master);
+	status = 0;
+	...
+}
+
+void spi_unregister_master(struct spi_master *master)
+{
+	int dummy;
+
+	dummy = device_for_each_child(master-&gt;dev.parent, &amp;master-&gt;dev,
+					__unregister);
+	device_unregister(&amp;master-&gt;dev);
+}
+
+</rich_text><rich_text foreground="#00000000ffff">在device_add()中会调用klist_add_tail(&amp;dev-&gt;p-&gt;knode_parent,   &amp;parent-&gt;p-&gt;klist_children);
+把该设备的节点挂到其父节点的链表, 而device_for_each_child是遍历parent-&gt;p-&gt;klist_children来访问所有
+的子设备。spi_master和spi_device的dev.parent都是指向一样的. 所以在__unregister()函数中要判断是
+spi_device才去释放。</rich_text><rich_text>
+static int __unregister(struct device *dev, void *master_dev)
+{
+	/* note: before about 2.6.14-rc1 this would corrupt memory: */
+	if (dev != master_dev)
+		spi_unregister_device(to_spi_device(dev));
+	return 0;
+}
+
+</rich_text><rich_text foreground="#ffff00000000">static inline void
+spi_unregister_device(struct spi_device *spi)
+{
+	if (spi)
+		device_unregister(&amp;spi-&gt;dev);
+}
+</rich_text><rich_text>
+/* FIXME someone should add support for a __setup(&quot;spi&quot;, ...) that
+ * creates board info from kernel command lines
+ */
+static void scan_boardinfo(struct spi_master *master)
+{
+	struct boardinfo	*bi;
+
+	mutex_lock(&amp;board_lock);
+	list_for_each_entry(bi, &amp;board_list, list) {
+		struct spi_board_info	*chip = bi-&gt;board_info;
+		unsigned		n;
+
+		for (n = bi-&gt;n_board_info; n &gt; 0; n--, chip++) {
+			if (chip-&gt;bus_num != master-&gt;bus_num)
+				continue;
+			/* NOTE: this relies on spi_new_device to
+			 * issue diagnostics when given bogus inputs
+			 */
+			(void) spi_new_device(master, chip);
+		}
+	}
+	mutex_unlock(&amp;board_lock);
+}
+
+struct spi_device *spi_new_device(struct spi_master *master,
+				  struct spi_board_info *chip)
+{
+	struct spi_device	*proxy;
+	int			status;
+
+	/* NOTE:  caller did any chip-&gt;bus_num checks necessary.
+	 *
+	 * Also, unless we change the return value convention to use
+	 * error-or-pointer (not NULL-or-pointer), troubleshootability
+	 * suggests syslogged diagnostics are best here (ugh).
+	 */
+
+	proxy = spi_alloc_device(master);
+	if (!proxy)
+		return NULL;
+
+	WARN_ON(strlen(chip-&gt;modalias) &gt;= sizeof(proxy-&gt;modalias));
+
+	proxy-&gt;chip_select = chip-&gt;chip_select;
+	proxy-&gt;max_speed_hz = chip-&gt;max_speed_hz;
+	proxy-&gt;mode = chip-&gt;mode;
+	proxy-&gt;irq = chip-&gt;irq;
+	strlcpy(proxy-&gt;modalias, chip-&gt;modalias, sizeof(proxy-&gt;modalias));  </rich_text><rich_text foreground="#00000000ffff">//driver name</rich_text><rich_text>
+	proxy-&gt;dev.platform_data = (void *) chip-&gt;platform_data;
+	proxy-&gt;controller_data = chip-&gt;controller_data;
+	proxy-&gt;controller_state = NULL;
+
+	status = spi_add_device(proxy);
+	if (status &lt; 0) {
+		spi_dev_put(proxy);
+		return NULL;
+	}
+
+	return proxy;
+}
+
+int spi_add_device(struct spi_device *spi)
+{
+	static DEFINE_MUTEX(spi_add_lock);
+	struct device *dev = spi-&gt;master-&gt;dev.parent;
+	int status;
+
+	/* Chipselects are numbered 0..max; validate. */
+	if (spi-&gt;chip_select &gt;= spi-&gt;master-&gt;num_chipselect) {
+		dev_err(dev, &quot;cs%d &gt;= max %d\n&quot;,
+			spi-&gt;chip_select,
+			spi-&gt;master-&gt;num_chipselect);
+		return -EINVAL;
+	}
+
+	/* Set the bus ID string */
+	dev_set_name(&amp;spi-&gt;dev, &quot;%s.%u&quot;, dev_name(&amp;spi-&gt;master-&gt;dev),   </rich_text><rich_text foreground="#00000000ffff">//spi0.0</rich_text><rich_text>
+			spi-&gt;chip_select);
+
+
+	/* We need to make sure there's no other device with this
+	 * chipselect **BEFORE** we call setup(), else we'll trash
+	 * its configuration.  Lock against concurrent add() calls.
+	 */
+	mutex_lock(&amp;spi_add_lock);
+
+	if (bus_find_device_by_name(&amp;spi_bus_type, NULL, dev_name(&amp;spi-&gt;dev))
+			!= NULL) {
+		dev_err(dev, &quot;chipselect %d already in use\n&quot;,
+				spi-&gt;chip_select);
+		status = -EBUSY;
+		goto done;
+	}
+
+	/* Drivers may modify this initial i/o setup, but will
+	 * normally rely on the device being setup.  Devices
+	 * using SPI_CS_HIGH can't coexist well otherwise...
+	 */
+	status = spi_setup(spi);                    </rich_text><rich_text foreground="#00000000ffff">//调用spi-&gt;master-&gt;setup(spi), 就是调用s3c24xx_spi_setup</rich_text><rich_text>
+	if (status &lt; 0) {
+		dev_err(dev, &quot;can't %s %s, status %d\n&quot;,
+				&quot;setup&quot;, dev_name(&amp;spi-&gt;dev), status);
+		goto done;
+	}
+
+	/* Device may be bound to an active driver when this returns */
+	status = device_add(&amp;spi-&gt;dev);   </rich_text><rich_text foreground="#00000000ffff">//触发spidev驱动</rich_text><rich_text>  
+	if (status &lt; 0)
+		dev_err(dev, &quot;can't %s %s, status %d\n&quot;,
+				&quot;add&quot;, dev_name(&amp;spi-&gt;dev), status);
+	else
+		dev_dbg(dev, &quot;registered child %s\n&quot;, dev_name(&amp;spi-&gt;dev));
+
+done:
+	mutex_unlock(&amp;spi_add_lock);
+	return status;
+}
+
+</rich_text><rich_text foreground="#00000000ffff">如果需要在驱动中使用spi, 那么:
+1). 调用spi_register_driver注册驱动:
+
+2). 添加设备，触发相应的驱动:
+struct spi_device *spi_new_device(struct spi_master *master,
+				  struct spi_board_info *chip)
+    (1). 获取相应的struct spi_master
+</rich_text><rich_text>    </rich_text><rich_text foreground="#ffff00000000">struct spi_master *spi_busnum_to_master(u16 bus_num)
+    {
+	    struct device		*dev;
+	    struct spi_master	*master = NULL;
+
+	    dev = class_find_device(&amp;spi_master_class, NULL, &amp;bus_num,
+				    __spi_master_match);
+	    if (dev)
+		    master = container_of(dev, struct spi_master, dev);
+	    /* reference got in class_find_device */
+	    return master;
+    }
+</rich_text><rich_text foreground="#00000000ffff">    因为device_add()函数klist_add_tail(&amp;dev-&gt;knode_class, &amp;dev-&gt;</rich_text><rich_text foreground="#0000ff">class</rich_text><rich_text>-&gt;p-&gt;class_devices) (如果dev-&gt;class有效)
+
+    (2). 设置参数struct spi_board_info
+    可参考s3c2410_spi0_board[0]设定, 要修改modalias为对应的驱动name。				
+
+3). 驱动的实现可以参考spidev.c
+
+</rich_text><rich_text weight="heavy">drivers/spi/spidev.c</rich_text><rich_text>
+static struct spi_driver spidev_spi = {
+	.driver = {
+		.name =		&quot;spidev&quot;,
+		.owner =	THIS_MODULE,
+	},
+	.probe =	spidev_probe,
+	.remove =	__devexit_p(spidev_remove),
+
+	/* NOTE:  suspend/resume methods are not necessary here.
+	 * We don't do anything except pass the requests to/from
+	 * the underlying controller.  The refrigerator handles
+	 * most issues; the controller driver handles the rest.
+	 */
+};
+
+/*-------------------------------------------------------------------------*/
+
+static int __init spidev_init(void)
+{
+	int status;
+
+	/* Claim our 256 reserved device numbers.  Then register a class
+	 * that will key udev/mdev to add/remove /dev nodes.  Last, register
+	 * the driver which manages those device numbers.
+	 */
+	BUILD_BUG_ON(N_SPI_MINORS &gt; 256);
+	status = register_chrdev(SPIDEV_MAJOR, &quot;spi&quot;, &amp;spidev_fops);
+	if (status &lt; 0)
+		return status;
+
+	spidev_class = class_create(THIS_MODULE, &quot;spidev&quot;);
+	if (IS_ERR(spidev_class)) {
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi.driver.name);
+		return PTR_ERR(spidev_class);
+	}
+
+	status = spi_register_driver(&amp;spidev_spi);
+	if (status &lt; 0) {
+		class_destroy(spidev_class);
+		unregister_chrdev(SPIDEV_MAJOR, spidev_spi.driver.name);
+	}
+	return status;
+}
+module_init(spidev_init);
+
+static void __exit spidev_exit(void)
+{
+	spi_unregister_driver(&amp;spidev_spi);
+	class_destroy(spidev_class);
+	unregister_chrdev(SPIDEV_MAJOR, spidev_spi.driver.name);
+}
+module_exit(spidev_exit);
+
+static int spidev_probe(struct spi_device *spi)
+{
+	struct spidev_data	*spidev;
+	int			status;
+	unsigned long		minor;
+
+	/* Allocate driver data */
+	spidev = kzalloc(sizeof(*spidev), GFP_KERNEL);
+	if (!spidev)
+		return -ENOMEM;
+
+	/* Initialize the driver data */
+	spidev-&gt;spi = spi;
+	spin_lock_init(&amp;spidev-&gt;spi_lock);
+	mutex_init(&amp;spidev-&gt;buf_lock);
+
+	INIT_LIST_HEAD(&amp;spidev-&gt;device_entry);
+
+	/* If we can allocate a minor number, hook up this device.
+	 * Reusing minors is fine so long as udev or mdev is working.
+	 */
+	mutex_lock(&amp;device_list_lock);
+	minor = find_first_zero_bit(minors, N_SPI_MINORS);
+	if (minor &lt; N_SPI_MINORS) {
+		struct device *dev;
+
+		spidev-&gt;devt = MKDEV(SPIDEV_MAJOR, minor);
+		dev = device_create(spidev_class, &amp;spi-&gt;dev, spidev-&gt;devt,     </rich_text><rich_text foreground="#00000000ffff">//生成/dev/spidev0.0</rich_text><rich_text>
+				    spidev, &quot;spidev%d.%d&quot;,
+				    spi-&gt;master-&gt;bus_num, spi-&gt;chip_select);
+		status = IS_ERR(dev) ? PTR_ERR(dev) : 0;
+	} else {
+		dev_dbg(&amp;spi-&gt;dev, &quot;no minor number available!\n&quot;);
+		status = -ENODEV;
+	}
+	if (status == 0) {
+		set_bit(minor, minors);
+		</rich_text><rich_text foreground="#ffff00000000">list_add(&amp;spidev-&gt;device_entry, &amp;device_list);</rich_text><rich_text>                  </rich_text><rich_text foreground="#00000000ffff">//device_list在open函数中用到</rich_text><rich_text>
+	}
+	mutex_unlock(&amp;device_list_lock);
+
+	if (status == 0)
+		spi_set_drvdata(spi, spidev);
+	else
+		kfree(spidev);
+
+	return status;
+}
+
+static int spidev_remove(struct spi_device *spi)
+{
+	struct spidev_data	*spidev = spi_get_drvdata(spi);
+
+	/* make sure ops on existing fds can abort cleanly */
+	spin_lock_irq(&amp;spidev-&gt;spi_lock);
+	spidev-&gt;spi = NULL;
+	spi_set_drvdata(spi, NULL);
+	spin_unlock_irq(&amp;spidev-&gt;spi_lock);
+
+	/* prevent new opens */
+	mutex_lock(&amp;device_list_lock);
+	list_del(&amp;spidev-&gt;device_entry);
+	device_destroy(spidev_class, spidev-&gt;devt);
+	clear_bit(MINOR(spidev-&gt;devt), minors);
+	if (spidev-&gt;users == 0)
+		kfree(spidev);
+	mutex_unlock(&amp;device_list_lock);
+
+	return 0;
+}
+
+</rich_text><rich_text scale="h2" weight="heavy">2. 访问spi的驱动接口</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">drivers/spi/spidev.c</rich_text><rich_text>
+static const struct file_operations spidev_fops = {
+	.owner =	THIS_MODULE,
+	/* REVISIT switch to aio primitives, so that userspace
+	 * gets more complete API coverage.  It'll simplify things
+	 * too, except for the locking.
+	 */
+	.write =	spidev_write,
+	.read =		spidev_read,
+	.unlocked_ioctl = spidev_ioctl,
+	.open =		spidev_open,
+	.release =	spidev_release,
+};
+
+</rich_text><rich_text foreground="#00000000ffff">//注册file_operations</rich_text><rich_text>    
+static int __init spidev_init(void)
+{
+    ...
+    status = register_chrdev(SPIDEV_MAJOR, &quot;spi&quot;, &amp;spidev_fops);    
+    ...
+}
+
+</rich_text><rich_text foreground="#00000000ffff">所有的spi都是通过spidev_fops访问</rich_text><rich_text>, 
+</rich_text><rich_text foreground="#00000000ffff">完成注册后，在/proc/devices中的第一个字符设备我们就看到了：153 spi</rich_text><rich_text>
+
+static int spidev_open(struct inode *inode, struct file *filp)
+{
+	struct spidev_data	*spidev;
+	int			status = -ENXIO;
+
+	lock_kernel();
+	mutex_lock(&amp;device_list_lock);
+
+	list_for_each_entry(spidev, &amp;device_list, device_entry) {   </rich_text><rich_text foreground="#00000000ffff">//遍历device_list, 比较设备号, 找出对应的spidev</rich_text><rich_text>
+		if (spidev-&gt;devt == inode-&gt;i_rdev) {
+			status = 0;
+			break;
+		}
+	}
+	if (status == 0) {
+		if (!spidev-&gt;buffer) {
+			spidev-&gt;buffer = kmalloc(bufsiz, GFP_KERNEL);
+			if (!spidev-&gt;buffer) {
+				dev_dbg(&amp;spidev-&gt;spi-&gt;dev, &quot;open/ENOMEM\n&quot;);
+				status = -ENOMEM;
+			}
+		}
+		if (status == 0) {
+			spidev-&gt;users++;
+			filp-&gt;private_data = spidev;                                    </rich_text><rich_text foreground="#00000000ffff">//使filp-&gt;private_data  = spidev, 后面的函数通过filp来访问spidev</rich_text><rich_text>
+			nonseekable_open(inode, filp);
+		}
+	} else
+		pr_debug(&quot;spidev: nothing for minor %d\n&quot;, iminor(inode));
+
+	mutex_unlock(&amp;device_list_lock);
+	unlock_kernel();
+	return status;
+}
+
+</rich_text><rich_text foreground="#00000000ffff">上面对spi访问的函数会调用spi.c中：</rich_text><rich_text>
+int spi_async(struct spi_device *spi, struct spi_message *message)
+{
+    ...
+    return master-&gt;transfer(spi, message);
+}
+
+</rich_text><rich_text foreground="#00000000ffff">实际调用了spi_bitbang_transfer (在spi_bitbang_start函数中赋值)</rich_text><rich_text>
+int spi_bitbang_transfer(struct spi_device *spi, struct spi_message *m)
+{
+	struct spi_bitbang	*bitbang;
+	unsigned long		flags;
+	int			status = 0;
+
+	m-&gt;actual_length = 0;
+	m-&gt;status = -EINPROGRESS;
+
+	bitbang = spi_master_get_devdata(spi-&gt;master);              </rich_text><rich_text foreground="#00000000ffff">//每个master只有一个bitbang</rich_text><rich_text>
+
+	spin_lock_irqsave(&amp;bitbang-&gt;lock, flags);
+	if (!spi-&gt;max_speed_hz)
+		status = -ENETDOWN;
+	else {
+		list_add_tail(&amp;m-&gt;queue, &amp;bitbang-&gt;queue);                  </rich_text><rich_text foreground="#00000000ffff">//把m连到bitbang-&gt;queue</rich_text><rich_text>
+		queue_work(bitbang-&gt;workqueue, &amp;bitbang-&gt;work);     </rich_text><rich_text foreground="#00000000ffff">//调用bitbang_work</rich_text><rich_text>
+	}
+	spin_unlock_irqrestore(&amp;bitbang-&gt;lock, flags);
+
+	return status;
+}
+
+static void bitbang_work(struct work_struct *work)
+{
+	struct spi_bitbang	*bitbang =
+		container_of(work, struct spi_bitbang, work);
+	unsigned long		flags;
+	int			do_setup = -1;
+	int			(*setup_transfer)(struct spi_device *,
+					struct spi_transfer *);
+
+	setup_transfer = bitbang-&gt;setup_transfer;
+
+	spin_lock_irqsave(&amp;bitbang-&gt;lock, flags);
+	bitbang-&gt;busy = 1;
+	while (!list_empty(&amp;bitbang-&gt;queue)) {
+		struct spi_message	*m;
+		struct spi_device	*spi;
+		unsigned		nsecs;
+		struct spi_transfer	*t = NULL;
+		unsigned		tmp;
+		unsigned		cs_change;
+		int			status;
+
+		m = container_of(bitbang-&gt;queue.next, struct spi_message,
+				queue);
+		list_del_init(&amp;m-&gt;queue);
+		spin_unlock_irqrestore(&amp;bitbang-&gt;lock, flags);
+
+		/* FIXME this is made-up ... the correct value is known to
+		 * word-at-a-time bitbang code, and presumably chipselect()
+		 * should enforce these requirements too?
+		 */
+		nsecs = 100;
+
+		spi = m-&gt;spi;
+		tmp = 0;
+		cs_change = 1;      </rich_text><rich_text foreground="#00000000ffff">//首先cs有效，选定spi设备</rich_text><rich_text>
+		status = 0;
+
+		list_for_each_entry (t, &amp;m-&gt;transfers, transfer_list) {
+
+			/* override speed or wordsize? */
+			if (t-&gt;speed_hz || t-&gt;bits_per_word)
+				do_setup = 1;
+
+			/* init (-1) or override (1) transfer params */
+			if (do_setup != 0) {
+				if (!setup_transfer) {
+					status = -ENOPROTOOPT;
+					break;
+				}
+				status = setup_transfer(spi, t);
+				if (status &lt; 0)
+					break;
+			}
+
+			/* set up default clock polarity, and activate chip;
+			 * this implicitly updates clock and spi modes as
+			 * previously recorded for this device via setup().
+			 * (and also deselects any other chip that might be
+			 * selected ...)
+			 */
+			if (cs_change) {
+				bitbang-&gt;chipselect(spi, BITBANG_CS_ACTIVE);
+				ndelay(nsecs);
+			}
+			cs_change = t-&gt;cs_change;
+			if (!t-&gt;tx_buf &amp;&amp; !t-&gt;rx_buf &amp;&amp; t-&gt;len) {
+				status = -EINVAL;
+				break;
+			}
+
+			/* transfer data.  the lower level code handles any
+			 * new dma mappings it needs. our caller always gave
+			 * us dma-safe buffers.
+			 */
+			if (t-&gt;len) {
+				/* REVISIT dma API still needs a designated
+				 * DMA_ADDR_INVALID; ~0 might be better.
+				 */
+				if (!m-&gt;is_dma_mapped)
+					t-&gt;rx_dma = t-&gt;tx_dma = 0;
+				status = bitbang-&gt;txrx_bufs(spi, t);        </rich_text><rich_text foreground="#00000000ffff">//实际调用s3c24xx_spi_txrx</rich_text><rich_text>
+			}
+			if (status &gt; 0)
+				m-&gt;actual_length += status;
+			if (status != t-&gt;len) {
+				/* always report some kind of error */
+				if (status &gt;= 0)
+					status = -EREMOTEIO;
+				break;
+			}
+			status = 0;
+
+			/* protocol tweaks before next transfer */
+			if (t-&gt;delay_usecs)
+				udelay(t-&gt;delay_usecs);
+
+			if (!cs_change)  </rich_text><rich_text foreground="#00000000ffff">//如果同一个cs, 继续传下一个</rich_text><rich_text>                                                                                 
+				continue;
+			if (t-&gt;transfer_list.next == &amp;m-&gt;transfers)     </rich_text><rich_text foreground="#00000000ffff">//list是否结束</rich_text><rich_text>
+				break;
+
+			/* sometimes a short mid-message deselect of the chip
+			 * may be needed to terminate a mode or command
+			 */
+			ndelay(nsecs);
+			bitbang-&gt;chipselect(spi, BITBANG_CS_INACTIVE);
+			ndelay(nsecs);
+		}
+
+		m-&gt;status = status;
+		m-&gt;complete(m-&gt;context);
+
+		/* restore speed and wordsize if it was overridden */
+		if (do_setup == 1)
+			setup_transfer(spi, NULL);
+		do_setup = 0;
+
+		/* normally deactivate chipselect ... unless no error and
+		 * cs_change has hinted that the next message will probably
+		 * be for this chip too.
+		 */
+		if (!(status == 0 &amp;&amp; cs_change)) {
+			ndelay(nsecs);
+			bitbang-&gt;chipselect(spi, BITBANG_CS_INACTIVE);
+			ndelay(nsecs);
+		}
+
+		spin_lock_irqsave(&amp;bitbang-&gt;lock, flags);
+	}
+	bitbang-&gt;busy = 0;
+	spin_unlock_irqrestore(&amp;bitbang-&gt;lock, flags);
+}
+
+
+</rich_text><rich_text scale="h2" weight="heavy">3. 用户层访问spi</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">include/linux/spi/spidev.h</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">/**
+ * struct spi_ioc_transfer - describes a single SPI transfer
+ * @tx_buf: Holds pointer to userspace buffer with transmit data, or null.
+ *	If no data is provided, zeroes are shifted out.
+ * @rx_buf: Holds pointer to userspace buffer for receive data, or null.
+ * @len: Length of tx and rx buffers, in bytes.
+ * @speed_hz: Temporary override of the device's bitrate.
+ * @bits_per_word: Temporary override of the device's wordsize.
+ * @delay_usecs: If nonzero, how long to delay after the last bit transfer
+ *	before optionally deselecting the device before the next transfer.
+ * @cs_change: True to deselect device before starting the next transfer.
+ *
+ * This structure is mapped directly to the kernel spi_transfer structure;
+ * the fields have the same meanings, except of course that the pointers
+ * are in a different address space (and may be of different sizes in some
+ * cases, such as 32-bit i386 userspace over a 64-bit x86_64 kernel).
+ * Zero-initialize the structure, including currently unused fields, to
+ * accomodate potential future updates.
+ *
+ * SPI_IOC_MESSAGE gives userspace the equivalent of kernel spi_sync().
+ * Pass it an array of related transfers, they'll execute together.
+ * Each transfer may be half duplex (either direction) or full duplex.
+ *
+ *	struct spi_ioc_transfer mesg[4];
+ *	...
+ *	status = ioctl(fd, SPI_IOC_MESSAGE(4), mesg);
+ *
+ * So for example one transfer might send a nine bit command (right aligned
+ * in a 16-bit word), the next could read a block of 8-bit data before
+ * terminating that command by temporarily deselecting the chip; the next
+ * could send a different nine bit command (re-selecting the chip), and the
+ * last transfer might write some register values.
+ */
+struct spi_ioc_transfer {
+	__u64		tx_buf;
+	__u64		rx_buf;
+
+	__u32		len;
+	__u32		speed_hz;
+
+	__u16		delay_usecs;
+	__u8		bits_per_word;
+	__u8		cs_change;
+	__u32		pad;
+
+	/* If the contents of 'struct spi_ioc_transfer' ever change
+	 * incompatibly, then the ioctl number (currently 0) must change;
+	 * ioctls with constant size fields get a bit more in the way of
+	 * error checking than ones (like this) where that field varies.
+	 *
+	 * NOTE: struct layout is the same in 64bit and 32bit userspace.
+	 */
+};</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#ffff00000000">/* not all platforms use &lt;asm-generic/ioctl.h&gt; or _IOC_TYPECHECK() ... */
+#define SPI_MSGSIZE(N) \
+	((((N)*(sizeof (struct spi_ioc_transfer))) &lt; (1 &lt;&lt; _IOC_SIZEBITS)) \
+		? ((N)*(sizeof (struct spi_ioc_transfer))) : 0)
+#define SPI_IOC_MESSAGE(N) _IOW(SPI_IOC_MAGIC, 0, char[SPI_MSGSIZE(N)])
+
+
+/* Read / Write of SPI mode (SPI_MODE_0..SPI_MODE_3) */
+#define SPI_IOC_RD_MODE			_IOR(SPI_IOC_MAGIC, 1, __u8)
+#define SPI_IOC_WR_MODE			_IOW(SPI_IOC_MAGIC, 1, __u8)
+
+/* Read / Write SPI bit justification */
+#define SPI_IOC_RD_LSB_FIRST		_IOR(SPI_IOC_MAGIC, 2, __u8)
+#define SPI_IOC_WR_LSB_FIRST		_IOW(SPI_IOC_MAGIC, 2, __u8)
+
+/* Read / Write SPI device word length (1..N) */
+#define SPI_IOC_RD_BITS_PER_WORD	_IOR(SPI_IOC_MAGIC, 3, __u8)
+#define SPI_IOC_WR_BITS_PER_WORD	_IOW(SPI_IOC_MAGIC, 3, __u8)
+
+/* Read / Write SPI device default max speed hz */
+#define SPI_IOC_RD_MAX_SPEED_HZ		_IOR(SPI_IOC_MAGIC, 4, __u32)
+#define SPI_IOC_WR_MAX_SPEED_HZ		_IOW(SPI_IOC_MAGIC, 4, __u32)</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">范例:</rich_text><rich_text>
+	bits = 8;
+	speed = 500000; // 500KHz 
+	mode = 0;
+	
+    fd = open(&quot;/dev/spidev0.0&quot;, O_RDWR);
+	/*
+	 * spi mode
+	 */ 
+    ret = ioctl(fd, SPI_IOC_WR_MODE, &amp;mode);
+    ret = ioctl(fd, SPI_IOC_RD_MODE, &amp;mode);
+	/*
+	 * bits per word
+	 */
+	ret = ioctl(fd, SPI_IOC_WR_BITS_PER_WORD, &amp;bits);
+	ret = ioctl(fd, SPI_IOC_RD_BITS_PER_WORD, &amp;bits);
+	/*
+	 * max speed hz
+	 */
+	ret = ioctl(fd, SPI_IOC_WR_MAX_SPEED_HZ, &amp;speed);
+	ret = ioctl(fd, SPI_IOC_RD_MAX_SPEED_HZ, &amp;speed);
+
+	uint8_t tx[2] = {0};  //发送buffer
+	tx[0] = 0xc0;           
+
+	uint8_t rx[2] = {0};
+	struct spi_ioc_transfer tr;
+	tr.tx_buf = (unsigned long)tx;
+	tr.rx_buf = (unsigned long)rx;                          </rich_text><rich_text foreground="#00000000ffff">//如果是直接发送数据，则可以tr.rx_buf = NULL</rich_text><rich_text>
+	tr.len = 2;
+	tr.delay_usecs = 0;
+//	tr.cs_change = 1;
+	tr.speed_hz = speed;
+	tr.bits_per_word = bits;
+
+	ret = ioctl(fd, SPI_IOC_MESSAGE(1), &amp;tr);         </rich_text><rich_text foreground="#00000000ffff">//SPI_IOC_MESSAGE(1)中的1是表示tr指向spi_ioc_transfer结构的个数</rich_text><rich_text>
+	if (ret &lt; 1)
+	{
+		perror(&quot;can't send spi message&quot;);
+		abort();		
+	}	
+	</rich_text><rich_text foreground="#00000000ffff">也可以read()和write()来访问spi.</rich_text><rich_text>
+		
+	</rich_text><rich_text foreground="#00000000ffff">在驱动spidev.c里，用户数据通过spidev-&gt;buffer(open时申请空间, 大小默认4096，多个open共用)来和spi设备通信的。</rich_text><rich_text>
+    </rich_text><rich_text foreground="#00000000ffff">ret = ioctl(fd, SPI_IOC_MESSAGE(1), &amp;tr);
+    这个函数调用了驱动spidev.c中的：</rich_text><rich_text>	
+static int spidev_message(struct spidev_data *spidev,
+		struct spi_ioc_transfer *u_xfers, unsigned n_xfers)
+{
+	struct spi_message	msg;
+	struct spi_transfer	*k_xfers;
+	struct spi_transfer	*k_tmp;
+	struct spi_ioc_transfer *u_tmp;
+	unsigned		n, total;
+	u8			*buf;
+	int			status = -EFAULT;
+
+	spi_message_init(&amp;msg);
+	k_xfers = kcalloc(n_xfers, sizeof(*k_tmp), GFP_KERNEL);
+	if (k_xfers == NULL)
+		return -ENOMEM;
+
+	/* Construct spi_message, copying any tx data to bounce buffer.
+	 * We walk the array of user-provided transfers, using each one
+	 * to initialize a kernel version of the same transfer.
+	 */
+	buf = spidev-&gt;buffer;
+	total = 0;
+	for (n = n_xfers, k_tmp = k_xfers, u_tmp = u_xfers;
+			n;
+			n--, k_tmp++, u_tmp++) {
+		k_tmp-&gt;len = u_tmp-&gt;len;
+
+		total += k_tmp-&gt;len;
+		if (total &gt; bufsiz) {
+			status = -EMSGSIZE;
+			goto done;
+		}
+
+		if (u_tmp-&gt;rx_buf) {
+			k_tmp-&gt;rx_buf = buf;
+			if (!access_ok(VERIFY_WRITE, (u8 __user *)
+						(uintptr_t) u_tmp-&gt;rx_buf,
+						u_tmp-&gt;len))
+				goto done;
+		}
+		if (u_tmp-&gt;tx_buf) {
+			k_tmp-&gt;tx_buf = buf;
+			if (copy_from_user(buf, (const u8 __user *)
+						(uintptr_t) u_tmp-&gt;tx_buf,
+					u_tmp-&gt;len))
+				goto done;
+		}
+		buf += k_tmp-&gt;len;
+
+		k_tmp-&gt;cs_change = !!u_tmp-&gt;cs_change;
+		k_tmp-&gt;bits_per_word = u_tmp-&gt;bits_per_word;
+		k_tmp-&gt;delay_usecs = u_tmp-&gt;delay_usecs;
+		k_tmp-&gt;speed_hz = u_tmp-&gt;speed_hz;
+#ifdef VERBOSE
+		dev_dbg(&amp;spi-&gt;dev,
+			&quot;  xfer len %zd %s%s%s%dbits %u usec %uHz\n&quot;,
+			u_tmp-&gt;len,
+			u_tmp-&gt;rx_buf ? &quot;rx &quot; : &quot;&quot;,
+			u_tmp-&gt;tx_buf ? &quot;tx &quot; : &quot;&quot;,
+			u_tmp-&gt;cs_change ? &quot;cs &quot; : &quot;&quot;,
+			u_tmp-&gt;bits_per_word ? : spi-&gt;bits_per_word,
+			u_tmp-&gt;delay_usecs,
+			u_tmp-&gt;speed_hz ? : spi-&gt;max_speed_hz);
+#endif
+		spi_message_add_tail(k_tmp, &amp;msg);      </rich_text><rich_text foreground="#00000000ffff">//list_add_tail(&amp;t-&gt;transfer_list, &amp;m-&gt;transfers);， 连到m-&gt;transfers尾部</rich_text><rich_text>
+	}
+
+	status = spidev_sync(spidev, &amp;msg);
+	if (status &lt; 0)
+		goto done;
+
+	/* copy any rx data out of bounce buffer */
+	buf = spidev-&gt;buffer;
+	for (n = n_xfers, u_tmp = u_xfers; n; n--, u_tmp++) {
+		if (u_tmp-&gt;rx_buf) {
+			if (__copy_to_user((u8 __user *)
+					(uintptr_t) u_tmp-&gt;rx_buf, buf,
+					u_tmp-&gt;len)) {
+				status = -EFAULT;
+				goto done;
+			}
+		}
+		buf += u_tmp-&gt;len;
+	}
+	status = total;
+
+done:
+	kfree(k_xfers);
+	return status;
+}
+	</rich_text><node name="nrf24l01" prog_lang="custom-colors" readonly="False" tags="" unique_id="18"><rich_text scale="h2">1. 接线 (s3c2440)</rich_text><rich_text>
+nrf-gnd 1 = gnd (CON4-3 or CON4-4)
+nrf-vcc 2 = 3v3 (CON4-5 or CON4-6)
+nrf-ce 3 =  ce (CON4-31) (GPB0)
+nrf-csn 4 = csn (CON4-32) (GPB1)
+nrf-sck 5 = sckl (CON4-27) (GPE13)
+nrf-mo 6 = mosi (CON4-26) (GPE12)
+nrf-mi 7 = miso (CON4-25) (GPE11)
+
+</rich_text><rich_text scale="h2" weight="heavy">2. 范例</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1).</rich_text><rich_text>
+cp -f librf24.so.1.0 /usr/lib
+cd /usr/lib
+ln -sf librf24.so.1.0 librf24.so.1
+ln -sf librf24.so.1.0 librf24.so
+
+#spi设备
+/dev/spidev0.0
+
+</rich_text><rich_text scale="h3" weight="heavy">2).</rich_text><rich_text>
+./pingtest
+
+
+</rich_text></node></node></node><node name="init" prog_lang="custom-colors" readonly="False" tags="" unique_id="17"><rich_text>1. init读取/etc/inittab.
+::sysinit:/etc/init.d/rcS S boot
+::shutdown:/etc/init.d/rcS K stop
+tts/0::askfirst:/bin/ash --login
+ttySAC0::askfirst:/bin/ash --login
+tty1::askfirst:/bin/ash --login
+
+&lt;可以参考linux.ctd中”精通initramfs构建“之四&gt;
+1).先执行sysinit优先级命令/etc/init.d/rcS S boot
+2).终端设备为ttySAC0, 执行命令/bin/ash --login</rich_text></node></cherrytree>

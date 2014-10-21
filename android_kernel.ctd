@@ -1,4 +1,5 @@
-<?xml version="1.0" ?><cherrytree><node name="Android内核解读" prog_lang="custom-colors" readonly="False" tags="" unique_id="128"><rich_text></rich_text><node name="Android系统的开机启动过程 " prog_lang="custom-colors" readonly="False" tags="" unique_id="130"><rich_text scale="h2">前言</rich_text><rich_text>
+<?xml version="1.0" ?><cherrytree><node name="Android内核解读" prog_lang="custom-colors" readonly="False" tags="" unique_id="128"><rich_text>
+</rich_text><node name="Android系统的开机启动过程 " prog_lang="custom-colors" readonly="False" tags="" unique_id="130"><rich_text scale="h2">前言</rich_text><rich_text>
     当长按手机的power键，Android手机就会开机，那么Android系统的开机启动过程到底是怎么样的呢，本文将要 介绍这一过程。简单来说，Android系统的开机启动过程大致是这样的：首先linux系统会启动一个叫做zygote（可以称为受精卵、母体）的 linux程序，这个程序实际上就是android系统的内核，zygote启动的时候会建立socket服务端并加载大量的类和资源。接着zygote 会孵化第一个dalvik进程SystemServer，在SystemServer中会创建一个socket客户端，后续 AMS（ActivityManagerService）会通过此客户端和zygote通信，zygote再根据请求孵化出新的dalvik进程即启动一 个新的apk同时把新进程的socket连接关闭。SystemServer初始化完毕后会启动一个位于桟顶的activity，由于系统刚开机，所以 task桟顶没有activity，于是接着它会发送一个隐式的intent（category：CATEGORY_HOME），也就是launcher 了，即Android系统的桌面程序，launcher启动以后，我们就可以通过桌面启动各种应用了，可以发现，launcher可以有多个，第三方应用只要加入launcher所需要的intent-filter即可。下面一一分析各个流程。（注：本文分析基于Android4.3源码）
 
 </rich_text><rich_text scale="h2">zygote的启动过程</rich_text><rich_text>
@@ -3588,7 +3589,8 @@ static struct device_type i2c_client_type = {
 	.uevent		= i2c_device_uevent,
 	.release	= i2c_client_dev_release,
 };
-</rich_text></node></node><node name="linux设备模型" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text></rich_text><node name="kobject，kset，ktype" prog_lang="custom-colors" readonly="False" tags="" unique_id="13"><rich_text>一、sysfs文件系统下的每个目录对应于一个kobj，kset是kobj的封装，内嵌了一个kobj，其代表kset自身，ktype代表属性 操作集，但由于通用性，因此把ktype单独剥离出来，kobj，kset，ktype成为了各个驱动模型最底层的关联元素，并由此形成了sys下的各种 拓扑结构。
+</rich_text></node></node><node name="linux设备模型" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text>
+</rich_text><node name="kobject，kset，ktype" prog_lang="custom-colors" readonly="False" tags="" unique_id="13"><rich_text>一、sysfs文件系统下的每个目录对应于一个kobj，kset是kobj的封装，内嵌了一个kobj，其代表kset自身，ktype代表属性 操作集，但由于通用性，因此把ktype单独剥离出来，kobj，kset，ktype成为了各个驱动模型最底层的关联元素，并由此形成了sys下的各种 拓扑结构。
 二、关于kobject
       首先看一下kobject的原型
           
@@ -4463,7 +4465,7 @@ static struct device_type i2c_client_type = {
 一、platform的初始化
      platform的初始化代码位于driver/base目录下的platform.c
  
-</rich_text><rich_text foreground="#993366"> </rich_text><rich_text> </rich_text><rich_text foreground="#993366">int __init platform_bus_init(void) </rich_text><rich_text>
+</rich_text><rich_text foreground="#993366">int __init platform_bus_init(void) </rich_text><rich_text>
 {
     int error;
 
@@ -4486,7 +4488,7 @@ static struct device_type i2c_client_type = {
 </rich_text><rich_text foreground="#993366">   </rich_text><rich_text foreground="#339966">     </rich_text><rich_text foreground="#99cc00">/*</rich_text><rich_text> </rich_text><rich_text foreground="#99cc00">      遍历early_platform_device_list，把连接到此的所有节点清0， </rich_text><rich_text>
 </rich_text><rich_text foreground="#99cc00">            平台设备都会挂到该节点，现在是平台设备的初始化阶段，自然不 </rich_text><rich_text>
 </rich_text><rich_text foreground="#99cc00">            能有连接到此的设备                                                                */</rich_text><rich_text> </rich_text><rich_text foreground="#993366">
-       </rich_text><rich_text> </rich_text><rich_text foreground="#993366">l</rich_text><rich_text> </rich_text><rich_text foreground="#993366">ist_for_each_entry_safe(pd, pd2, &amp;early_platform_device_list,  
+       </rich_text><rich_text> </rich_text><rich_text foreground="#993366">list_for_each_entry_safe(pd, pd2, &amp;early_platform_device_list,  
                  dev.devres_head) {                                                        
         list_del(&amp;pd-&gt;dev.devres_head);                                       
         memset(&amp;pd-&gt;dev.devres_head, 0, sizeof(pd-&gt;dev.devres_head));

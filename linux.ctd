@@ -2506,7 +2506,10 @@ id字段与通常的inittab中的含义不同，它代表的是这个语句中pr
 </rich_text><rich_text foreground="#0000ff">&lt;action&gt;:</rich_text><rich_text> 
 为下列这些值之一： 
 sysinit, respawn, askfirst, wait,once, restart, ctrlaltdel, shutdown 
-其含义与通常的inittab的定义相同。特别提一下askfirst，它的含义与respawn相同，只是在运行process前，会打出一句话“please press Enter to active this console”，然后等用户在终端上敲入回车键后才运行process。 
+其含义与通常的inittab的定义相同。特别提一下askfirst，它的含义与respawn相同，只是在运行process前，会打出一句话“please press Enter to active this console”，然后等用户在终端上敲入回车键后才运行process。
+下表列举了这</rich_text><rich_text foreground="#ff0000">8种action的含义</rich_text><rich_text>：
+</rich_text><rich_text scale="h3"> </rich_text><rich_text justification="left"></rich_text><rich_text>
+ 
 </rich_text><rich_text foreground="#0000ff">&lt;process&gt;</rich_text><rich_text foreground="#000000">：</rich_text><rich_text> 
 指定要运行的process的命令行。 
 
@@ -2528,7 +2531,25 @@ sysinit, respawn, askfirst, wait,once, restart, ctrlaltdel, shutdown
 
 做好了这些，就可以重新编译内核，生成新的initramfs了。在QEMU试验环境下验证新生成的mini linux，系统运行正常，而且象通常的linux系统一样，用ALT＋F1～F6键可以在6个终端间切换。 
 由于mini linux系统不需要登录，所以用askfirst的方式来模拟登录，用户敲回车键后，init进程才会启动shell。
-</rich_text></node><node name="（五）：initrd" prog_lang="custom-colors" readonly="False" tags="" unique_id="50"><rich_text scale="h2" weight="heavy">十七、配置内核支持initrd </rich_text><rich_text>
+</rich_text><table char_offset="2734" col_max="400" col_min="40"><row><cell>  action
+ </cell><cell>  含义
+ </cell></row><row><cell>  sysinit
+ </cell><cell>  为init提供初始化命令脚本的路径
+ </cell></row><row><cell>  respawn
+ </cell><cell>  每当相应的进程终止执行时，重新启动该进程
+ </cell></row><row><cell>  askfirst
+ </cell><cell>  类似respawn，主要用途是减少系统上执行的终端应用程序的数量。它将会促使init在控制台上显示“Please press Enter to active this console”的信息，并在重新启动进程之前等待用户按下“enter”键
+ </cell></row><row><cell>  wait
+ </cell><cell>  告诉init必须等到相应的进程执行完成之后才能继续执行
+ </cell></row><row><cell>  once
+ </cell><cell>  仅执行相应的进程一次，而且不会等待它执行完成
+ </cell></row><row><cell>  ctratldel
+ </cell><cell>  当按下Ctrl+Alt+Delete组合键时，执行相应的进程
+ </cell></row><row><cell>  shutdown
+ </cell><cell>  当系统关机时，执行相应的进程
+ </cell></row><row><cell>  restart
+ </cell><cell>  当init重新启动时，执行相应的进程，通常此处所执行的进程就是init本身
+</cell></row><row><cell>点击这里</cell><cell>点击这里</cell></row></table></node><node name="（五）：initrd" prog_lang="custom-colors" readonly="False" tags="" unique_id="50"><rich_text scale="h2" weight="heavy">十七、配置内核支持initrd </rich_text><rich_text>
 到目前为止，我们的initramfs都由内核编译系统生成的，并链接到内核中。其实 我们也可以用cpio命令生成单独的initramfs，与内核编译脱钩，在内核运行时以initrd的形式加载到内核，以增加灵活性。 
 首先配 置内核使用单独的initrd：在 Device Driver / Block device / 配置目录下，选择 RAM filesystem  and RAMdisk ( initramfs/initrd ) support 配置项；再到 General Setup 配置目录项下，将  initramfs source file(s)  配置项原有的内容清空。然后把内核源码树的usr目录下已由内核编译生成的initramfs文件initramfs_data.cpio.gz拷贝到  ~/initramfs-test 目录下，我们先直接用这个文件试验一下 initrd  方式的initramfs的效果。最后，执行make命令重新编译内核后，在QEMU试验环境中，把initrd配置框（linux配置框的下面）的内容 写为 ~/initramfs-test/initramfs_data.cpio.gz，指定initrd的文件路径。 
 好了，试验一下新的 initrd方式的initramfs吧，效果跟先前的完全一样。 
