@@ -50,13 +50,18 @@
   mkyaffs2image rootfs/ rootfs_qq2440.yaffs
   
 3.烧写
-1). 加载驱动
+1). u-boot
+(1).连接jtag, 上电开机;
+(2).在终端输入命令:
+sudo ～/bin/sjf2440_linux /f:u-boot-qq2440.bin
+(3).选择相应的操作;
+
+2). 加载驱动
 sudo insmo secbulk.ko
 
-2). 烧写img
-(1). 启动按ctrl+C进入u-boot.
-</rich_text><rich_text foreground="#ffff00000000">注意：连接jtag之后， 开机之后，才插入连接PC的usb线， 那时串口输入才有效; 还有jtag和usb线同时连上，是进不了系统的, 要先把其中一个拔掉。</rich_text><rich_text>
-
+3). 烧写img
+(1). 启动按ctrl+C进入u-boot.</rich_text><rich_text foreground="#ffff00000000"> 
+开机之后，才插入连接PC的usb线， 那时串口输入才有效; 还有jtag和usb线同时连上，是进不了系统的, 要先把其中一个拔掉。</rich_text><rich_text>
 </rich_text><rich_text foreground="#ffff00000000">如果开机的时候没有串口信息输出，先要把连接PC的usb线断开，然后再上电开机，再插入连接PC的usb线(如果没有插入，只能输出，不能输入)。</rich_text><rich_text>
 
 (2). u-boot中选择menu item.
@@ -103,19 +108,7 @@ kernel中定义CONFIG_GPIO_SYSFS
 	Device Drivers -&gt; GPIO Support -&gt; (sysfs interface)
 重新编译kernel, 烧录uImage
 进入系统， 可以看到/sys/class/gpio
-</rich_text></node><node name="s3c24xx" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1. qq2440的分区：</rich_text><rich_text>
-</rich_text><rich_text weight="heavy">cat /proc/mtd</rich_text><rich_text>
-mtd0: 00060000 00004000 &quot;u-boot&quot;
-mtd1: 00020000 00004000 &quot;u-boot-env&quot;
-mtd2: 00500000 00004000 &quot;kernel&quot;
-mtd3: 03200000 00004000 &quot;rootfs&quot;
-mtd4: 02efc000 00004000 &quot;rootfs_data&quot;
-mtd5: 00880000 00004000 &quot;other-rootfs&quot;
-
-上面是128MB的nand flash分区，如果是64MB: 384KB, 128KB, 5MB, 50MB, (不到)8.5MB, 0
-
-</rich_text><rich_text weight="heavy">cat /proc/cmdline</rich_text><rich_text>
-root=/dev/mtdblock3 console=ttySAC0 rootfstype=squashfs,ext2</rich_text></node><node name="ipkg包" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text scale="h2" weight="heavy">1.制作</rich_text><rich_text>
+</rich_text></node><node name="ipkg包" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text scale="h2" weight="heavy">1.制作</rich_text><rich_text>
 package-ipkg.mk
 </rich_text><rich_text weight="heavy">范例：</rich_text><rich_text>
 </rich_text><rich_text foreground="#ffff00000000">mkdir -p /tmp/foo/bin
@@ -2270,7 +2263,19 @@ else
     $(eval $(call IncludeProfiles))
   endif
 endif</rich_text></node></node><node name="s3c" prog_lang="custom-colors" readonly="False" tags="" unique_id="13"><rich_text>
-</rich_text><node name="使用qemu 建立mini2440的模拟仿真环境" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text scale="h3" weight="heavy">1. 首先下载qemu for mini2440</rich_text><rich_text>
+</rich_text><node name="s3c24xx" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1. qq2440的分区：</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">cat /proc/mtd</rich_text><rich_text>
+mtd0: 00060000 00004000 &quot;u-boot&quot;
+mtd1: 00020000 00004000 &quot;u-boot-env&quot;
+mtd2: 00500000 00004000 &quot;kernel&quot;
+mtd3: 03200000 00004000 &quot;rootfs&quot;
+mtd4: 02efc000 00004000 &quot;rootfs_data&quot;
+mtd5: 00880000 00004000 &quot;other-rootfs&quot;
+
+上面是128MB的nand flash分区，如果是64MB: 384KB, 128KB, 5MB, 50MB, (不到)8.5MB, 0
+
+</rich_text><rich_text weight="heavy">cat /proc/cmdline</rich_text><rich_text>
+root=/dev/mtdblock3 console=ttySAC0 rootfstype=squashfs,ext2</rich_text></node><node name="使用qemu 建立mini2440的模拟仿真环境" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text scale="h3" weight="heavy">1. 首先下载qemu for mini2440</rich_text><rich_text>
 git clone git://repo.or.cz/qemu/mini2440.git qemu-mini2440
 如果感觉速度慢，直接打包下载
 http://repo.or.cz/w/qemu/mini2440.git/snapshot/HEAD.tar.gz
@@ -3932,16 +3937,20 @@ done:
 	kfree(k_xfers);
 	return status;
 }
-	</rich_text><node name="nrf24l01" prog_lang="custom-colors" readonly="False" tags="" unique_id="18"><rich_text scale="h2">1. 接线 (s3c2440)</rich_text><rich_text>
+	</rich_text><node name="nrf24l01" prog_lang="custom-colors" readonly="False" tags="" unique_id="18"><rich_text scale="h2" weight="heavy">1. 接线 (s3c2440)</rich_text><rich_text>
 nrf-gnd 1 = gnd (CON4-3 or CON4-4)
 nrf-vcc 2 = 3v3 (CON4-5 or CON4-6)
 nrf-ce 3 =  ce (CON4-31) (GPB0)
-nrf-csn 4 = csn (CON4-32) (GPB1)
+nrf-csn 4 = csn (CON4-32) (GPB1)    </rich_text><rich_text foreground="#00000000ffff">//用驱动的cs(GPG2)，通信有问题</rich_text><rich_text>
 nrf-sck 5 = sckl (CON4-27) (GPE13)
 nrf-mo 6 = mosi (CON4-26) (GPE12)
 nrf-mi 7 = miso (CON4-25) (GPE11)
 
-</rich_text><rich_text scale="h2" weight="heavy">2. 范例</rich_text><rich_text>
+</rich_text><rich_text scale="h2" weight="heavy">2. librf24</rich_text><rich_text>
+和arduino中RF24的不同：
+ 1). 获取ack payload的函数调用
+
+</rich_text><rich_text scale="h2" weight="heavy">3. 范例</rich_text><rich_text>
 </rich_text><rich_text scale="h3" weight="heavy">1).</rich_text><rich_text>
 cp -f librf24.so.1.0 /usr/lib
 cd /usr/lib
@@ -3953,9 +3962,306 @@ ln -sf librf24.so.1.0 librf24.so
 
 </rich_text><rich_text scale="h3" weight="heavy">2).</rich_text><rich_text>
 ./pingtest
+输出：
+</rich_text><rich_text foreground="#8b8b69691414">RF24/examples/pingpair/
+ROLE: Ping out
+SPI device       = /dev/spidev0.0
+SPI speed        = 2000000
+CE GPIO  = 32
+STATUS           = 0x0e RX_DR=0 TX_DS=0 MAX_RT=0 RX_P_NO=7 TX_FULL=0
+RX_ADDR_P0-1     = 0xabcdabcd71 0x544d52687c
+RX_ADDR_P2-5     = 0xc3 0xc4 0xc5 0xc6
+TX_ADDR          = 0xabcdabcd71
+RX_PW_P0-6       = 0x01 0x01 0x00 0x00 0x00 0x00
+EN_AA            = 0x3f
+EN_RXADDR        = 0x03
+RF_CH            = 0x4c
+RF_SETUP         = 0x07
+CONFIG           = 0x0f
+DYNPD/FEATURE    = 0x03 0x06
+Data Rate        = 1MBPS
+Model            = nRF24L01+
+CRC Length       = 16 bits
+PA Power         = PA_MAX
+Now sending 1...ok...Got response 225, round-trip delay: 12 microseconds
+Now sending 2...ok...Got response 1, round-trip delay: 12 microseconds
+Now sending 3...ok...Got response 2, round-trip delay: 12 microseconds</rich_text><rich_text>
 
+</rich_text><rich_text foreground="#ffff00000000">通信一次要12ms, 这个应该和系统的调度有关(CONFIG_HZ=200 USER_HZ=100), 
+而用arduino测试只有500多微妙, 最多也是1.5毫秒而已。
+</rich_text></node></node><node name="secbulk驱动" prog_lang="custom-colors" readonly="False" tags="" unique_id="19"><rich_text weight="heavy">include/linux/usb.h</rich_text><rich_text>
+struct usb_interface {
+	/* array of alternate settings for this interface,
+	 * stored in no particular order */
+	struct usb_host_interface *altsetting;
 
-</rich_text></node></node></node><node name="init" prog_lang="custom-colors" readonly="False" tags="" unique_id="17"><rich_text>1. init读取/etc/inittab.
+	struct usb_host_interface *cur_altsetting;	/* the currently
+					 * active alternate setting */
+	unsigned num_altsetting;	/* number of alternate settings */
+
+	/* If there is an interface association descriptor then it will list
+	 * the associated interfaces */
+	struct usb_interface_assoc_descriptor *intf_assoc;
+
+	int minor;			/* minor number this interface is
+					 * bound to */
+	enum usb_interface_condition condition;		/* state of binding */
+	unsigned sysfs_files_created:1;	/* the sysfs attributes exist */
+	unsigned ep_devs_created:1;	/* endpoint &quot;devices&quot; exist */
+	unsigned unregistering:1;	/* unregistration is in progress */
+	unsigned needs_remote_wakeup:1;	/* driver requires remote wakeup */
+	unsigned needs_altsetting0:1;	/* switch to altsetting 0 is pending */
+	unsigned needs_binding:1;	/* needs delayed unbind/rebind */
+	unsigned reset_running:1;
+	unsigned resetting_device:1;	/* true: bandwidth alloc after reset */
+
+	struct device dev;		/* interface specific device info */
+	struct device *usb_dev;
+	atomic_t pm_usage_cnt;		/* usage counter for autosuspend */
+	struct work_struct reset_ws;	/* for resets in atomic context */
+};
+#define	to_usb_interface(d) container_of(d, struct usb_interface, dev)
+
+static inline void *usb_get_intfdata(struct usb_interface *intf)
+{
+	return dev_get_drvdata(&amp;intf-&gt;dev);
+}
+
+static inline void usb_set_intfdata(struct usb_interface *intf, void *data)
+{
+	dev_set_drvdata(&amp;intf-&gt;dev, data);
+}
+
+</rich_text><rich_text scale="h2" weight="heavy">2. driver/usb/core/file.c</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1). usb驱动初始化的时候调用usb_major_init, 支持了这个usb字符设备.</rich_text><rich_text>
+int usb_major_init(void)
+{
+	int error;
+
+	error = register_chrdev(USB_MAJOR, &quot;usb&quot;, &amp;usb_fops);
+	if (error)
+		printk(KERN_ERR &quot;Unable to get major %d for usb devices\n&quot;,
+		       USB_MAJOR);
+
+	return error;
+}
+
+void usb_major_cleanup(void)
+{
+	unregister_chrdev(USB_MAJOR, &quot;usb&quot;);
+}
+
+其他的驱动如果需要这个驱动, 调用usb_register_dev()
+
+</rich_text><rich_text scale="h3" weight="heavy">2). secbulk驱动</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">(1). 注册secbuk的usb driver</rich_text><rich_text>
+static struct usb_driver secbulk_driver= {
+	.name=		&quot;secbulk&quot;,
+	.probe=		secbulk_probe,
+	.disconnect=	secbulk_disconnect,
+	.id_table=	secbulk_table,
+	.supports_autosuspend=0,
+};
+static int __init secbulk_init(void)
+{
+	int result;
+	printk(KERN_INFO &quot;secbulk:secbulk loaded\n&quot;);
+	result = usb_register(&amp;secbulk_driver);
+	if(result) {
+		printk(KERN_ERR &quot;secbulk:usb_register failed: %d&quot;, result);
+		return result;
+	}		
+	return 0;
+}
+
+static void __exit secbulk_exit(void)
+{
+	usb_deregister(&amp;secbulk_driver);
+	printk(KERN_INFO &quot;secbulk:secbulk unloaded\n&quot;);
+}
+
+int usb_register_dev(struct usb_interface *intf,
+		     struct usb_class_driver *class_driver)
+{
+	int retval;
+	int minor_base = class_driver-&gt;minor_base;
+	int minor;
+	char name[20];
+	char *temp;
+
+#ifdef CONFIG_USB_DYNAMIC_MINORS        </rich_text><rich_text foreground="#00000000ffff">//ubuntu linux的.config中已定义</rich_text><rich_text>
+	/* 
+	 * We don't care what the device tries to start at, we want to start
+	 * at zero to pack the devices into the smallest available space with
+	 * no holes in the minor range.
+	 */
+	minor_base = 0;
+#endif
+
+	if (class_driver-&gt;fops == NULL)
+		return -EINVAL;
+	if (intf-&gt;minor &gt;= 0)
+		return -EADDRINUSE;
+
+	retval = init_usb_class();
+	if (retval)
+		return retval;
+
+	dev_dbg(&amp;intf-&gt;dev, &quot;looking for a minor, starting at %d&quot;, minor_base);
+
+	down_write(&amp;minor_rwsem);
+	for (minor = minor_base; minor &lt; MAX_USB_MINORS; ++minor) {
+		if (usb_minors[minor])
+			continue;
+
+		usb_minors[minor] = class_driver-&gt;fops;     </rich_text><rich_text foreground="#00000000ffff">//赋值fops</rich_text><rich_text>
+		intf-&gt;minor = minor;                                      </rich_text><rich_text foreground="#00000000ffff">//索引号保存在usb_interface中  </rich_text><rich_text>
+		break;
+	}
+	up_write(&amp;minor_rwsem);
+	if (intf-&gt;minor &lt; 0)
+		return -EXFULL;
+
+	/* create a usb class device for this usb interface */
+	snprintf(name, sizeof(name), class_driver-&gt;name, minor - minor_base);   </rich_text><rich_text foreground="#00000000ffff">//设备名secbulk0</rich_text><rich_text>
+	temp = strrchr(name, '/');
+	if (temp &amp;&amp; (temp[1] != '\0'))
+		++temp;
+	else
+		temp = name;
+	intf-&gt;usb_dev = device_create(usb_class-&gt;class, &amp;intf-&gt;dev,         </rich_text><rich_text foreground="#00000000ffff">//创建device, 设备号MKDEV(USB_MAJOR, minor), parent为&amp;intf-&gt;dev </rich_text><rich_text>
+				      MKDEV(USB_MAJOR, minor), class_driver,                        </rich_text><rich_text foreground="#00000000ffff">//内部调用dev_set_drvdata(intf-&gt;usb_dev, class_driver)</rich_text><rich_text>
+				      &quot;%s&quot;, temp);
+	if (IS_ERR(intf-&gt;usb_dev)) {
+		down_write(&amp;minor_rwsem);
+		usb_minors[minor] = NULL;
+		intf-&gt;minor = -1;
+		up_write(&amp;minor_rwsem);
+		retval = PTR_ERR(intf-&gt;usb_dev);
+	}
+	return retval;
+}
+
+</rich_text><rich_text weight="heavy">(2).设备插入, 调用secbulk_probe</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">secbulk.c:</rich_text><rich_text>
+static int secbulk_open(struct inode *node, struct file *file)
+{
+	struct usb_interface *interface;
+	struct secbulk_dev *dev;
+	
+	interface = usb_find_interface(&amp;secbulk_driver, iminor(node));
+	if(!interface)
+		return -ENODEV;
+
+	dev = usb_get_intfdata(interface);          </rich_text><rich_text foreground="#00000000ffff">//return dev_get_drvdata(&amp;intf-&gt;dev);</rich_text><rich_text>
+	dev-&gt;bulkout_buffer = kzalloc(BULKOUT_BUFFER_SIZE, GFP_KERNEL);
+	if(!(dev-&gt;bulkout_buffer))
+		return -ENOMEM;
+	if(!mutex_trylock(&amp;dev-&gt;io_mutex))
+		return -EBUSY;
+	file-&gt;private_data = dev;
+
+	return 0;
+}
+
+static struct file_operations secbulk_fops = {
+	.owner 	=	THIS_MODULE,
+	.read 	=	secbulk_read,
+	.write	=	secbulk_write,
+	.open   =	secbulk_open,
+	.release=	secbulk_release,
+};
+
+static struct usb_class_driver secbulk_class = {
+	.name = 	&quot;secbulk%d&quot;,
+	.fops =		&amp;secbulk_fops,
+	.minor_base=	100,
+};
+
+static int secbulk_probe(struct usb_interface *interface, const struct usb_device_id *id)
+{
+	int ret;
+	struct secbulk_dev *dev;
+	struct usb_host_interface *iface_desc;
+	struct usb_endpoint_descriptor *endpoint;
+	int i;
+
+	printk(KERN_INFO &quot;secbulk:secbulk probing...\n&quot;);
+	
+	dev = kzalloc(sizeof(*dev), GFP_KERNEL);
+	if(!dev) {
+		ret = -ENOMEM;
+		goto error;
+	}	
+
+	iface_desc = interface-&gt;cur_altsetting;
+	for(i=0; i &lt; iface_desc-&gt;desc.bNumEndpoints; i++) {
+		endpoint = &amp;(iface_desc-&gt;endpoint[i].desc);
+		if(!dev-&gt;bulk_out_endpointAddr
+		&amp;&amp; usb_endpoint_is_bulk_out(endpoint)) {
+			printk(KERN_INFO &quot;secbulk:bulk out endpoint found!\n&quot;);
+			dev-&gt;bulk_out_endpointAddr = endpoint-&gt;bEndpointAddress;
+			break;
+		}
+	}
+	
+	if(!(dev-&gt;bulk_out_endpointAddr)) {
+		ret = -EBUSY;
+		goto error;
+	}
+
+	</rich_text><rich_text foreground="#ffff00000000">ret = usb_register_dev(interface, &amp;secbulk_class);</rich_text><rich_text>
+	if(ret) {
+		printk(KERN_ERR &quot;secbulk: usb_register_dev failed!\n&quot;);
+		return ret;
+	}		
+	dev-&gt;udev = usb_get_dev(interface_to_usbdev(interface));
+
+	usb_set_intfdata(interface, dev);   
+	
+	mutex_init(&amp;dev-&gt;io_mutex);
+	return 0;
+error:
+	if(!dev)
+		kfree(dev);
+	return ret;
+}
+
+</rich_text><rich_text foreground="#00000000ffff">应用open(&quot;dev/secbulk0&quot;, O_RDWR), 驱动中调用先调用下面函数</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">drivers/usb/core/file.c:</rich_text><rich_text>
+static int usb_open(struct inode * inode, struct file * file)
+{
+	int minor = iminor(inode);
+	const struct file_operations *c;
+	int err = -ENODEV;
+	const struct file_operations *old_fops, *new_fops = NULL;
+
+	down_read(&amp;minor_rwsem);
+	c = usb_minors[minor];      </rich_text><rich_text foreground="#00000000ffff">//获取对应的fops指针</rich_text><rich_text>
+
+	if (!c || !(new_fops = fops_get(c)))    
+		goto done;
+
+	old_fops = file-&gt;f_op;
+	file-&gt;f_op = new_fops;      </rich_text><rich_text foreground="#00000000ffff">//赋值新的fops, 后面的read等操作是直接通过file-&gt;f_op来访问的</rich_text><rich_text> 
+	/* Curiouser and curiouser... NULL -&gt;open() as &quot;no device&quot; ? */
+	if (file-&gt;f_op-&gt;open)
+		err = file-&gt;f_op-&gt;open(inode,file); </rich_text><rich_text foreground="#00000000ffff">//调用secbulk_open()函数</rich_text><rich_text>
+	if (err) {
+		fops_put(file-&gt;f_op);
+		file-&gt;f_op = fops_get(old_fops);
+	}
+	fops_put(old_fops); </rich_text><rich_text foreground="#00000000ffff">//减少引用计数</rich_text><rich_text>
+ done:
+	up_read(&amp;minor_rwsem);
+	return err;
+}
+
+static const struct file_operations usb_fops = {
+	.owner =	THIS_MODULE,
+	.open =		usb_open,
+	.llseek =	noop_llseek,
+};</rich_text></node></node><node name="init" prog_lang="custom-colors" readonly="False" tags="" unique_id="17"><rich_text>1. init读取/etc/inittab.
 ::sysinit:/etc/init.d/rcS S boot
 ::shutdown:/etc/init.d/rcS K stop
 tts/0::askfirst:/bin/ash --login
