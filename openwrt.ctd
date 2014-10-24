@@ -4261,7 +4261,138 @@ static const struct file_operations usb_fops = {
 	.owner =	THIS_MODULE,
 	.open =		usb_open,
 	.llseek =	noop_llseek,
-};</rich_text></node></node><node name="init" prog_lang="custom-colors" readonly="False" tags="" unique_id="17"><rich_text>1. init读取/etc/inittab.
+};</rich_text></node><node name="Arm linux 中的udelay函数" prog_lang="custom-colors" readonly="False" tags="" unique_id="20"><rich_text>    工作中，调试一个新硬件平台(mx28)上的设备驱动。由于要满足时序上的要求，要用到udelay来作延时。由于时序要求比较严格，在使用过程中，发现了一问题。然后udelay(1) 进行测试，用示波器测出的结果竟然是4.7us ，接近5us。证实了udelay 不准确，并不是1us。
+    跟踪了一下代码。arm下面的udelay 应该是在arch/arm/include/asm/delay.h
+extern void __udelay(unsigned long usecs);
+extern void __const_udelay(unsigned long);
+
+#define MAX_UDELAY_MS 2
+
+#define udelay(n)							\
+	(__builtin_constant_p(n) ?					\
+	  ((n) &gt; (MAX_UDELAY_MS * 1000) ? __bad_udelay() :		\
+			__const_udelay((n) * ((2199023U*HZ)&gt;&gt;11))) :	\
+	  __udelay(n))
+</rich_text><rich_text foreground="#00000000ffff">	/* gcc的内建函数__builtin_constant_p用于判断n是否为编译时常数，如果n是常数，返回 1，否则返回 0。*/
+	/* 如果n&gt; MAX_UDELAY_MS * 1000时出错返回，否则调用函数__const_udelay */
+</rich_text><rich_text>   最终实现是在__udelay, __const_udelay。宏定义udelay(n) 。先判定__builtin_constant_p(n)否。int __builtin_constant_p( exp ) 是GCC 提供的一个内置函数判断一个值是否是编译时常量。Linux 相当频繁地使用常量检测，来进行优化。这个函数并不能检测出所有的常量。Udelay 的最大延时值为MAX_UDELAY_MS * 1000 ,即最大不能超过2000us,也就是2ms。</rich_text><rich_text foreground="#0000f0">看到了一个奇怪的数字，2199023U*HZ，为什么出现这个数字？猜测__const_delay 与__udelay 差别就在这个地方。不得不看一下__udelay中的实现。</rich_text><rich_text>
+ 1. //arch/arm/lib/delay.S
+ 2. 
+ 3. .LC0:        .word    loops_per_jiffy
+ 4. .LC1:        .word    (2199023*HZ)&gt;&gt;11 </rich_text><rich_text foreground="#f00000">//HZ = 100</rich_text><rich_text>
+ 5. 
+ 6. /*
+ 7.  * r0 &lt;= 2000
+ 8.  * lpj &lt;= 0x01ffffff (max. 3355 bogomips)
+ 9.  * HZ &lt;= 1000
+ 10.  */
+ 11. 
+ 12. ENTRY(__udelay) </rich_text><rich_text foreground="#f00000">//udelay 参数不为常数时。</rich_text><rich_text>
+ 13.         ldr    r2, .LC1 </rich_text><rich_text foreground="#f00000">//装载LC1到r2</rich_text><rich_text>
+ 14.         mul    r0, r2, r0 </rich_text><rich_text foreground="#f00000">// r0 = r0 * r2 此时r0为udelay参数n</rich_text><rich_text>
+ 15. ENTRY(__const_udelay)                @ 0 &lt;= r0 &lt;= 0x7fffff06 </rich_text><rich_text foreground="#f00000">//udelay 参数不为常数时。
+</rich_text><rich_text> 16.         ldr    r2, .LC0</rich_text><rich_text foreground="#f00000"> //装载LC0到r2</rich_text><rich_text>
+ 17.         ldr    r2, [r2]        @ max = 0x01ffffff </rich_text><rich_text foreground="#f00000">//将r2作为指针，读取指针指向的数存放 r2中 也就是loops_per_jiffy的值
+</rich_text><rich_text> 18.         mov    r0, r0, lsr #14        @ max = 0x0001ffff </rich_text><rich_text foreground="#f00000">//r0中内容右移14位
+</rich_text><rich_text> 19.         mov    r2, r2, lsr #10        @ max = 0x00007fff </rich_text><rich_text foreground="#f00000">//r2中内容右移10位
+</rich_text><rich_text> 20.         mul    r0, r2, r0        @ max = 2^32-1 </rich_text><rich_text foreground="#f00000">// r0 = r0 * r2
+</rich_text><rich_text> 21.         movs    r0, r0, lsr #6 </rich_text><rich_text foreground="#f00000">//r0中内容右移6位, movs为下一指令moveq 更新了CPSR标志位
+</rich_text><rich_text> 22.         moveq    pc, lr
+ 23. /*</rich_text><rich_text foreground="#f0c000">到这个地方应该明白是怎么实现的了，就是利用loops_per_jiffy这个值。汇编语言忘记得差不多了，查了一下。搞明白了每行的意思。最后r0就是用来作递减的loops。上面相当于数学算式如下：
+</rich_text><rich_text> 24. </rich_text><rich_text foreground="#f0c000">    </rich_text><rich_text foreground="#f00000" underline="single">R0 =( ( (n *((2199023*HZ)&gt;&gt;11)) &gt;&gt; 14 ) * (loops_per_jiffy &gt;&gt; 10) ) &gt;&gt; 6</rich_text><rich_text underline="single">
+</rich_text><rich_text> 25. </rich_text><rich_text foreground="#f0c000">不明白这具体是怎么算的,为什么出现移位？下面的注释中写到
+</rich_text><rich_text> 26. </rich_text><rich_text foreground="#f0c000">loops = n * HZ * loops_per_jiffy / 1000000 
+</rich_text><rich_text> 27. </rich_text><rich_text foreground="#f0c000">这个loops 应该这个值啊。N秒的loops值除以1000000,就应该是N us 的loops 值。为什么会出现这些移位呢？2199023是怎么来的？</rich_text><rich_text>*/
+ 28. /*
+ 29.  * loops = r0 * HZ * loops_per_jiffy / 1000000
+ 30.  *
+ 31.  * Oh, if only we had a cycle counter...
+ 32.  */
+ 33. 
+ 34. @ Delay routine
+ 35. ENTRY(__delay)
+ 36.         subs    r0, r0, #1
+ 37. #if </rich_text><rich_text foreground="#f00000">0
+</rich_text><rich_text> 38. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 39. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1
+</rich_text><rich_text> 40. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 41. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1
+</rich_text><rich_text> 42. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 43. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1
+</rich_text><rich_text> 44. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 45. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1
+</rich_text><rich_text> 46. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 47. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1
+</rich_text><rich_text> 48. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 49. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1
+</rich_text><rich_text> 50. </rich_text><rich_text foreground="#808080">        movls    pc, lr
+</rich_text><rich_text> 51. </rich_text><rich_text foreground="#808080">        subs    r0, r0, #1</rich_text><rich_text>
+ 52. #endif
+ 53.         bhi    __delay </rich_text><rich_text foreground="#f00000">//如果为正数就跳转到__delay
+</rich_text><rich_text> 54.         mov    pc, lr
+ 55. ENDPROC(__udelay)
+ 56. ENDPROC(__const_udelay)
+ 57. ENDPROC(__delay)
+ 
+ </rich_text><rich_text foreground="#0000f0">   为什么会出现这些移位呢？2199023是怎么来的？这个计算式里面就只有一个loops_per_jiffy看起来不是常量，其实也是常量。干脆找了一下loops_per_jiffy的计算方法。
+</rich_text><rich_text> 1. 在init/calibrate.c
+ 2. void __init calibrate_delay(void)
+ 3. {
+ 4.  unsigned long ticks, loopbit;
+ 5.  int lps_precision = LPS_PREC;
+ 6.  loops_per_jiffy = (1&lt;&lt;12);</rich_text><rich_text foreground="#0000f0"> </rich_text><rich_text foreground="#f00000">//每滴答循环次数</rich_text><rich_text>
+ 7.  printk(&quot;Calibrating delay loop… &quot;);
+ 8.  while (loops_per_jiffy &lt;&lt;= 1) {
+ 9.  </rich_text><rich_text foreground="#f00000"> /* 等待一个系统滴答的开始 */</rich_text><rich_text>
+ 10.   ticks = jiffies;
+ 11.   while (ticks == jiffies)
+ 12.    /* nothing */;
+ 13.   /* Go .. */
+ 14.   ticks = jiffies;
+ 15.   __delay(loops_per_jiffy); </rich_text><rich_text foreground="#f00000">//延迟 循环loops_per_jiffy次
+</rich_text><rich_text> 16. </rich_text><rich_text foreground="#0000f0">  /*
+</rich_text><rich_text> 17. </rich_text><rich_text foreground="#0000f0">  * 原型
+</rich_text><rich_text> 18. </rich_text><rich_text foreground="#0000f0">  * void __delay(unsigned long loops)
+</rich_text><rich_text> 19. </rich_text><rich_text foreground="#0000f0">    * {
+</rich_text><rich_text> 20. </rich_text><rich_text foreground="#0000f0">   * cur_timer-&gt;delay(loops);
+</rich_text><rich_text> 21. </rich_text><rich_text foreground="#0000f0">    * }
+</rich_text><rich_text> 22. </rich_text><rich_text foreground="#0000f0">  *
+</rich_text><rich_text> 23. </rich_text><rich_text foreground="#0000f0">  */</rich_text><rich_text>
+ 24.   ticks = jiffies – ticks; </rich_text><rich_text foreground="#f00000">//判断是否同一个滴答内</rich_text><rich_text>
+ 25.   if (ticks)
+ 26.    break; </rich_text><rich_text foreground="#f00000">//不同则跳出，已经得到一个粗值
+</rich_text><rich_text> 27.  }
+ 28. /* Do a binary approximation to get loops_per_jiffy set to equal one clock
+ 29.    (up to lps_precision bits) */
+ 30.  loops_per_jiffy &gt;&gt;= 1;
+ 31.  loopbit = loops_per_jiffy;
+ 32. </rich_text><rich_text foreground="#f00000"> /* 第二次计算，采用二分法逐步逼近精确值 */</rich_text><rich_text>
+ 33.  while ( lps_precision-- &amp;&amp; (loopbit &gt;&gt;= 1) ) {
+ 34.   loops_per_jiffy |= loopbit;
+ 35.   ticks = jiffies;
+ 36.   while (ticks == jiffies); </rich_text><rich_text foreground="#f00000">//等待一个滴答开始
+</rich_text><rich_text> 37.   ticks = jiffies;
+ 38.   __delay(loops_per_jiffy); </rich_text><rich_text foreground="#f00000">// 循环loops_per_jiffy，先其值为粗值的1/2，
+</rich_text><rich_text> 39. </rich_text><rich_text foreground="#f00000">                                             // 而精确值必在粗值和loops_per_jiffy之间</rich_text><rich_text>
+ 40.   if (jiffies != ticks) /* longer than 1 tick */
+ 41.    loops_per_jiffy &amp;= ~loopbit; </rich_text><rich_text foreground="#f00000">//倘若大于一个滴答，则说明loops_per_jiffy大于实际值
+</rich_text><rich_text> 42. </rich_text><rich_text foreground="#f00000">                                              // 减去loopbit值
+</rich_text><rich_text> 43.  }
+ 44. .
+ 45. .
+ 46. .
+    </rich_text><rich_text foreground="#000000">loops_per_jiffy</rich_text><rich_text>最后可以得出，也就是它确确实实是个常量，并且至少大于(1&lt;&lt;12)。这时候在网上查了一下arm delay 。终于找到了原因。
+</rich_text><rich_text foreground="#000000"> </rich_text><rich_text>   </rich_text><rich_text foreground="#800080">loops = n * HZ * loops_per_jiffy / 1000000</rich_text><rich_text> 
+    上面的计算，在非浮点处理器（整型处理器）运行时，很容易变为0。 如果loops_per_jiffy * HZ/1000000时，loops_per_jiffy * HZ / 1000000=0。无能你想要延迟多少微秒，总为0。处理方法，除1000000变为乘1/1000000，为保持精度，1/1000000要先左移30位， 变为
+  
+ </rich_text><rich_text foreground="#f00000">(1/1000000)&lt;&lt;30  =  2^30 / 1000000 = 2199023U&gt;&gt;11</rich_text><rich_text>
+  
+   哎，考虑得非常全面。这就明白了“为什么会出现这些移位呢？2199023是怎么来的？”。</rich_text><rich_text foreground="#008000">2199023 &gt;&gt; 11  = (1/1000000) * 2^30</rich_text><rich_text>汇编中出现的移位则是为了把向左移的30位移回来。考虑到溢出，</rich_text><rich_text foreground="#ffff00000000">所以分成了&gt;&gt;14 , &gt;&gt;10, &gt;&gt;6,最后等同于 &gt;&gt;30</rich_text><rich_text> 。到此处就彻底明白了arm 中的udelay是如何实现的。最初udelay不准，为什么会跑到5us？跟代码似乎也没有什么不对的地方，可能跟loops_per_jiffy有关。
+  
+ 参考资料：
+ </rich_text><rich_text link="webs http://blog.chinaunix.net/space.php?uid=20657684">http://blog.chinaunix.net/space.php?uid=20657684</rich_text><rich_text>
+ </rich_text><rich_text foreground="#000000" link="webs http://bbs.chinaunix.net/thread-3676939-1-1.html">http://bbs.chinaunix.net/thread-3676939-1-1.html</rich_text><rich_text>
+</rich_text></node></node><node name="init" prog_lang="custom-colors" readonly="False" tags="" unique_id="17"><rich_text>1. init读取/etc/inittab.
 ::sysinit:/etc/init.d/rcS S boot
 ::shutdown:/etc/init.d/rcS K stop
 tts/0::askfirst:/bin/ash --login
