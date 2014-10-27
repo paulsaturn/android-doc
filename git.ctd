@@ -437,7 +437,8 @@ $ git status
 $ git add .gitmodules another_project
 $ git commit -m &quot;Add another_project submodule&quot;
 $ git submodule init
-</rich_text><rich_text foreground="#a5a52a2a2a2a" scale="h2" weight="heavy">2. 更新你项目中的 Submodule$ cd another_project</rich_text><rich_text>
+</rich_text><rich_text foreground="#a5a52a2a2a2a" scale="h2" weight="heavy">2. 更新你项目中的 Submodule
+</rich_text><rich_text>$ cd another_project
 $ git pull origin master
 $ cd your_project
 $ git add another_project
