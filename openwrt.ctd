@@ -2275,7 +2275,10 @@ mtd5: 00880000 00004000 &quot;other-rootfs&quot;
 上面是128MB的nand flash分区，如果是64MB: 384KB, 128KB, 5MB, 50MB, (不到)8.5MB, 0
 
 </rich_text><rich_text weight="heavy">cat /proc/cmdline</rich_text><rich_text>
-root=/dev/mtdblock3 console=ttySAC0 rootfstype=squashfs,ext2</rich_text></node><node name="使用qemu 建立mini2440的模拟仿真环境" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text scale="h3" weight="heavy">1. 首先下载qemu for mini2440</rich_text><rich_text>
+root=/dev/mtdblock3 console=ttySAC0 rootfstype=squashfs,ext2
+
+</rich_text><rich_text scale="h2" weight="heavy">2.启动</rich_text><rich_text>
+kernel里没有initramfs and initrd, 所以直接mout root(/dev/mtdblock3)，然后执行/sbin/init </rich_text></node><node name="使用qemu 建立mini2440的模拟仿真环境" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text scale="h3" weight="heavy">1. 首先下载qemu for mini2440</rich_text><rich_text>
 git clone git://repo.or.cz/qemu/mini2440.git qemu-mini2440
 如果感觉速度慢，直接打包下载
 http://repo.or.cz/w/qemu/mini2440.git/snapshot/HEAD.tar.gz
