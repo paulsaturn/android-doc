@@ -384,4 +384,1126 @@ nrf24l01模块				arduino			atmega328p
     payload等于RF24NetworkHeader加messag, 
     里面调用RF24的write()函数(调用之前要stopListening, 完成之后调用startListening)
     放送的目标在RF24NetworkHeader的to_node定义，如果to_node是相连的node(父或子)，那么直接发送；如果不是，先发到父node来
-    路由数据。</rich_text></node></node></cherrytree>
+    路由数据。</rich_text></node><node name="FAP &amp; WDP Protocol" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text scale="h2" weight="heavy">FAP (frequency agility protocol)</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. fap_setup.h</rich_text><rich_text scale="h3"> </rich_text><rich_text>
+    这个文件中只包含了wdp_setup.h
+
+</rich_text><rich_text scale="h3" weight="heavy">2. fap.h</rich_text><rich_text>
+#define FAP_DATARATE HAL_NRF_2MBPS    // 2Mbps datarate 
+
+#define FAP_OUTPUT_POWER HAL_NRF_0DBM // 0 dBm output power 
+#define FAP_CRC HAL_NRF_CRC_16BIT     // 16 bit CRC (maximum)
+#define FAP_ADDRESS_WIDTH 5           // 5 byte address
+#define FAP_LP_RX_LISTEN_PERIODS 1    // Low power RX on time                                       
+
+#if(FAP_MAX_FW_PL_LENGTH &gt; FAP_MAX_ACK_PL_LENGTH)
+  #define FAP_MAX_PL_LENGTH FAP_MAX_FW_PL_LENGTH 
+#else
+  #define FAP_MAX_PL_LENGTH FAP_MAX_ACK_PL_LENGTH 
+#endif
+         
+#if(FAP_MAX_ACK_PL_LENGTH &gt; 15)
+  #define FAP_AUTO_RETR_DELAY 500       
+#else
+  #define FAP_AUTO_RETR_DELAY 250       
+#endif  
+
+#define FAP_MAX_TX_PERIOD (130+37+(FAP_MAX_FW_PL_LENGTH*4)+FAP_AUTO_RETR_DELAY)   
+
+#define FAP_DEVICE0 HAL_NRF_PIPE0
+#define FAP_DEVICE1 HAL_NRF_PIPE1
+#define FAP_DEVICE2 HAL_NRF_PIPE2
+#define FAP_DEVICE3 HAL_NRF_PIPE3
+#define FAP_DEVICE4 HAL_NRF_PIPE4
+#define FAP_DEVICE5 HAL_NRF_PIPE5
+#define FAP_LP_RX_BIT (FAP_DEVICE5+1)
+
+</rich_text><rich_text scale="h3" weight="heavy">3.API</rich_text><rich_text>
+fap直接访问nrf接口来实现协议的， 而wdp是在fap的基础上实现协议的。
+// Fap status register definitions
+typedef enum
+{
+  FAP_START_NEW_TX,       </rich_text><rich_text foreground="#00000000ffff">//在fap_timer_isr_function()判断，如果这个标志置上，需要CE_HIGH()，开始发送数据; 这是power up延时之后要处理的</rich_text><rich_text> 
+  FAP_TX_RX_INFINITE_TIMEOUT_EN,    </rich_text><rich_text foreground="#00000000ffff">//不会自动进入idle模式， 所以在fap_goto_idle_mode()函数会清这个标志</rich_text><rich_text>
+  FAP_LP_RX_EN,
+  FAP_CH_SYNC_EN,
+  FAP_PDOWN_IDLE_EN,
+  FAP_TX_SUCCESS,
+  FAP_RX_CH_HOLD,
+  FAP_RADIO_PWR_UP         </rich_text><rich_text foreground="#00000000ffff">//radio已经powerup, (powerdown -&gt; standby-I需要1.5ms - 4.5ms)</rich_text><rich_text>
+} fap_status_reg_mask;
+
+1).void fap_init(void);
+
+2).bool fap_set_address(uint8_t dev, uint8_t* adr); 
+
+3).void fap_get_address(uint8_t dev, uint8_t* adr);  
+
+4).void fap_set_channels(uint8_t *channels);
+
+5).bool fap_select_radio_idle_mode(fap_radio_idle_modes_t mode); // Power down / standby
+</rich_text><rich_text foreground="#00000000ffff">    决定当处于FAP_IDLE, 就进入的模式.
+    typedef enum
+    {
+      FAP_PDOWN_IDLE,
+      FAP_STANDBY_IDLE 
+    }fap_radio_idle_modes_t;
+</rich_text><rich_text>
+6).void fap_goto_idle_mode(void);
+    
+7).fap_modes_t fap_get_mode(void);
+</rich_text><rich_text foreground="#00000000ffff">    typedef enum
+    {
+      FAP_IDLE,
+      FAP_TRANSMITTING,
+      FAP_RECEIVING
+    }fap_modes_t;
+</rich_text><rich_text>    
+8).bool fap_tx_data(fap_tx_rx_struct_t *datainput, uint16_t tx_timeout);
+</rich_text><rich_text foreground="#00000000ffff">    根据datainput-&gt;pipe设置地址来发送datainput-&gt;pl的数据， 调用完成后自动进入idle模式.
+    如果现在是接收模式，内部会切换到发送模式来发送数据， 然后自动进入idle模式.
+    typedef struct
+    {
+      uint8_t pl[FAP_MAX_PL_LENGTH];  
+      uint8_t pl_length;
+      uint8_t pipe;
+    } fap_tx_rx_struct_t;
+</rich_text><rich_text>
+9).void fap_flush_tx_fifo(void);
+    </rich_text><rich_text foreground="#00000000ffff">清空TX FIFO</rich_text><rich_text>
+    
+10). bool fap_write_ack_pload(fap_tx_rx_struct_t* ackdata);
+    </rich_text><rich_text foreground="#00000000ffff">写ack playload</rich_text><rich_text>
+
+11). bool fap_tx_fifo_full(void);
+
+12). void fap_set_output_power(hal_nrf_output_power_t power);
+
+13). void fap_ch_sync_enable(void);
+</rich_text><rich_text foreground="#00000000ffff">    把fap_status置FAP_CH_SYNC_EN
+    Function for enabling a new transmission to be started synchronously to the
+    receiver channel rotation.
+    When synchronization is disabled, any new transmission will be started
+    synchronously with an internal &quot;frequency guess counter&quot;. This synchronization must 
+    be enabled whenever using the function fap_ch_sync_enable().
+    
+    测试范例没有用到这个函数
+</rich_text><rich_text>  
+14). uint8_t fap_get_ch_offset(void); 
+</rich_text><rich_text foreground="#00000000ffff">    Function for getting the offset by the &quot;guessed&quot; receive channel and the 
+    previous successful transmit channel.
+
+    The basic concept for the FAP is that the receiver continuously monitors 
+    a subset of channels in a rotating fashion. After a successful transmission the 
+    transmitting always adjusts an internal &quot;guess counter&quot; to equal this
+    receive channel rotation. A new transmission is always started using the 
+    previous successful channel. When awaiting to send new data until this 
+    function equals 0, the data will be transmitted using the same 
+    frequency as the receiver most likely monitors, thus minimizing 
+    the number of retransmits.
+
+    Note, when using this functionality, the channel synchronization must be enabled by 
+    fap_ch_sync_enable().
+    
+    测试范例没有用到这个函数</rich_text><rich_text>
+
+15). void fap_ch_sync_disable(void);
+
+16). bool fap_tx_success(void); 
+</rich_text><rich_text foreground="#00000000ffff">    判断是否发送成功</rich_text><rich_text>
+    
+17). uint16_t fap_get_tries(void);
+
+18). uint16_t fap_get_ch_switches(void);
+
+19). void fap_rx_data(uint8_t rx_setup, uint16_t receive_timeout);
+    low power mode : 短时间监听， 大部分时间处于关闭
+    low latency mode :  一直在监听
+</rich_text><rich_text foreground="#00000000ffff">    setup是选择接收能量模式和pipe(s)/address(s)来监听输入数据.
+        Bit 0-5 enables/disables receive pipes/addresses 0-5; 1 enables reception and Auto-Acknowledge;  
+            0 disables reception and Auto-Acknowledge. 
+        Bit 6 selects the receive power mode; 1 sets receiver in low power mode and 0 sets the receiver in low latency mode.             
+    receive_timeout是接收超时，时间为receive_timeout*FAP_RX_PERIOD [us], FAP_RX_PERIOD设定为800us.
+        如果参数为0, 那么一直处于接收模式(置FAP_TX_RX_INFINITE_TIMEOUT_EN)，除非调用fap_goto_idle_mode()来强制切换到idle模式。
+        赋值给fap_latency_counter， 并在fap_timer_isr_function()函数中递减计数器：
+</rich_text><rich_text>void fap_timer_isr_function(void)
+{     
+   FAP_NRF_IRQ_DISABLE();                       
+    ...
+  if(fap_mode==FAP_RECEIVING)
+  {   
+    if(FAP_GET_BIT(fap_status, FAP_TX_RX_INFINITE_TIMEOUT_EN) || (!FAP_GET_BIT(fap_status, FAP_TX_RX_INFINITE_TIMEOUT_EN) &amp;&amp; fap_latency_counter&gt;0))
+    {     
+      fap_latency_counter--;
+      if(!FAP_GET_BIT(fap_status, FAP_LP_RX_EN))    
+      {  
+        fap_ch_tab_idx_rx = (fap_ch_tab_idx_rx+1) % FAP_CH_TAB_SIZE; 
+          
+        if(fap_hold_rx_channel == 0)
+        {     
+          CE_LOW();
+          hal_nrf_set_rf_channel(fap_ch_tab[fap_ch_tab_idx_rx]);            </rich_text><rich_text foreground="#00000000ffff">//切换到下一个频道</rich_text><rich_text>
+          CE_HIGH();
+        }
+        else
+        {
+          fap_hold_rx_channel--;                                                                 </rich_text><rich_text foreground="#00000000ffff">//接收成功， 会复位为FAP_RX_CH_HOLD_PERIODS(5), 5*800 us</rich_text><rich_text> 
+        } 
+      } 
+      else
+      {
+        if(fap_timer_period==0)             
+        {
+          // Change channel
+          if(fap_timer_period==0) 
+          {
+            fap_ch_tab_idx_rx = (fap_ch_tab_idx_rx+1) % FAP_CH_TAB_SIZE;          
+            hal_nrf_set_rf_channel(fap_ch_tab[fap_ch_tab_idx_rx]);          </rich_text><rich_text foreground="#00000000ffff">//切换到下一个频道</rich_text><rich_text>
+          }
+          hal_nrf_set_power_mode(HAL_NRF_PWR_UP);
+          FAP_SET_BIT(fap_status, FAP_RADIO_PWR_UP);
+        }
+
+        if(fap_timer_period==FAP_RX_FULL_CH_REV)
+        {
+          CE_LOW();
+          hal_nrf_set_power_mode(HAL_NRF_PWR_DOWN);
+          FAP_CLEAR_BIT(fap_status, FAP_RADIO_PWR_UP);
+        }
+
+        if(fap_timer_period &lt; FAP_RX_FULL_CH_REV)
+        {
+          // RX on
+          if( ( (fap_timer_period-FAP_RADIO_PWR_UP_DELAY) % FAP_RX_SINGLE_CH_REV) == 0)          
+          {
+            CE_HIGH();  </rich_text><rich_text foreground="#00000000ffff">//RX模式</rich_text><rich_text>  
+          }
+          // RX off  
+          if( ( (fap_timer_period-FAP_RADIO_PWR_UP_DELAY-FAP_LP_RX_LISTEN_PERIODS) % FAP_RX_SINGLE_CH_REV) == 0) 
+          {
+            CE_LOW();   </rich_text><rich_text foreground="#00000000ffff">//standby-I模式</rich_text><rich_text>
+          }
+        }
+      }
+    }
+    else
+    {
+      fap_set_system_idle();  
+    }
+    
+    if(FAP_GET_BIT(fap_status, FAP_LP_RX_EN))     
+    {
+      fap_timer_period = (fap_timer_period + 1) % FAP_LP_RX_POLL_PERIOD;    </rich_text><rich_text foreground="#00000000ffff">//(500000/FAP_RX_PERIOD)</rich_text><rich_text>
+    }
+    else
+    {
+      fap_timer_period = (fap_timer_period + 1) % FAP_CH_TAB_SIZE;                </rich_text><rich_text foreground="#00000000ffff">//5</rich_text><rich_text>
+    }
+  } 
+  fap_rx_channel_guess = (fap_rx_channel_guess + 1) % FAP_CH_TAB_SIZE;  </rich_text><rich_text foreground="#00000000ffff">//ch sync模式用到</rich_text><rich_text>
+  
+  FAP_NRF_IRQ_ENABLE();                      
+}
+ 
+20).void fap_flush_rx_fifo(void);        
+
+21). bool fap_read_rx_fifo(fap_tx_rx_struct_t* return_struct);
+
+22). void fap_nrf_isr_function(void);
+</rich_text><rich_text foreground="#00000000ffff">    在响应radio的中断脚的中断服务函数中调用。</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">    处理MAX_RT, TX_DS, RX_DR中断：
+    (1). MAX_RT : switch chanel
+        其中fap_try_counter记录重发次数， 
+        随即变量random_seed = random_seed + fap_try_counter, random_seed在switch nex chanel用到：
+            fap_ch_tab_idx_tx = fap_lfsr_get(random_seed, FAP_CH_TAB_SIZE);          
+         
+    (2).TX_DS ：调用fap_modify_timer_period()调整timer中断， 置FAP_TX_SUCCESS标记， 如果TX FIFO, 进入idle模式；非空， 则： 
+</rich_text><rich_text foreground="#ffff00000000">            fap_retry_extend_counter = 0;
+            fap_try_counter = 0;
+            fap_latency_counter = fap_latency_setup;</rich_text><rich_text foreground="#00000000ffff">
+        
+        timer中断补偿
+</rich_text><rich_text foreground="#ffff00000000">        void fap_modify_timer_period(void)
+        {
+              T2 = ~((FAP_TIMER_MODIFY_PERIOD*4) / 3);
+              TF2 = 0;
+        }
+</rich_text><rich_text foreground="#00000000ffff">        /**
+        Specifies the value to be used when adjusting the FAP timer after every successful
+        transmission. When using the synchronization mechanisms offered by the FAP, this value
+        must be tuned so that the the average number of retransmit equal ~0. (During good radio
+        conditions). A sennsible value using as a starting point for this value is given
+        as #FAP_RX_PERIOD - #FAP_MAX_PL_LENGTH. This parameter can only be optimized for one payload length.  
+        */
+        </rich_text><rich_text foreground="#ffff00000000">#define FAP_TIMER_MODIFY_PERIOD (FAP_RX_PERIOD - 395)</rich_text><rich_text foreground="#00000000ffff">
+            
+    (3). RX_DR : 
+        fap_hold_rx_channel = FAP_RX_CH_HOLD_PERIODS;  // Applies in RX mode only
+        fap_hold_rx_channel变量在fap_timer_isr_function()函数中, fap_hold_rx_channel递减直到0, 如果等于0, 切换下一个到频道（和FAP_TRANSMITTING处理不一样）  
+            fap_timer_isr_function()
+            {
+                ...
+                else if(fap_mode==FAP_RECEIVING) {
+                    ...
+                        fap_ch_tab_idx_rx = (fap_ch_tab_idx_rx+1) % FAP_CH_TAB_SIZE;             
+                          
+                        if(fap_hold_rx_channel == 0)
+                        {     
+                          CE_LOW();
+                          hal_nrf_set_rf_channel(fap_ch_tab[fap_ch_tab_idx_rx]);   
+                          CE_HIGH();
+                        }
+                        else
+                        {
+                          fap_hold_rx_channel--;
+                        }    
+                    ...                 
+                }
+                ...
+            }           
+            </rich_text><rich_text>
+23). void fap_timer_isr_function(void);
+    </rich_text><rich_text foreground="#00000000ffff">FAP timer中断服务函数中调用, timer中断为800us. </rich_text><rich_text>
+    </rich_text><rich_text weight="heavy">Firmware/Common/Timer.c</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">    static void t2_interrupt(void) interrupt 5
+    {
+      TF2 = 0;
+
+      wdp_timer_isr_function();             </rich_text><rich_text foreground="#00000000ffff">//递减device alive counter</rich_text><rich_text foreground="#ffff00000000">
+      fap_timer_isr_function();
+      
+      if(timer_cnt &lt; 0xffff)
+      {
+        timer_cnt++;
+      }
+    }   
+</rich_text><rich_text>    
+</rich_text><rich_text scale="h2" weight="heavy">WDP (wireless desktop protocol)</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. wdp_setup.h</rich_text><rich_text>
+</rich_text><rich_text foreground="#8b8b69691414">/** @name Application parameters*/
+//@{</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the period the host shall enable pairing after power up.
+*/</rich_text><rich_text>
+#define APP_PAIRING_TIMEOUT (5000000/FAP_RX_PERIOD)   // Pairing enabled 5 sec. after host startup
+
+</rich_text><rich_text foreground="#8b8b69691414">//@}
+
+/** @name Common host/device parameters */
+//@{</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">/** Defines the maximum uplink payload length to be used. The device application
+should never exceed this number when writing uplink data using 
+wdp_send_data().
+定义上行链路负载的最大长度
+*/  </rich_text><rich_text>
+#define WDP_MAX_UL_PL_LENGTH      14
+
+</rich_text><rich_text foreground="#00000000ffff">/** Defines the maximum downlink payload length to be used. The host application
+should never exceed this number when writing downlink data using 
+wdp_write_downlink_data().
+定义下行链路负载的最大长度
+*/  </rich_text><rich_text>
+#define WDP_MAX_DL_PL_LENGTH      15 
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the global pairing address to be used for exchanging pairing information.
+交换匹配信息的全局地址
+*/</rich_text><rich_text>
+#define WDP_PAIRING_ADDRESS {12, 15, 65, 32, 26}
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the global subset of channels to be used for exchanging pairing information.
+交换匹配信息的全局通道子集
+*/</rich_text><rich_text>
+#define WDP_PAIRING_CHANNELS {3, 34, 54, 61, 78} 
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the initial value for the &quot;random&quot; master address generator.
+*/</rich_text><rich_text>
+#define WDP_INIT_MASTER_ADDRESS {0, 0, 3, 3} 
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of highest frequency channel to be used when generating channel subset.
+*/</rich_text><rich_text>
+#define WDP_CH_HIGH 80
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of lowest frequency channel to be used when generating channel subset.
+*/</rich_text><rich_text>
+#define WDP_CH_LOW 2
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the interval between each &quot;keep alive&quot; message for a mouse when 
+continuous link activated.
+*/</rich_text><rich_text>
+#define WDP_MOUSE_KA_INTERVAL (1000000/FAP_RX_PERIOD)
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the interval between each &quot;keep alive&quot; message for a keyboard when 
+a continuous link activated.
+*/</rich_text><rich_text>
+#define WDP_KEYBOARD_KA_INTERVAL (1000000/FAP_RX_PERIOD)
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the interval between each &quot;keep alive&quot; message for a remote control when 
+continuous link activated.
+*/</rich_text><rich_text>
+#define WDP_REMOTE_KA_INTERVAL (1000000/FAP_RX_PERIOD)
+
+</rich_text><rich_text foreground="#8b8b69691414">//@}
+
+/** @name Device specific parameters */
+//@{</rich_text><rich_text>
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of device type. This parameter must be set to equal the actual device implemented.   
+*/</rich_text><rich_text>
+#define WDP_DEVICE_TYPE WDP_MOUSE
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the output power to be used by a device when sending a pairing request.
+*/</rich_text><rich_text>
+#define WDP_PAIRING_OUTPUT_POWER HAL_NRF_18DBM
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the timeout period for application user data transmission.   
+*/</rich_text><rich_text>
+#define WDP_TX_DATA_TIMEOUT (500000/FAP_MAX_TX_PERIOD)
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Definition of the timeout period for pairing request transmission.   
+*/</rich_text><rich_text>
+#define WDP_TX_PAIRING_TIMEOUT (50000/FAP_MAX_TX_PERIOD)
+ 
+</rich_text><rich_text foreground="#8b8b69691414">//@}
+
+/** @name Frequency Agility Protocol (FAP) parameters */
+//@{
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the number of frequency channels to be used for the frequency agility
+protocol. The number of channels should be set as high as possible in order to 
+increase the robustness against co-existing radio sources. However, a large number 
+of frequency channels will increase the average transmission latency. 
+*/   </rich_text><rich_text>             
+#define FAP_CH_TAB_SIZE 5                                     
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the time in [us] the receiver shall listen on each channel during receive 
+channel rotation.  
+*/</rich_text><rich_text>
+#define FAP_RX_PERIOD 800
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the number of auto retransmit attempts to be used for the nRF radio.
+
+*/</rich_text><rich_text>
+#define FAP_NRF_AUTO_RETRIES 11     
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies a multiplication factor in order to extend the number of retransmits set up
+by FAP_NRF_AUTO_RETRIES. The nRF radio has a limited number of auto retransmit attempts. 
+The total number of transmit attempts on a single channel before channel switch will equal 
+(FAP_NRF_AUTO_RETRIES+1)*FAP_AUTO_RETRIES_EXTEND.
+*/</rich_text><rich_text>
+#define FAP_AUTO_RETRIES_EXTEND 2                
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the maximum payload length ever to be used for device to host transmission. 
+*/</rich_text><rich_text>
+#define FAP_MAX_FW_PL_LENGTH WDP_MAX_UL_PL_LENGTH+1        // Assumes 1 byte reserved for protocol purposes
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the maximum payload length ever to be used for the ACK payload. This constant
+is used to decide whether 250 or 500 us retransmit delay is to be used,
+as a long ACK payload requires longer retransmit delay. 
+*/</rich_text><rich_text>
+#define FAP_MAX_ACK_PL_LENGTH WDP_MAX_DL_PL_LENGTH         // [bytes]
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the number of #FAP_RX_PERIOD the receive channel rotation shall be halted
+after data is received. It is recommended that this is set &gt; 0 to ensure that
+acknowledge transmission is completed before channel rotation continues. 
+*/</rich_text><rich_text>
+#define FAP_RX_CH_HOLD_PERIODS 5
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the value to be used when adjusting the FAP timer after every successful
+transmission. When using the synchronization mechanisms offered by the FAP, this value
+must be tuned so that the the average number of retransmit equal ~0. (During good radio
+conditions). A sennsible value using as a starting point for this value is given
+as #FAP_RX_PERIOD - #FAP_MAX_PL_LENGTH. This parameter can only be optimized for one payload length.  
+
+*/</rich_text><rich_text>
+#define FAP_TIMER_MODIFY_PERIOD (FAP_RX_PERIOD - 395)
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Specifies the size of the software (SW) portion of the FAP receive FIFO. In receive mode, 
+the received data is placed in a FIFO consisting of the hardware (HW) FIFO provided 
+in the nRF radio in addition to a FIFO contained in the FAP SW. 
+This constant specifies the number of FIFO levels for the FW FIFO. 
+Thus, the total receive FIFO size will equal the number of
+HW FIFO levels + FAP_FIFO_SIZE. The Nordic nRF24L01 provides 
+a 3 level deep HW FIFO.
+*/</rich_text><rich_text>
+//#define FAP_FIFO_SIZE 3                       // xxx
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Speceifies the duration between each &quot;receive burst&quot; when using the
+receive low power mode. This constants is specified in units of 
+FAP_RX_PERIODs which in turn are specified in [us]. Thus, the duration
+between each &quot;receive burst&quot; will equal 
+FAP_LP_RX_POLL_PERIOD*FAP_RX_PERIOD [us]. 
+*/</rich_text><rich_text>
+#define FAP_LP_RX_POLL_PERIOD (500000/FAP_RX_PERIOD)
+
+</rich_text><rich_text foreground="#8b8b69691414">//@}</rich_text><rich_text>
+
+</rich_text><rich_text scale="h3" weight="heavy">2. wdp_comm.h</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">/**
+Relation between device type and radio pipes.   
+*/</rich_text><rich_text>
+typedef enum
+{
+  WDP_PAIRING_PIPE = FAP_DEVICE0,         // WDP SW requires this to equal 0
+  WDP_MOUSE,                              // WDP SW requires this to equal 1
+  WDP_KEYBOARD,                           // WDP SW requires this to equal 2
+  WDP_REMOTE,                             // WDP SW requires this to equal 3
+  WDP_DEV_TYPE_COUNT
+} wdp_dev_types_t;
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Wireless Desktop transmit package definition.
+WDP数据包格式
+*/
+</rich_text><rich_text>#define WDP_TYPE_ID 0                       </rich_text><rich_text foreground="#00000000ffff">//0字节是TYPE, 下面的枚举定义</rich_text><rich_text>
+#define WDP_APP_PL_START (WDP_TYPE_ID+1)
+
+/**
+Definition of possible package TYPE IDs in Wireless Desktop transmit package.
+*/
+typedef enum
+{
+  PAIRING_REQ,          </rich_text><rich_text foreground="#00000000ffff">//paring request; device -&gt; host</rich_text><rich_text>
+  PAIRING_COMPL,     </rich_text><rich_text foreground="#00000000ffff">//paring complete; device -&gt; host</rich_text><rich_text> 
+  PAIRING_RESP,        </rich_text><rich_text foreground="#00000000ffff">//paring response; host -&gt; device</rich_text><rich_text>
+  KEEP_ALIVE,
+  USER_DATA
+};
+
+/**
+Definition of pairing payload.
+*/
+#define DEV_TYPE WDP_APP_PL_START
+#define ADDRESS_B0 (DEV_TYPE+1)
+#define MASTER_ADDRESS_START (ADDRESS_B0+1)
+#define WDP_PAIRING_PL_LENGTH (MASTER_ADDRESS_START + FAP_ADDRESS_WIDTH - 1)
+
+
+</rich_text><rich_text scale="h3" weight="heavy">3. host</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">Firmware/Dongle/main.c</rich_text><rich_text>
+void main(void) 
+{
+    ...
+    wdp_host_init
+    ...
+  </rich_text><rich_text foreground="#00000000ffff">//读取flash中保存的信息</rich_text><rich_text>
+  if(hal_flash_byte_read(PARAM_PREV_PAIRED) == APP_PAIRING_COMMITED)          </rich_text><rich_text foreground="#00000000ffff">// If dongle has paired to devices before</rich_text><rich_text>
+  {
+    hal_flash_bytes_read(PARAM_MASTER_ADR0, radio_data, FAP_ADDRESS_WIDTH-1); </rich_text><rich_text foreground="#00000000ffff">// Read pairing earlier distributed pairing address from flash, FAP_ADDRESS_WIDTH=5</rich_text><rich_text> 
+    wdp_host_set_master_adr(radio_data);                                      </rich_text><rich_text foreground="#00000000ffff">// Setup WDP using earlier used master address (setting pipe1 address)</rich_text><rich_text>
+  }
+  else
+  {
+    if(hal_flash_byte_read(PARAM_PREV_PAIRED) != 0xff)                        // If flash not erased
+    {                                                                         // Erase parameter page
+      hal_flash_page_erase(PARAM_PAGE_N0);
+    }
+    wdp_host_enable_random_adr_gen();                                         </rich_text><rich_text foreground="#00000000ffff">// Start random address generation if no previous pairing has been committed (set WDP_EN_ADR_GEN flag)</rich_text><rich_text>
+  } 
+
+  timer_cnt = 0;                                                                                </rich_text><rich_text foreground="#00000000ffff">// Reset global timing variable</rich_text><rich_text>
+  
+  wdp_host_rx_setup(WDP_RX_PAIRING);                                       // By default listen for pairing requests on power up
+  app_state = APP_PAIRING;
+  
+  while(true)
+  {
+    switch(app_state)                                                         // State control
+    {
+      case APP_PAIRING:
+        app_state = app_pairing();                                            // Pairing state
+        break;
+      case APP_NORMAL:                                                        // Normal state
+        app_state = app_normal();
+        break;
+      case APP_SUSP_WE:                                                       // PC suspend state, remote wakeup enabled
+        app_state = app_susp_we();
+        break;
+      case APP_SUSP_WD:                                                       // PC suspend state, remote wakeup disabled
+        app_state = app_susp_wd();
+        break;
+      default:
+        break;
+    }
+  } // End while
+    
+}
+
+</rich_text><rich_text foreground="#00000000ffff">如果flash中有匹配过的地址， 那么wdp_host_set_master_adr()函数更新wdp_addresses.master的地址, 并设置FAP_DEVICE1的地址    
+如果没有， wdp_host_enable_random_adr_gen()把wdp_status_reg设置WDP_EN_ADR_GEN标志, 
+WDP_EN_ADR_GEN标志的处理是在wdp_host_process_events()函数中</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">然后调用wdp_host_rx_setup(WDP_RX_PAIRING) </rich_text><rich_text>
+void wdp_host_rx_setup(wdp_rx_setup_t setup)
+{
+  fap_goto_idle_mode();
+
+  fap_flush_rx_fifo();
+  fap_flush_tx_fifo();
+
+  if(setup == WDP_RX_PAIRING)
+  {
+    WDP_CLEAR_BIT(wdp_status_reg, WDP_PAIRING_EXECUTED);  
+    
+    // Setup pairing receive channels
+    fap_set_channels(wdp_pairing_ch_tab);       </rich_text><rich_text foreground="#00000000ffff">//把WDP_PAIRING_CHANNELS复制到fap_ch_tab， 并设置rf频道为fap_ch_tab[fap_ch_tab_idx_tx]</rich_text><rich_text>
+    
+    // Note: Pipe 0 (pairing) address setup by wdp_host_init()
+    fap_rx_data( (uint8_t) setup, 0);
+  }
+  else
+  if(setup == WDP_RX_NORMAL)                     
+  {
+    // Setup receive channels
+    wdp_extract_channels(wdp_addresses.master[0], &amp;wdp_gen_purp_struct.pl[0]);  
+    fap_set_channels(&amp;wdp_gen_purp_struct.pl[0]);                                                      </rich_text><rich_text foreground="#00000000ffff">//产生和设置频道子集</rich_text><rich_text>
+
+    // Setup pipe 1 address (master)                                                                               </rich_text><rich_text foreground="#00000000ffff">//设置master(pipe1)地址</rich_text><rich_text> 
+    wdp_gen_purp_struct.pl[0] = wdp_dev_params[0].dev_b0_address; // Mouse address on pipe 1                
+    memcpy(&amp;wdp_gen_purp_struct.pl[1], &amp;wdp_addresses.master[0], FAP_ADDRESS_WIDTH -1);        
+    fap_set_address(FAP_DEVICE1, &amp;wdp_gen_purp_struct.pl[0]);  
+    
+    fap_rx_data( (uint8_t) setup, 0);
+  }
+  else
+  if(setup == WDP_RX_SUSPEND)
+  {
+    fap_rx_data( (uint8_t) setup, FAP_RX_SINGLE_CH_REV); 
+  }
+}
+
+typedef enum
+{
+  WDP_RX_OFF = 0,
+  WDP_RX_NORMAL = ((1 &lt;&lt; WDP_REMOTE) | (1 &lt;&lt; WDP_KEYBOARD) | (1 &lt;&lt; WDP_MOUSE)),
+  WDP_RX_PAIRING = (1 &lt;&lt; WDP_PAIRING_PIPE),
+  WDP_RX_SUSPEND = ((1 &lt;&lt; WDP_LP_RX_BIT) | (1 &lt;&lt; WDP_REMOTE) | (1 &lt;&lt; WDP_KEYBOARD) | (1 &lt;&lt; WDP_MOUSE))    
+} wdp_rx_setup_t;
+
+</rich_text><rich_text foreground="#00000000ffff">WDP_PAIRING_PIPE, WDP_REMOTE, WDP_KEYBOARD, WDP_MOUSE是wdp_dev_types_t定义的枚举（和pipe索引对应）, WDP_LP_RX_BIT是表示low power mode</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">上电开机进入先进入配对模式（app_pairing）, 配对完成才进入正常的通信模式（app_normal）。
+host和device中使用频道子集是用host地址的低字节作为种子产生的。
+wdp_host_process_events()函数中，处理WDP_EN_ADR_GEN, 并接收匹配信息</rich_text><rich_text>
+bool wdp_host_process_events(void)
+{
+  uint8_t temp_dev_index;
+
+  // Random address counter    
+  if(WDP_GET_BIT(wdp_status_reg, WDP_EN_ADR_GEN))
+  {
+    (*((uint16_t*)(&amp;wdp_addresses.master[2]))) += 4;            </rich_text><rich_text foreground="#00000000ffff">//产生master的随机地址</rich_text><rich_text>  
+    (*((uint16_t*)(&amp;wdp_addresses.master[0])))++;  
+  }
+  
+  // Check if received data
+  if(fap_read_rx_fifo(&amp;wdp_rx_struct))
+  {
+    WDP_CLEAR_BIT(wdp_status_reg, WDP_APP_DATA_RDY);
+
+    if(wdp_rx_struct.pipe == WDP_PAIRING_PIPE)
+    {
+      switch(wdp_rx_struct.pl[WDP_TYPE_ID])
+      {
+        case PAIRING_REQ:   </rich_text><rich_text foreground="#00000000ffff">//device会连续发送两次PAIRING_REQ</rich_text><rich_text>
+          temp_dev_index = wdp_rx_struct.pl[DEV_TYPE] - 1;
+        
+          if(!(temp_dev_index &lt; WDP_DEVICE_SUPPORT_SIZE))
+          {
+            break;
+          }        
+
+          WDP_CLEAR_BIT(wdp_status_reg, WDP_EN_ADR_GEN); // Stop address generator
+        
+          // Assemble pairing return payload 
+          wdp_gen_purp_struct.pl[WDP_TYPE_ID] = PAIRING_RESP;
+          wdp_gen_purp_struct.pl[DEV_TYPE] = wdp_rx_struct.pl[DEV_TYPE];
+          
+          wdp_gen_purp_struct.pl[ADDRESS_B0] = wdp_dev_params[temp_dev_index].dev_b0_address;                  
+
+          memcpy(&amp;wdp_gen_purp_struct.pl[MASTER_ADDRESS_START], wdp_addresses.master, FAP_ADDRESS_WIDTH -1 );  </rich_text><rich_text foreground="#00000000ffff">//这个地址也是用到device中</rich_text><rich_text>
+          wdp_gen_purp_struct.pipe = WDP_PAIRING_PIPE;
+          wdp_gen_purp_struct.pl_length = WDP_PAIRING_PL_LENGTH;
+
+          // Write pairing return payload to downlink buffer (ack payload) 
+          
+          fap_write_ack_pload(&amp;wdp_gen_purp_struct);  </rich_text><rich_text foreground="#00000000ffff">//device在第二次ack， 才读到这ack payload</rich_text><rich_text>
+                                                     
+          break;
+        case PAIRING_COMPL:
+          WDP_SET_BIT(wdp_status_reg, WDP_PAIRING_EXECUTED);
+          break;
+        default:
+          break;
+      }    
+    }
+    else
+    {
+      temp_dev_index = wdp_rx_struct.pipe - 1;
+    
+      if(temp_dev_index &lt; WDP_DEVICE_SUPPORT_SIZE) // If data received on device address (not pairing address)
+      {
+        wdp_device_alive_array[temp_dev_index]= wdp_dev_params[temp_dev_index].dev_keep_alive_interval*2;
+      }
+      
+      switch(wdp_rx_struct.pl[WDP_TYPE_ID])
+      {
+        case KEEP_ALIVE:
+          break; 
+        case USER_DATA:
+          WDP_SET_BIT(wdp_status_reg, WDP_APP_DATA_RDY);
+          break;
+        default:
+          break;
+      }
+    }   
+    return true;
+  }
+
+  return false;
+}
+</rich_text><rich_text foreground="#00000000ffff">wdp_host_process_events()函数在app_pairing()， app_normal(), app_susp_we()都有调用。</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1). app_pairing()</rich_text><rich_text>
+app_states_t app_pairing(void)
+{
+  if(usb_get_state() == USB_REM_WU_ENABLE)
+  {            
+    return APP_SUSP_WE; 
+  }          
+            
+  if(usb_get_state() == USB_REM_WU_DISABLE)
+  {       
+    return APP_SUSP_WD;                  
+  }     
+
+  wdp_host_process_events();             
+  
+  if(wdp_host_get_clear_pairing_result())                                 // If pairing requests received from a device 
+  {
+    if(hal_flash_byte_read(PARAM_PREV_PAIRED) != APP_PAIRING_COMMITED)    // If this was the very first pairing request ever 
+    {
+      wdp_host_get_master_adr(radio_data);
+      hal_flash_bytes_write(PARAM_MASTER_ADR0, radio_data, FAP_ADDRESS_WIDTH-1);
+      hal_flash_byte_write(PARAM_PREV_PAIRED, APP_PAIRING_COMMITED);      // Write master address to flash
+    }  
+      
+    wdp_host_rx_setup(WDP_RX_NORMAL);                                  
+    return APP_NORMAL;   
+  }
+
+  if(timer_cnt == APP_PAIRING_TIMEOUT)  </rich_text><rich_text foreground="#00000000ffff">//(==5s)</rich_text><rich_text>
+  {
+    timer_cnt = 0xffff;                                                   
+    wdp_host_rx_setup(WDP_RX_NORMAL);                                  
+    return APP_NORMAL;
+  }  
+  
+  return APP_PAIRING;
+}
+
+</rich_text><rich_text foreground="#00000000ffff">在app_pairing()中接收device到APP_PAIRING_COMMITED, 匹配OK，保存匹配信息到flash;如果等于5s, 超时。 他们最后都调用wdp_host_rx_setup(WDP_RX_NORMAL);  进入app_normal()函数。</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">2). app_normal()</rich_text><rich_text>
+app_states_t app_normal(void)
+{
+  uint8_t dev_type, length, index;                    
+ 
+  if(usb_get_state() == USB_REM_WU_ENABLE)
+  {
+    return APP_SUSP_WE; 
+  }
+    
+  if(usb_get_state() == USB_REM_WU_DISABLE)
+  {
+    return APP_SUSP_WD; 
+  }
+
+  wdp_host_process_events();
+
+  if(wdp_host_get_rx_data(radio_data, &amp;length, &amp;dev_type))                 // If radio activity
+  {
+    if(radio_data[APP_CMD] == APP_USER_INPUT)
+    {
+      switch(dev_type)
+      {
+        case WDP_MOUSE:                       // If mouse data  
+          if(length == APP_MOUSE_PL_LENGTH)
+          {
+            usb_send_packet
+            (
+              &amp;radio_data[APP_DATA],
+              USB_EP_MOUSE,             
+              (APP_MOUSE_PL_LENGTH - APP_DATA)
+            );
+          }
+          break;
+        case WDP_KEYBOARD:                    // If keyboard data
+          if(length == APP_KEYBOARD_PL_LENGTH)
+          {              
+            usb_send_packet
+            (
+              &amp;radio_data[APP_DATA],
+              USB_EP_KEYBOARD,
+              (APP_KEYBOARD_PL_LENGTH - APP_DATA)
+            );
+          }
+          break;   
+      }
+    } 
+    else if( radio_data[APP_CMD] == APP_GET_REQUEST) // If data request received
+    {        
+      wdp_host_write_downlink_data(dev_type, radio_data, WDP_MAX_DL_PL_LENGTH); // Preload uplink data to device     
+    }
+                            
+    if(!wdp_host_get_connection_status(WDP_MOUSE))     </rich_text><rich_text foreground="#00000000ffff">//判断mouse是否连接。</rich_text><rich_text>
+    {</rich_text><rich_text foreground="#00000000ffff">//未连接， 发送为0的数据</rich_text><rich_text>
+      for(index = APP_DATA; index &lt; APP_MOUSE_PL_LENGTH; index++)
+      {
+        radio_data[index] = 0;
+      }
+           usb_send_packet(
+        &amp;radio_data[APP_DATA],
+        USB_EP_MOUSE,
+        (APP_MOUSE_PL_LENGTH - APP_DATA) 
+      );
+    }
+      
+    if(!wdp_host_get_connection_status(WDP_KEYBOARD))   </rich_text><rich_text foreground="#00000000ffff">//判断keyboard是否连接。</rich_text><rich_text>     
+    {</rich_text><rich_text foreground="#00000000ffff">//未连接， 发送为0的数据</rich_text><rich_text>
+      for(index = APP_DATA; index &lt; APP_KEYBOARD_PL_LENGTH; index++)
+      {
+        radio_data[index] = 0;
+      }
+      usb_send_packet(
+        &amp;radio_data[APP_DATA],
+        USB_EP_KEYBOARD,
+        (APP_KEYBOARD_PL_LENGTH - APP_DATA)
+      );
+    }
+  } 
+  return APP_NORMAL;
+}
+</rich_text><rich_text foreground="#00000000ffff">wdp_host_get_connection_status()函数中判断wdp_device_alive_array[dev_type-1]是否等于1, 如果相等，wdp_device_alive_array[dev_type-1]=0, 并返回false, 表示未连接; 否则返回true。
+wdp_device_alive_array[dev_type-1]在wdp_timer_isr_function()函数（timer中断服务中调用）递减直到1; 在wdp_host_process_events()函数中，如果有device的数据进来，wdp_device_alive_array[dev_type-1]就会
+重新赋值为wdp_dev_params[temp_dev_index].dev_keep_alive_interval*2， dev_keep_alive_interval的值定义：
+</rich_text><rich_text foreground="#8b8b69691414">    #define WDP_MOUSE_KA_INTERVAL (1000000/FAP_RX_PERIOD)
+    #define WDP_KEYBOARD_KA_INTERVAL (1000000/FAP_RX_PERIOD)
+    #define WDP_REMOTE_KA_INTERVAL (1000000/FAP_RX_PERIOD)</rich_text><rich_text foreground="#00000000ffff">
+时间都是定义为10s。 
+</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">数据包格式:</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">/** 
+Application user data payload suggestion.
+*/</rich_text><rich_text>
+#define APP_CMD 0
+#define APP_ATTRIBUTE (APP_CMD+1)
+#define APP_DATA (APP_ATTRIBUTE+1)
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Suggested commands to be used in APP_CMD field in application payload.
+APP_CMD命令的定义
+*/</rich_text><rich_text>
+typedef enum
+{
+  APP_USER_INPUT,
+  APP_SET_REQUEST,
+  APP_GET_REQUEST,
+  APP_SET_RESPONS,
+  APP_GET_RESPONS,
+  APP_SUSPEND
+} command;
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Suggested payload APP_DATA contents for wireless mouse.   
+*/</rich_text><rich_text>
+#define APP_MOUSE_BUTTONS APP_DATA
+#define APP_MOUSE_X_DISP (APP_MOUSE_BUTTONS+1)
+#define APP_MOUSE_Y_DISP (APP_MOUSE_X_DISP+1)
+#define APP_MOUSE_Z_DISP (APP_MOUSE_Y_DISP+1)
+#define APP_MOUSE_PL_LENGTH (APP_MOUSE_Z_DISP+1)
+
+#if (APP_MOUSE_PL_LENGTH &gt; WDP_MAX_UL_PL_LENGTH)
+  #warning APP_MOUSE_PL_LENGTH must be &gt;= WDP_MAX_UL_PL_LENGTH.  
+#endif
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Suggested payload APP_DATA contents for wireless keyboard.
+*/</rich_text><rich_text>
+#define APP_KEYB_MOD APP_DATA
+#define APP_KEYB_KEYB_RES (APP_KEYB_MOD+1)
+#define APP_KEYB_KEYS (APP_KEYB_KEYB_RES+1)
+#define APP_KEYBOARD_PL_LENGTH (APP_KEYB_KEYS+6)
+
+#if (APP_KEYBOARD_PL_LENGTH &gt; WDP_MAX_UL_PL_LENGTH)
+  #warning APP_KEYBOARD_PL_LENGTH must be &gt;= WDP_MAX_UL_PL_LENGTH.  
+#endif
+
+</rich_text><rich_text foreground="#00000000ffff">/**
+Suggested payload APP_DATA contents for remote control.  
+*/</rich_text><rich_text>
+#define APP_REMOTE_DATA0 APP_DATA
+#define APP_REMOTE_PL_LENGTH (APP_REMOTE_DATA0+1)
+
+#if (APP_KEYBOARD_PL_LENGTH &gt; WDP_MAX_UL_PL_LENGTH)
+  #warning APP_REMOTE_PL_LENGTH must be &gt;= WDP_MAX_UL_PL_LENGTH.  
+#endif
+
+</rich_text><rich_text scale="h2" weight="heavy">4. device </rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">4.1 APIs</rich_text><rich_text>
+1). void wdp_device_init(wdp_dev_types_t dev_type);
+    </rich_text><rich_text foreground="#00000000ffff">Initialization function for the Wireless Desktop Protocol (WDP). This function
+    must be called at least once before any of the remaining WDP functions may be used.
+
+    It is recommended that the timer interrupt service routine used by the WDP is not 
+    enabled until after the WDP is initialized.
+</rich_text><rich_text>
+2). void wdp_device_connect();
+    </rich_text><rich_text foreground="#00000000ffff">Function for setting up a continuous data link between device and host.
+    This function may be useful in cases where it is crucial for
+    the host to distinguish between a &quot;silent&quot; device and a device that
+    for some reason has lost its radio connection to the host. After execution of 
+    this function, the device will start transmitting dummy &quot;keep alive&quot; 
+    messages periodically with an interval set up by #WDP_MOUSE_KA_INTERVAL,
+    #WDP_KEYBOARD_KA_INTERVAL or #WDP_REMOTE_KA_INTERVAL, dependent of the
+    device type. However, the interval will between each dummy package will be 
+    extended whenever a data package is sent by the application, thus these dummy 
+    messages will not be transmitted as long as the link is kept alive by actual 
+    user data. 
+     
+    Note that the device power consumption will increase when this
+    continuous link is activated. 
+</rich_text><rich_text>
+3). void wdp_device_disconnect();
+</rich_text><rich_text foreground="#00000000ffff">    Function for shutting down the continuous data link set up by 
+    wdp_device_connect(). </rich_text><rich_text>
+    
+4). bool wdp_device_connected(void);
+</rich_text><rich_text foreground="#00000000ffff">    This function returns the status of the continuous 
+    link established by wdp_device_connect(). On failure of
+    transmitting a dummy &quot;keep alive&quot; message, the
+    protocol automatically goes to &quot;disconnected&quot;
+    and the continuous data transmission will be shut
+    down.</rich_text><rich_text>
+
+5). bool wdp_device_get_downlink_data(uint8_t *dst, uint8_t *length);
+    </rich_text><rich_text foreground="#00000000ffff">Function for reading received downlink data from host. The host may piggyback 
+    a data payload on any acknowledge sent in return on a device to host transmission. 
+    This function can be used by the application to read this payload.
+</rich_text><rich_text>
+6). void wdp_device_process_events();
+</rich_text><rich_text foreground="#00000000ffff">    Function for processing WDP events. This function monitors WDP timing variables
+    and transmits a new &quot;keep alive&quot; message whenever necessary in order to maintain a 
+    continuous data link set up by wdp_device_connect(). This function only has to be called 
+    whenever a continues data link is activated.
+</rich_text><rich_text>
+7). bool wdp_device_request_pairing();
+    </rich_text><rich_text foreground="#00000000ffff">Function for sending a pairing request to the dongle 
+    using the global pairing address and channels defined by 
+    #WDP_PAIRING_ADDRESS and #WDP_PAIRING_CHANNELS, respectively. 
+</rich_text><rich_text>
+    </rich_text><rich_text foreground="#00000000ffff">If a pairing response is received from the dongle the 
+    device will pair with the address returned in the pairing 
+    response payload from the dongle, thus the channel set and address 
+    used for data transmission will be updated.</rich_text><rich_text>
+    
+8). bool wdp_device_send_data(uint8_t *dat, uint8_t length);
+    </rich_text><rich_text foreground="#00000000ffff">Function for starting transmission of data from device to host.</rich_text><rich_text>
+    
+9). void wdp_device_set_address(uint8_t *adr);
+    </rich_text><rich_text foreground="#00000000ffff">Function for setting the device address. During pairing the device
+    address is automatically written, and this function is normally needed 
+    only to rewrite a previous received pairing address on power up. 
+
+    Note that the WDP must be in IDLE mode in order for this function to 
+    have any effect.
+</rich_text><rich_text>
+10). void wdp_send_keep_alive();
+</rich_text><rich_text foreground="#00000000ffff">    发送如下数据到host, 来维系continuous data link
+    .pl[WDP_TYPE_ID] = KEEP_ALIVE;
+    .pipe = FAP_DEVICE1;
+    .pl_length = WDP_TYPE_ID_ONLY_PL;
+</rich_text><rich_text>    
+11). void wdp_timer_isr_function();
+</rich_text><rich_text foreground="#ffff00000000">    void wdp_timer_isr_function()
+    {   
+      if(WDP_GET_BIT(wdp_status, WDP_CONNECTED))
+      {
+        if(wdp_keep_alive_counter &lt; wdp_dev_dynamic_setup.ka_interval)    
+        {
+          wdp_keep_alive_counter++; 
+        }
+        else
+        {
+          wdp_keep_alive_counter=0;                           // Reset keep alive counter
+          WDP_SET_BIT(wdp_status, WDP_SEND_KEEP_ALIVE); 
+        }
+      }  
+    }
+</rich_text><rich_text foreground="#00000000ffff">    处理keep alive数据发送的倒计时。</rich_text><rich_text>
+    
+12). bool wdp_transmit_tx_buffer_and_wait(fap_tx_rx_struct_t *datainput, uint16_t tx_timeout);
+</rich_text><rich_text foreground="#00000000ffff">    发送数据， 并等待完成:
+    while(fap_get_mode()!= FAP_IDLE);
+</rich_text><rich_text>    
+</rich_text><rich_text scale="h3" weight="heavy">4.2 keyboard</rich_text><rich_text>
+void main(void)
+{
+    uint16_t startupcount = 0xffff;               // Wait to ensure proper radio startup    
+    tx_buf_states_t tx_buf_state = NO_DATA_RDY;   // TX buffer status variable
+    uint8_t buttons, tx_pl_length;	                            
+    uint16_t tries=0, packages=0;                 // For communication monitoring
+    int8_t tx_buf[WDP_MAX_UL_PL_LENGTH];          // Transmit (uplink) data buffer
+    int8_t rx_buf[WDP_MAX_DL_PL_LENGTH];          // Receive (downlink) data buffer
+    uint8_t temp_adr_buf1[FAP_ADDRESS_WIDTH];
+  	uint8_t temp_adr_buf2[FAP_ADDRESS_WIDTH];
+
+    while(startupcount--);
+      
+    CLKCTL = 0;
+
+    // Radio + SPI setup 
+    CE_LOW();
+    RFCTL = 0x10;                                 // RF SPI Enable 
+    RF = 1;                                       // Radio IRQ enable
+    RFCKEN = 1;                                   // RF clk enable
+
+    t2_init(FAP_RX_PERIOD);                       // Setup WDP/FAP timer
+	ET2 = 1;
+
+    P0DIR = (BIT_5 | BIT_4 | BIT_3 );
+    P0ALT = 0;                                    // Set up P0 as GPIO
+    P0EXP = 0;
+
+  	LED1=LED2=LED3=1;
+    while(startupcount--);
+
+    wdp_device_init(WDP_KEYBOARD);
+    wdp_select_radio_idle_mode(WDP_STANDBY_IDLE); // Radio in IDLE between transmissions for minimum latency               
+
+	LED1=LED2=LED3=0;
+
+    hal_flash_bytes_read(PARAM_DEV_ADR0, temp_adr_buf1, FAP_ADDRESS_WIDTH);
+    wdp_device_set_address(temp_adr_buf1);         // Setup address stored in flash   
+  
+    // Clear TX and RX buffer
+    for(buttons = 0; buttons &lt; WDP_MAX_DL_PL_LENGTH; buttons++)
+        rx_buf[buttons] = tx_buf[buttons] = 0;
+
+    EA = 1;                                       // Enable global interrupt
+
+  	tx_buf[APP_ATTRIBUTE] = 0xFF; 
+
+//-----------------------------------------------------------------------------   
+// Main application
+//----------------------------------------------------------------------------- 
+
+    while(1)
+    {          
+
+    	if (tx_buf[APP_KEYB_KEYS] == 0)
+		{    
+			if(!SW1)
+			{                                     
+      			tx_buf[APP_KEYB_MOD ] = 0X02;
+				tx_buf[APP_KEYB_KEYS] = 0x11;
+				LED1=1;
+			}
+			if (!SW2)
+			{
+            	tx_buf[APP_KEYB_KEYS] = 0x15;
+				LED1=1;
+			}                                          
+ 			if (!SW3)
+			{					
+            	tx_buf[APP_KEYB_KEYS] = 0x09;
+				LED1=1;                                          
+			}
+
+			if(!SW1 | !SW2 | !SW3)
+			{
+				tx_buf[APP_CMD] = APP_USER_INPUT;      	// Assemble TX packet
+        		tx_pl_length = APP_KEYBOARD_PL_LENGTH;
+        		tx_buf_state = UNSYNC_DATA_RDY;         // Indicates new data, protocol out of sync
+        		wdp_device_ch_sync_disable();
+			}
+	   	}
+	   	else if(SW1 &amp; SW2 &amp; SW3)
+	   	{
+      		tx_buf[APP_KEYB_MOD ] = 0;
+            tx_buf[APP_KEYB_KEYS] = 0;
+  			LED1=0;
+
+			tx_buf[APP_CMD] = APP_USER_INPUT;      	// Assemble TX packet
+        	tx_pl_length = APP_KEYBOARD_PL_LENGTH;
+        	tx_buf_state = UNSYNC_DATA_RDY;         // Indicates new data, protocol out of sync
+        	wdp_device_ch_sync_disable();
+		}		       
+//-----------------------------------------------------------------------------
+// Transmit keyboard data
+//-----------------------------------------------------------------------------    
+    
+		if( (wdp_get_mode() == WDP_IDLE) &amp;&amp;   
+        (((tx_buf_state == SYNC_DATA_RDY) &amp;&amp; (wdp_device_get_ch_offset()==0)) || (tx_buf_state == UNSYNC_DATA_RDY)))               
+    	{	
+      		tries += wdp_device_get_tries();          // Counts the number of sent payloads including retransmits 
+      		packages++;                               // Counts the number sent data packages excluding retransmits
+     
+      		if(!wdp_device_tx_success())    </rich_text><rich_text foreground="#00000000ffff">//fap_tx_success()</rich_text><rich_text>
+      		{ 	
+				LED3=1;
+
+        		if(wdp_device_request_pairing())       </rich_text><rich_text foreground="#00000000ffff"> // Send pairing request whenever previous transmission failed</rich_text><rich_text>
+        		{                                          
+          			wdp_device_get_adr(temp_adr_buf1);
+
+          			hal_flash_bytes_read(PARAM_DEV_ADR0, temp_adr_buf2, FAP_ADDRESS_WIDTH);   
+          
+          		// Store received pairing address of different from previous stored pairing address
+          			if(memcmp(temp_adr_buf1, temp_adr_buf2, FAP_ADDRESS_WIDTH))
+          			{
+            			hal_flash_page_erase(PARAM_PAGE_N0);
+            			hal_flash_bytes_write(PARAM_DEV_ADR0, temp_adr_buf1, FAP_ADDRESS_WIDTH);
+          			}        
+        		}
+      		}
+			else
+			{
+      			tx_buf[APP_ATTRIBUTE]++;       
+      			wdp_device_send_data(tx_buf, APP_KEYBOARD_PL_LENGTH); // Transmit data
+				LED3=0;
+      			tx_buf_state = NO_DATA_RDY;                 // Indicates no unsent data
+			}
+    	}           
+  	} // End while()
+} // End main()
+
+</rich_text><rich_text foreground="#00000000ffff">调用wdp_device_tx_success来判断发送是否成功。如果不成功， 调用wdp_device_request_pairing来匹配设备; 如果成功， 调用wdp_device_send_data()下一笔数据。</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">wdp_device_send_data()函数内， 数据包的
+.pipe = FAP_DEVICE1;
+.pl[WDP_TYPE_ID] = USER_DATA;
+复制数据， 最后调用下面函数发送数据：
+fap_tx_data(&amp;wdp_general_buffer, WDP_TX_DATA_TIMEOUT);
+</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">4.3 mouse</rich_text><rich_text>
+</rich_text></node></node></cherrytree>

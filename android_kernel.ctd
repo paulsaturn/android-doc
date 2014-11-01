@@ -1401,9 +1401,9 @@
 15.   
 16.     return 0;  
 17. }  
-    这里通过调用register_shrinker函数向内存管理系统注册一个内存回收算法函数。在Linux内核中，当系统内存紧张时，内存管理系统就 会进行内存回收算法，将一些最近没有用过的内存换出物理内存去，这样可以增加物理内存的供应。因此，当内存管理系统进行内存回收时，就会调用到这里的 ashmem_shrink函数，让Ashmem驱动程序执行内存回收操作：
+    这里通过调用register_shrinker函数向内存管理系统注册一个内存回收算法函数。在Linux内核中，当系统内存紧张时，内存管理系统就会进行内存回收算法，将一些最近没有用过的内存换出物理内存去，这样可以增加物理内存的供应。因此，当内存管理系统进行内存回收时，就会调用到这里的ashmem_shrink函数，让Ashmem驱动程序执行内存回收操作：
 1. /* 
-2.  * ashmem_shrink - our cache shrinker, called from mm/vmscan.c :: shrink_slab 
+2.  * ashmem_shrink - our cache shrinker, </rich_text><rich_text foreground="#ffff00000000">called from mm/vmscan.c :: shrink_slab</rich_text><rich_text> 
 3.  * 
 4.  * 'nr_to_scan' is the number of objects (pages) to prune, or 0 to query how 
 5.  * many objects (pages) we have in total. 
@@ -1450,9 +1450,9 @@
 </rich_text></node><node name="在进程间共享的原理分析 " prog_lang="custom-colors" readonly="False" tags="" unique_id="32"><rich_text>    在前面一篇文章</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6664554">Android系统匿名共享内存Ashmem（Anonymous Shared Memory）驱动程序源代码分析</rich_text><rich_text>中，我们系统地介绍了Android系统匿名共享内存的实现原理，其中着重介绍了它是如何辅助内存管理系统来有效地管理内存的，在再前面一篇文章</rich_text><rich_text foreground="#000000" link="webs http://blog.csdn.net/luoshengyang/article/details/6651971">Android系统匿名共享内存Ashmem（Anonymous Shared Memory）简要介绍和学习计划</rich_text><rich_text>中，我们还提到，Android系统匿名共享内存的另外一特点是通过Binder进程间通信机制来实现进程间共享的，本文中，将详细介绍Android系统匿名共享内存是如何使用Binder进程间通信机制来实现进程间共享的。
     由于Android系统匿名共享内存在进程间共享的原理涉及到Binder进程间通信机制的相关知识，所以希望读者在继续阅读本文之前，最好对Android系统的Binder进程间通信机制有一定的了解，具体可以参考</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6618363">Android进程间通信（IPC）机制Binder简要介绍和学习计划</rich_text><rich_text>这篇文章。
     在</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6651971">Android系统匿名共享内存Ashmem（Anonymous Shared Memory）简要介绍和学习计划</rich_text><rich_text>这 篇文章中，我们举了一个例子来简要地介绍了Android系统的匿名共享内存机制及其使用方法，在这篇文章中，我们继续以这个实例来说明Android系 统的匿名共享内存是如何使用Binder进程间通信机制来实现进程间共享的。为了方便描述，结合前面的Binder进程间通信机制知识，我们通过下面这个 序列图来总结这个实例中的匿名共享内存文件的文件描述符在进程间传输的过程：
+</rich_text><rich_text justification="left"></rich_text><rich_text>
 
-
-         这里，  我们需要关注的便是虚线框部分了，它在Binder驱动程序中实现了在两个进程中共享同一个打开文件的方法。我们知道，在Linux系统中，文件描述符其 实就是一个整数。每一个进程在内核空间都有一个打开文件的数组，这个文件描述符的整数值就是用来索引这个数组的，而且，这个文件描述符只是在本进程内有 效，也就是说，在不同的进程中，相同的文件描述符的值，代表的可能是不同的打开文件。因此，在进程间传输文件描述符时，不能简要地把一个文件描述符从一个 进程传给另外一个进程，中间必须做一过转换，使得这个文件描述在目标进程中是有效的，并且它和源进程的文件描述符所对应的打开文件是一致的，这样才能保证 共享。
+         这里，  我们需要关注的便是虚线框部分了，它在Binder驱动程序中实现了在两个进程中共享同一个打开文件的方法。我们知道，在Linux系统中，文件描述符其实就是一个整数。每一个进程在内核空间都有一个打开文件的数组，这个文件描述符的整数值就是用来索引这个数组的，而且，这个文件描述符只是在本进程内有效，也就是说，在不同的进程中，相同的文件描述符的值，代表的可能是不同的打开文件。因此，在进程间传输文件描述符时，不能简要地把一个文件描述符从一个进程传给另外一个进程，中间必须做一过转换，使得这个文件描述在目标进程中是有效的，并且它和源进程的文件描述符所对应的打开文件是一致的，这样才能保证共享。
         在</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6621566">浅谈Service Manager成为Android进程间通信（IPC）机制Binder守护进程之路</rich_text><rich_text>一文中，我们介绍了用来传输的Binder对象的数据结构struct flat_binder_object，它定义在kernel/common/drivers/staging/android/binder.h 文件中：
 1. /* 
 2.  * This is the flattened representation of a Binder object for transfer 
@@ -1575,6 +1575,26 @@
     
     现在，在目标进程中，打开文件结构有了，文件描述符也有了，接下来就可以把这个文件描述符和这个打开文件结构关联起来就可以了：
     1. task_fd_install(target_proc, target_fd, file);  
+
+</rich_text><rich_text weight="heavy">drivers/staging/android/binder.c</rich_text><rich_text>
+/*
+ * copied from fd_install
+ */
+static void task_fd_install(
+	struct binder_proc *proc, unsigned int fd, struct file *file)
+{
+	struct files_struct *files = proc-&gt;files;
+	struct fdtable *fdt;
+
+	if (files == NULL)
+		return;
+
+	spin_lock(&amp;files-&gt;file_lock);
+	fdt = files_fdtable(files);
+	BUG_ON(fdt-&gt;fd[fd] != NULL);
+	rcu_assign_pointer(fdt-&gt;fd[fd], file);
+	spin_unlock(&amp;files-&gt;file_lock);
+}
     
     由于这个Binder对象最终是要返回给目标进程的，所以还要修改fp-&gt;handle的值，它原来表示的是在源进程中的文件描述符，现在要改成目标进程的文件描述符：
     1. fp-&gt;handle = target_fd;  
