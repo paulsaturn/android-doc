@@ -1,4 +1,4 @@
-<?xml version="1.0" ?><cherrytree><node name="配置编译" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1.配置
+<?xml version="1.0" ?><cherrytree><node name="配置编译" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text weight="heavy">1.配置</rich_text><rich_text>
   $cp feeds.conf.default feeds.conf
  然后编辑feeds.conf文件，前面加注释符号＃表示该软件源不会被下载和安装。需要安装何种软件源就去掉相应的＃：
 	src-svn packages svn://svn.openwrt.org.cn/dreambox/feeds/packages_10.03.2
@@ -37,7 +37,7 @@
   彻底清理 (包括下载的文件)
 	make distclean   
 	
-2.编译
+</rich_text><rich_text weight="heavy">2.编译</rich_text><rich_text>
   make
       
   make -j 3 V=99
@@ -49,12 +49,15 @@
   
   mkyaffs2image rootfs/ rootfs_qq2440.yaffs
   
-3.烧写
+</rich_text><rich_text weight="heavy">3.烧写</rich_text><rich_text>
 1). u-boot
 (1).连接jtag, 上电开机;
 (2).在终端输入命令:
 sudo ～/bin/sjf2440_linux /f:u-boot-qq2440.bin
 (3).选择相应的操作;
+
+设置loglevel, 默认为7
+bootargs=root=/dev/mtdblock3 console=ttySAC0 rootfstype=squashfs,ext2 loglevel=8
 
 2). 加载驱动
 sudo insmo secbulk.ko
@@ -82,7 +85,7 @@ sudo ~/bin/dnw -a 0x32000000 openwrt-s3c24xx-squashfs.img
 #测试kernel
 sudo ~/bin/dnw -a 0x30008000 openwrt-s3c24xx-mini2440-uImage	
 
-4. 
+</rich_text><rich_text weight="heavy">4. </rich_text><rich_text>
 #mount SD
 mount -t vfat /dev/mmcblk0p1 /mnt 
 
@@ -103,11 +106,436 @@ DE AD BE EF BA AD
 F0 0D 
 #数据测试OK
 
-5. 支持sysfs gpio操作
+</rich_text><rich_text weight="heavy">5. 支持sysfs gpio操作</rich_text><rich_text>
 kernel中定义CONFIG_GPIO_SYSFS
 	Device Drivers -&gt; GPIO Support -&gt; (sysfs interface)
 重新编译kernel, 烧录uImage
 进入系统， 可以看到/sys/class/gpio
+
+</rich_text><rich_text weight="heavy">6.进系统出现如下错误：</rich_text><rich_text>
+ mini_fo: build_sto_structure: failed to create storage dir
+ 
+ 先重启，进kernel之后一直按[enter]进入命令终端，输入:
+ firstboot
+ 不用管是否出错，然后重启机子。 
+ 这个命令erase rootfs_data分区; 因为这个版本是根据128MB来分区的，但是板子只有64MB, 所以执行这个命令会出错。
+ 
+ </rich_text><rich_text weight="heavy">7. functions.sh</rich_text><rich_text>
+   1). export ${NO_EXPORT:+-n}
+    如果NO_EXPORT定义， 那么上面变为export -n; 如果没有定义, 则export
+    </rich_text><rich_text weight="heavy">export</rich_text><rich_text> 
+        参　　数：    
+            -f 　代表[变量名称]中为函数名称。　
+            -n 　删除指定的变量。变量实际上并未删除，只是不会输出到后续指令的执行环境中。　
+            -p 　列出所有的shell赋予程序的环境变量。
+                
+   2). 
+   eval export ${NO_EXPORT:+-n} -- &quot;${1}=\${CONFIG_${2}_${3}:-\${4}}&quot;;; 
+   设置${1}环境变量(当前shell环境有效); 如果CONFIG_${2}_${3}没有定义或NULL, 返回${4};
+   中间的--表示
+   
+   3).
+</rich_text><rich_text weight="heavy">/etc/init.d/mjpg-streamer</rich_text><rich_text>   
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2009 OpenWrt.org
+START=50
+
+SSD=start-stop-daemon
+NAME=mjpg_streamer
+PIDF=/var/run/$NAME.pid
+PROG=/usr/bin/$NAME
+
+start() {
+	config_load mjpg-streamer
+	config_get device core device
+	config_get resolution core resolution
+	config_get fps core fps
+	config_get port core port
+	config_get_bool enabled core enabled
+	[ $enabled -gt 0 -a -c $device ] &amp;&amp; sleep 3 &amp;&amp; $SSD -S -m -p $PIDF -q -x $PROG -- --input &quot;input_uvc.so --device $device --fps $fps --resolution $resolution&quot; --output &quot;output_</rich_text><rich_text link="webs http.so">http.so</rich_text><rich_text> --port $port&quot; &amp;
+}
+
+stop() {
+	$SSD -K -p $PIDF
+}
+
+</rich_text><rich_text weight="heavy">/etc/functions.h</rich_text><rich_text>   
+ config_load() {
+	[ -n &quot;$IPKG_INSTROOT&quot; ] &amp;&amp; return 0
+	uci_load &quot;$@&quot;
+}
+</rich_text><rich_text foreground="#00000000ffff">config_load name来加载配置文件。此函数首先会把name当做是绝对文件名并后退到/etc/config/进行加载。
+如果你想对节段或选项使用特殊回调的话，你需要重新定义以下描述的shell函数，并且是在运行config_load之前，/etc/functions.sh之后。
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">Callbacks</rich_text><rich_text foreground="#00000000ffff">
+在句法分析过程中，每次遇到UCI节段标题时都会调用config_cb过程。
+当被调用时，此过程就会接收到两个参数：
+    1.       TYPE，节段类型
+    2.       NAME,节段名称
+    
+与config_cb相似，每次遇到UCI选项时都会调用option_cb过程。当被调用时，此进程会接收两个参数：
+    1.       NAME，选项名称
+    2.       VALUE，选项值
+        
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">Iterating</rich_text><rich_text foreground="#00000000ffff">
+    用config_foreach过程迭代配置节段。Config_foreach过程至少需要一个参数：
+    1.       Function，为每个遇到的节段而调用的预先定义的程序名称
+    2.       Type，只迭代已给类型的节段，跳过其它的。
+    3.       Additional arguments，所有以下参数都按原样传递给回调程序
+    
+    在以下示例中，每个config interface节段都会在/etc/config/network调用handle_interface过程。test字符串会被做为第二个参数在每个调用中进行传送。
+    handle_interface() { 
+        local config=&quot;$1&quot; 
+        local custom=&quot;$2&quot; 
+        # run commands for every interface section 
+    } 
+    config_load network 
+    config_foreach handle_interface interface test
+    也可以通过return一个非零值在callback内部取消迭代。在每个节段回调内，config_get或config_set过程也许是用来读取或设置属于当前进程段的值。        
+</rich_text><rich_text>
+config_get() {
+	case &quot;$3&quot; in
+		&quot;&quot;) eval echo &quot;\${CONFIG_${1}_${2}:-\${4}}&quot;;;
+		*)  eval export ${NO_EXPORT:+-n} -- &quot;${1}=\${CONFIG_${2}_${3}:-\${4}}&quot;;;
+	esac
+}
+</rich_text><rich_text foreground="#00000000ffff">读取选项
+Config_get过程至少需要三个参数：
+1.        用以保存恢复值的可变名称
+2.        读取数值的节段ID
+3.        读取数值的选项名称
+4.        默认，如果选项未设置数值会返回</rich_text><rich_text>
+
+config_set() {
+	local section=&quot;$1&quot;
+	local option=&quot;$2&quot;
+	local value=&quot;$3&quot;
+	local old_section=&quot;$CONFIG_SECTION&quot;
+
+	CONFIG_SECTION=&quot;$section&quot;
+	option &quot;$option&quot; &quot;$value&quot;
+	CONFIG_SECTION=&quot;$old_section&quot;
+}
+</rich_text><rich_text foreground="#00000000ffff">Config_set过程需要三个参数：
+1.        设置选项的节段ID
+2.        分配数值的选项名称
+3.        分配的数值</rich_text><rich_text>
+
+# config_get_bool &lt;variable&gt; &lt;section&gt; &lt;option&gt; [&lt;default&gt;]
+config_get_bool() {
+	local _tmp
+	config_get _tmp &quot;$2&quot; &quot;$3&quot; &quot;$4&quot;
+	case &quot;$_tmp&quot; in
+		1|on|true|enabled) _tmp=1;;
+		0|off|false|disabled) _tmp=0;;
+		*) _tmp=&quot;$4&quot;;;
+	esac
+	export ${NO_EXPORT:+-n} &quot;$1=$_tmp&quot;
+}
+</rich_text><rich_text foreground="#00000000ffff">Boolean选项也许包括各种数值来表示一个true value，例如on,true,enabled或1。
+Config_get_bool过程简化了对读取boolean选项的处理，并生成一个整数值（1是true，0是false）。
+此过程至少需要三个参数：
+1.        从列表进行读取的节段ID
+2.        从选项读取对象的列表名称
+3.        每个列表对象调用的进程
+4.        附加参数。如果未设置选项会返回boolean value。
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">直接存取</rich_text><rich_text foreground="#00000000ffff">
+如果预先知道配置节段的名称，便宜可以直接读取选项而无须使用节段迭代程序回调。
+以下示例是从“config interface”节段读取“option proto”。
+</rich_text><rich_text foreground="#ffff00000000">… 
+ local proto config_get proto wan proto 
+ echo &quot;Current WAN protocol is $proto&quot; 
+ …</rich_text><rich_text foreground="#00000000ffff">
+
+</rich_text><rich_text foreground="#00000000ffff" weight="heavy">Reading List</rich_text><rich_text foreground="#00000000ffff">
+一些UCI配置可能会在表格中包含list选项：
+</rich_text><rich_text foreground="#ffff00000000">… 
+ list network lan 
+ list network wifi
+  …
+</rich_text><rich_text foreground="#00000000ffff">
+在network调用config_get，list将会回复由空格隔开的列表值，以lan wifi为例.
+然而，如果列表项本身包含空格的话，这一举动也许会破坏数值，例如：
+</rich_text><rich_text foreground="#ffff00000000">… 
+ list animal 'White Elephant' 
+ list animal 'Mighty Unicorn' 
+  …
+</rich_text><rich_text foreground="#00000000ffff">
+Config_get会在White Elephant Mighty Unicorn表格中回复数值，并且最初的列表项也不再被清晰的分隔开。
+为了避免这个问题，可以使用config_list_foreach迭代模式。它与config_foreach相似，但对list value起作用，而不是config节段。
+Config_list__foreach过程需要至少三个参数：
+1.        从列表进行读取的节段ID
+2.        从选项读取对象的列表名称
+3.        每个列表对象调用的进程
+4.        附加参数。所有以下参数都会原样传送到回调过程
+
+</rich_text><rich_text foreground="#ffff00000000"># handle list items in a callback 
+# $config contains the ID of the section 
+ handle_animal() { 
+    local value=&quot;$1&quot; 
+    # do something with $value 
+ }
+ 
+ config_list_foreach &quot;$config&quot; animal handle_animal</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">/lib/config/uci.sh</rich_text><rich_text>
+uci_load() {
+	local PACKAGE=&quot;$1&quot;
+	local DATA
+	local RET
+	local VAR
+
+	_C=0
+	if [ -z &quot;$CONFIG_APPEND&quot; ]; then
+		for VAR in $CONFIG_LIST_STATE; do
+			export ${NO_EXPORT:+-n} CONFIG_${VAR}=
+			export ${NO_EXPORT:+-n} CONFIG_${VAR}_LENGTH=
+		done
+		export ${NO_EXPORT:+-n} CONFIG_LIST_STATE=
+		export ${NO_EXPORT:+-n} CONFIG_SECTIONS=
+		export ${NO_EXPORT:+-n} CONFIG_NUM_SECTIONS=0
+		export ${NO_EXPORT:+-n} CONFIG_SECTION=
+	fi
+
+	DATA=&quot;$(/sbin/uci ${UCI_CONFIG_DIR:+-c $UCI_CONFIG_DIR} ${LOAD_STATE:+-P /var/state} -S -n export &quot;$PACKAGE&quot; 2&gt;/dev/null)&quot;
+	RET=&quot;$?&quot;
+	[ &quot;$RET&quot; != 0 -o -z &quot;$DATA&quot; ] || eval &quot;$DATA&quot;
+	unset DATA
+
+	${CONFIG_SECTION:+config_cb}    </rich_text><rich_text foreground="#00000000ffff">//reset CONFIG_SECTION</rich_text><rich_text>
+	return &quot;$RET&quot;
+}
+
+</rich_text><rich_text foreground="#00000000ffff">/sbin/uci是在目录build_dir/target-arm_v4t_eglibc-2.8_eabi/uci-12012009.7编译出来的
+读取$UCI_CONFIG_DIR(/etc/config)目录下的$PACKAGE, 如mjpg-streamer:</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">config mjpg-streamer core
+	option device		&quot;/dev/video0&quot;
+	option resolution	&quot;640x480&quot;
+	option fps		&quot;5&quot;
+	option port		&quot;8080&quot;
+	option enabled		&quot;true&quot;</rich_text><rich_text>
+	
+</rich_text><rich_text foreground="#00000000ffff">DATA等于如下字符串	</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">package 'mjpg-streamer' config 'mjpg-streamer' 'core' option 'device' '/dev/video0' option 'resolution' '640x480' option 'fps' '5' option 'port' '8080' option 'enabled' 'true'</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">而调用eval &quot;$DATA&quot;, 相等于调用functions.sh中定义的package, config, option函数, 在当前的执行环境中export下面的变量：</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">CONFIG_core_device=&quot;/dev/video0&quot;
+CONFIG_core_resolution=&quot;640x480&quot;
+...
+</rich_text><rich_text>
+</rich_text></node><node name="启动过程分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="25"><rich_text> 总结一下OpenWrt的启动流程(BCM平台)：
+ </rich_text><rich_text foreground="#ffff00000000">1.CFE-&gt;2.linux-&gt;3./etc/preinit-&gt;4./sbin/init  -&gt;5./etc/inittab -&gt;6./etc/init.d/rcS-&gt;7./etc/rc.d/S* -&gt;8.</rich_text><rich_text>
+ 
+ OpenWrt是一个开放的linux平台，主要用于带wifi的无线路由上。
+    类似于Ubuntu、Red Hat、之类的linux发行版本，它也有一套自己的启动流程。下面，我就以我的Linksys 的WRT54G为平台介绍一下，OpenWrt的启动流程。
+首先，CFE（common firmware environment）--它就是一个bootloader，类似u-boot，redboot之类，有点broadcom公司御用之嫌--
+最先启动。它的任务只是创造一个简单的环境，让系统先运行起来。除了能够跳转到特定地址上启动操作系统（如Linux）外，它还能让你download东西到上面，比如download一个linux，然后启动它。
+另外，值得一提的是，CFE在启动之后会有1，2秒的时间等待由tftp上传的内核并烧写到flash上，
+这就给一些操作系统损坏但CFE还能工作的&quot;砖头&quot;板一个起死回生的机会。请注意一旦linux启动之后，将由linux全部接管系统，
+这时候就没CFE什么事情了。唯一的瓜葛是CFE传递给内核一个命令行的参数，这个可以在linux启动起来之后用下面的命令查看：
+  
+ root@OpenWrt:/# cat /proc/cmdline
+ console=ttyS0,115200 mtdparts=spi_flash:1m(u-boot)ro,3m(kernel),-(rootfs)
+  
+ 之后，linux系统启动起来了。它使用类似如下的脚本命令来解析cmdline：
+ for x in $(cat /proc/cmdline); do
+    case $x in
+        init=*)
+            init=${x#init=}
+            ;;
+        root=*)
+            ROOT=${x#root=}
+            case $ROOT in
+                LABEL=*)
+                    ROOT=&quot;/dev/disk/by-label/${ROOT#LABEL=}&quot;
+                    ;;
+                UUID=*)
+                    ROOT=&quot;/dev/disk/by-uuid/${ROOT#UUID=}&quot;
+                    ;;
+                esac
+            ;;
+        rootflags=*)
+            ROOTFLAGS=&quot;-o ${x#rootflags=}&quot;
+            ;;
+        cryptopts=*)
+            cryptopts=&quot;${x#cryptopts=}&quot;
+            ;;
+        nfsroot=*)
+            NFSROOT=&quot;${x#nfsroot=}&quot;
+            ;;
+        nfsopts=*)
+            NFSOPTS=&quot;-o ${x#nfsopts=}&quot;
+            ;;
+        boot=*)
+            BOOT=${x#boot=}
+            ;;
+        resume=*)
+            RESUME=${x#resume=}
+            ;;
+        noresume)
+            NORESUME=y
+            ;;
+        quiet)
+            quiet=y
+            ;;
+        ro)
+            readonly=y
+            ;;
+        rw)
+            readonly=n
+            ;;
+        debug)
+            debug=y
+            exec &gt;/tmp/initramfs.debug 2&gt;&amp;1
+            set -x
+            ;;
+        break=*)
+            break=${x#break=}
+            ;;
+        break)
+            break=premount
+            ;;
+     esac
+ done
+ 
+    对于OpenWrt这个cmdline的意思就是：root=/dev/mtdblock2 文件系统在第三个flash分区上（mtdblock0，1，2）；
+ rootfstype=squashfs,jffs2 文件系统类型是squashfs和jffs2（为什么两种类型，目前还不清楚，不过可以确定OpenWrt使用了较为复杂的文件系统，实现了squashfs的压缩和jffs2的可写 ）； 
+ init=/etc/preinit 执行该初始化，
+ noinitrd console=ttyS0,115200 没有initrd和console口设定。
+  
+ init=/etc/preinit 是linux会执行的初始化，具体内容如下：
+ root@OpenWrt:/# cat /etc/preinit
+ #!/bin/sh
+ # Copyright (C) 2006 OpenWrt.org
+ export PATH=/bin:/sbin:/usr/bin:/usr/sbin
+ . /etc/diag.sh
+  
+ failsafe_ip() {
+    ifconfig $ifname 192.168.1.1 netmask 255.255.255.0 broadcast 192.168.1.2 55 up
+ }
+  
+ failsafe() {
+    [ -n &quot;$ifname&quot; ] &amp;&amp; grep &quot;$ifname&quot; /proc/net/dev &gt;/dev/null &amp;&amp; {
+        failsafe_ip
+        netmsg 192.168.1.255 &quot;Entering Failsafe!&quot;
+        telnetd -l /bin/login &lt;&gt; /dev/null 2&gt;&amp;1
+    }
+    lock /tmp/.failsafe
+    ash --login
+ }
+  
+ mount proc /proc -t proc
+ mount sysfs /sys -t sysfs
+  
+ size=$(awk '/MemTotal:/ {l=5242880;mt=($2*1024);print((s=mt/2)&lt;l)&amp;&amp;(mt&gt;l)?mt-l:s }' /proc/meminfo)
+ mount tmpfs /tmp -t tmpfs -o size=$size,nosuid,nodev,mode=1777
+  
+ if grep devfs /proc/filesystems &gt; /dev/null; then
+    mount devfs /dev -t devfs
+    M0=/dev/pty/m0
+    M1=/dev/pty/m1
+    HOTPLUG=/sbin/hotplug-call
+  
+ elif [ -x /sbin/hotplug2 ]; then
+    mount -t tmpfs tmpfs /dev -o size=512K
+    mknod /dev/console c 5 1
+    /sbin/hotplug2 --coldplug --set-rules-file /etc/hotplug2-init.rules
+    /sbin/hotplug2 --no-coldplug --persistent --set-rules-file /etc/hotplug2 -init.rules &amp;
+    M0=/dev/ptmx
+    M1=/dev/ptmx
+    HOTPLUG=
+  
+ elif [ -x /sbin/udevd ]; then
+    mount -n -t tmpfs -o mode=0755 udev /dev
+    /sbin/udevd --daemon
+    /sbin/udevtrigger
+    /sbin/udevsettle
+    M0=/dev/pty/ptmx
+    M1=/dev/pty/ptmx
+    HOTPLUG=
+ fi
+  
+ mkdir -p /dev/pts /dev/shm
+ mount devpts /dev/pts -t devpts
+  
+ # the shell really doesn't like having stdin/out closed
+ # that's why we use /dev/pty/m0 and m1 as replacement
+ # for /dev/console if there's no serial console available
+ dd if=/dev/console of=/dev/null bs=1 count=0 &gt;/dev/null 2&gt;/dev/null &amp;&amp; {
+    M0=/dev/console
+    M1=/dev/console
+ }
+  
+ exec &lt;$M0 &gt;$M1 2&gt;&amp;0
+  
+ echo &quot;- preinit -&quot;
+ echo &quot;Press CTRL-C for failsafe&quot;
+ trap 'FAILSAFE=true' INT
+ trap 'FAILSAFE=true' USR1
+ [ -e /etc/preinit.arch ] &amp;&amp; . /etc/preinit.arch
+ set_state preinit
+ </rich_text><rich_text foreground="#00000000ffff">#当event产生是，kernel调用$HOTPLUG, 并把event作为参数给$HOTPLUG</rich_text><rich_text>
+ </rich_text><rich_text foreground="#00000000ffff">#如果$HOTPLUG为空，停止调用</rich_text><rich_text>
+ echo &quot;$HOTPLUG&quot; &gt; /proc/sys/kernel/hotplug 
+ eval ${FAILSAFE:+failsafe}
+ lock -w /tmp/.failsafe
+  
+ if [ -z &quot;$INITRAMFS&quot; ]; then
+    mount_root
+    [ -f /sysupgrade.tgz ] &amp;&amp; {
+        echo &quot;- config restore -&quot;
+        cd /
+        mv sysupgrade.tgz /tmp
+        tar xzf /tmp/sysupgrade.tgz
+        rm -f /tmp/sysupgrade.tgz
+        sync
+    }
+  
+ echo &quot;- init -&quot;
+  
+ exec /sbin/init
+ fi
+  
+ 可见，它主要是挂载一些系统需要的文件系统，例如tmpfs，proc和sysfs（是否真正挂载取决于内核是否2.6的）。
+ 并且会准备设备节点和故障恢复（failsafe）的准备。（这里还没看懂 ）
+ </rich_text><rich_text foreground="#ffff00000000">hotplug2应该是读取系统的uevent来调用相应的脚本（类似udev）</rich_text><rich_text>
+ 最后，exec /sbin/init启动文件系统，在OpenWrt上也就是busybox的init程序。
+ 它会自动分析/etc/inittab这个文件，其内容解释详见busybox网站的cmd help。
+  
+ /etc/inittab的内容：
+ ::sysinit:/etc/init.d/rcS S boot
+ ::shutdown:/etc/init.d/rcS K stop
+ tts/0::askfirst:/bin/ash --login
+ ttyS0::askfirst:/bin/ash --login
+ tty1::askfirst:/bin/ash --login
+  
+ 运行/etc/init.d/rcS：
+  
+ #!/bin/sh
+ # Copyright (C) 2006 OpenWrt.org
+  
+ run_scripts() {
+    for i in /etc/rc.d/$1*; do
+    [ -x $i ] &amp;&amp; $i $2 2&gt;&amp;1
+    done | $LOGGER
+ }
+  
+ LOGGER=&quot;cat&quot;
+ [ -x /usr/bin/logger ] &amp;&amp; LOGGER=&quot;logger -s -p 6 -t sysinit&quot;
+  
+ if [ &quot;$1&quot; = &quot;S&quot; ]; then
+    run_scripts &quot;$1&quot; &quot;$2&quot; &amp;
+ else
+    run_scripts &quot;$1&quot; &quot;$2&quot;
+ fi
+ 
+ 将执行/etc/rc.d/S*这些脚本： 
+ root@OpenWrt:/# ls /etc/rc.d/S*
+ /etc/rc.d/S10boot /etc/rc.d/S50cron /etc/rc.d/S60led
+ /etc/rc.d/S20fstab /etc/rc.d/S50dropbear /etc/rc.d/S95done
+ /etc/rc.d/S39usb /etc/rc.d/S50httpd /etc/rc.d/S97watchdog
+ /etc/rc.d/S40network /etc/rc.d/S50telnet /etc/rc.d/S99sysctl
+ /etc/rc.d/S45firewall /etc/rc.d/S60dnsmasq
+ 按照数字从小到大的顺序执行。 
 </rich_text></node><node name="ipkg包" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text scale="h2" weight="heavy">1.制作</rich_text><rich_text>
 package-ipkg.mk
 </rich_text><rich_text weight="heavy">范例：</rich_text><rich_text>
@@ -4564,4 +4992,178 @@ tty1::askfirst:/bin/ash --login
 
 &lt;可以参考linux.ctd中”精通initramfs构建“之四&gt;
 1).先执行sysinit优先级命令/etc/init.d/rcS S boot
-2).终端设备为ttySAC0, 执行命令/bin/ash --login</rich_text></node></cherrytree>
+2).终端设备为ttySAC0, 执行命令/bin/ash --login</rich_text></node><node name="mjpg-streamer" prog_lang="custom-colors" readonly="False" tags="" unique_id="22"><rich_text scale="h2" weight="heavy">1. 安装摄像头驱动。</rich_text><rich_text>
+opkg kmod-usb2
+opkg install kmod-usb-ohci           #一般BCM用的是ohci　USB控制器
+opkg install kmod-usb-video
+opkg install kmod-video-core
+opkg install kmod-video-uvc            #免驱uvc摄像头
+
+也通过make menuconfig -&gt; Kernel modules下选择安装模块， 然后编译生成固件  
+ 
+</rich_text><rich_text scale="h2" weight="heavy">2.安装配置mjpg-streamer</rich_text><rich_text>
+opkg install mjpg-streamer
+
+也通过make menuconfig -&gt; Multimedia下选择安装模块， 然后编译生成固件
+
+安装完了之后，运行  /etc/init.d/mjpg-streamer start
+就可以启动了, 但这个视频的帧数很低，显得摄像头反应很慢。可以修改/etc/config/mjpg-streamer里面的fps参数。
+
+</rich_text><rich_text scale="h2" weight="heavy">3.远程访问摄像头</rich_text><rich_text>
+http://192.168.1.1:8080/?action=stream 就可以访问摄像头了。
+
+如果想在公司访问家里的摄像头，还应该修改防火墙，接受8080端口的外网请求。
+添加下面配置到 /etc/config/firewall
+config rule
+        option src              wan
+        option proto            tcp
+        option dest_port        8080
+        option target           ACCEPT
+
+然后重启防火墙 /etc/init.d/firewall restart，就可以了。
+
+外网访问摄像头的时候，如果看视频可能速度会跟不上，可以只看截屏。
+http://192.168.1.1:8080/?action=snapshot
+需要将192.168.1.1替换成路由器说使用的公网IP地址
+
+</rich_text><rich_text scale="h2" weight="heavy">4. 配置用户名和密码</rich_text><rich_text>
+mjpg-streamer 还可以使用用户名和密码来**访问。
+修改 /etc/init.d/mjpg-streamer中的
+[ $enabled -gt 0 -a -c $device ] &amp;&amp; sleep 3 &amp;&amp;  $SSD -S -m -p $PIDF -q -x $PROG -- --input &quot;input_uvc.so --device  $device --fps $fps --resolution $resolution&quot; --output &quot;output_http.so  --port $port&quot; &amp;
+为
+[ $enabled -gt 0 -a -c $device ]  &amp;&amp; sleep 3 &amp;&amp; $SSD -S -m -p $PIDF -q -x $PROG -- --input  &quot;input_uvc.so --device $device --fps $fps --resolution $resolution&quot;  --output &quot;output_http.so --port $port -c user:pass&quot; &amp;
+
+最后添加的部分就是用户名和密码，中间用冒号分割。重新启动mjpg-streamer，保证配置生效。
+/etc/init.d/mjpg-streamer restart
+             
+
+ 
+</rich_text></node><node name="motion" prog_lang="custom-colors" readonly="False" tags="" unique_id="23"><rich_text>根据硬件平台下载安装motion及相关的ipk包,
+然后编辑vi /overlay/etc/motion.conf, 我的编辑文件内容如下
+# Rename this distribution example file to motion.conf
+#
+# This config file was generated by motion &quot;3.2.11.1&quot;
+
+
+############################################################
+# Daemon
+############################################################
+
+# Start in daemon (background) mode and release terminal (default: off)
+daemon off
+
+# File to store the process ID, also called pid file. (default: not defined)
+process_id_file /var/run/motion/motion.pid
+
+############################################################
+# Basic Setup Mode
+############################################################
+
+# Start in Setup-Mode, daemon disabled. (default: off)
+setup_mode off
+
+###########################################################
+# Capture device options
+############################################################
+
+# Videodevice to be used for capturing  (default /dev/video0)
+# for FreeBSD default is /dev/bktr0
+videodevice /dev/video0
+
+                                         
+                                                                                   
+# Image width (pixels). Valid range: Camera dependent, default: 352                
+ width 320                                                                          
+                                                                                    
+ # Image height (pixels). Valid range: Camera dependent, default: 288               
+ height 240                                                                         
+                                                                                   
+                                                                          
+                                                                       
+                                                                                       
+ 
+# Motion Detection Settings:
+############################################################
+
+# Threshold for number of changed pixels in an image that
+# triggers motion detection (default: 1500)
+threshold 1500 这个是改变探测灵敏度,越小越灵敏
+# Automatically tune the threshold down if possible (default: off)
+threshold_tune off
+
+# Noise threshold for the motion detection (default: 32)
+noise_level 32
+
+# Automatically tune the noise threshold (default: on)
+noise_tune on
+
+
+
+
+
+
+
+# Live Webcam Server
+############################################################
+
+# The mini-http server listens to this port for requests (default: 0 = disabled)
+webcam_port 8081  #远程端口
+# Quality of the jpeg images produced (default: 50)
+webcam_quality 50
+
+# Output frames at 1 fps when no motion is detected and increase to the
+# rate given by webcam_maxrate when motion is detected (default: off)
+webcam_motion off
+
+# Maximum framerate for webcam streams (default: 1)
+webcam_maxrate 1
+
+# Restrict webcam connections to localhost only (default: on)
+webcam_localhost off #必须改成off才能通过pc访问
+
+# Limits the number of images per connection (default: 0 = unlimited)
+# Number can be defined by multiplying actual webcam rate by desired number of seconds
+# Actual webcam rate is the smallest of the numbers framerate and webcam_maxrate
+webcam_limit 0
+
+
+############################################################
+# HTTP Based Control
+############################################################
+
+# TCP/IP port for the http server to listen on (default: 0 = disabled)
+control_port 8080
+
+# Restrict control connections to localhost only (default: on)
+control_localhost on
+
+# Output for http server, select off to choose raw text plain (default: on)
+control_html_output on
+
+# Authentication for the http based control. Syntax username:password
+# Default: not defined (Disabled)
+; control_authentication username:password
+
+##############################################################
+# Thread config files - One for each camera.
+# Except if only one camera - You only need this config file.
+# If you have more than one camera you MUST define one thread
+# config file for each camera in addition to this config file.
+##############################################################
+
+# Remember: If you have more than one camera you must have one
+# thread file for each camera. E.g. 2 cameras requires 3 files:
+# This motion.conf file AND thread1.conf and thread2.conf.
+# Only put the options that are unique to each camera in the
+# thread config files. 
+ thread /etc/thread1.conf
+  thread /etc/thread2.conf
+ # thread /etc/thread3.conf
+ # thread /etc/thread4.conf  #如果有多个摄像头要把使用这部分,否则全部注释掉
+
+因为字符限制,上面只是把需要修改的地方写上了
+修改好后,在/etc目录下 输入 motion -c motion.conf
+
+这时候只要摄像头画面有变化,就出现采集图片到设置目录了.
+
+在windows下也可以使用palantir    (在这里下载</rich_text><rich_text link="webs http://www.fastpath.it/products/palantir/pub/pclient.exe">http://www.fastpath.it/products/palantir/pub/pclient.exe</rich_text><rich_text>) 的pc客户端 连接 192.168.1.1:8081就可以看到图片了,这个完全是一张张图片播放的 所以不连贯.</rich_text></node></cherrytree>

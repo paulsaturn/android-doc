@@ -718,6 +718,10 @@ dumpsys [Option]
                 power     显示power信息(如Wake Locks等信息)
                 上面名字为服务名字
 
+</rich_text><rich_text foreground="#00000000ffff">例如：                
+    dumpsys meminfo com.example.android.apis:empty
+    查看com.example.android.apis的私有进程com.example.android.apis:empty的meminfo
+</rich_text><rich_text>                
 查看系统的所有服务：
 $service list
 

@@ -1506,4 +1506,315 @@ void main(void)
 fap_tx_data(&amp;wdp_general_buffer, WDP_TX_DATA_TIMEOUT);
 </rich_text><rich_text>
 </rich_text><rich_text scale="h3" weight="heavy">4.3 mouse</rich_text><rich_text>
-</rich_text></node></node></cherrytree>
+</rich_text></node><node name="Gazell Protocol" prog_lang="custom-colors" readonly="False" tags="" unique_id="12"><rich_text scale="h2" weight="heavy">一. </rich_text><rich_text foreground="#000000" scale="h2" weight="heavy">Gazell Link Layer</rich_text><rich_text scale="h2" weight="heavy"> (gzll)</rich_text><rich_text>
+</rich_text><rich_text scale="h2" weight="heavy">1. low latency means</rich_text><rich_text>
+    </rich_text><rich_text weight="heavy">1).非对称职能(</rich_text><rich_text foreground="#000000" weight="heavy">asymmetric duty cycles</rich_text><rich_text>)
+    host之监听和接收数据(发送ACK)，device只发送数据(接收ACK)
+
+    </rich_text><rich_text weight="heavy">2).半同步(</rich_text><rich_text foreground="#000000" weight="heavy">semi-synchronization</rich_text><rich_text>)
+    device知道host当前所处的频道和time-slot. time-slot是在ack-payload中发送给device的。
+    device根据time-slot来调整同步timer, 根据time-slot来发送数据。 
+
+</rich_text><rich_text foreground="#000000"> </rich_text><rich_text>   The Host rotates quickly through the channel table, listening for a while on each channel. 
+    The Device will also go through all channels in the channel table, re-transmitting the packet on a given channels for a full rotation at the Host, until &quot;hitting&quot; both channel and time slot on the Host. 
+    The Device will then use the arrival time of the acknowledgment packet returned from the Host to &quot;calibrate&quot; its synchronization timer. 
+    </rich_text><rich_text foreground="#000000">When synchronization is successful, the Device can then always send a packet on the right channel within the listening slot for that channel on the Host</rich_text><rich_text>
+
+</rich_text><rich_text scale="h2" weight="heavy">2.Protocol states</rich_text><rich_text>
+    </rich_text><rich_text weight="heavy">1). </rich_text><rich_text foreground="#000000" weight="heavy">GZLL_IDLE</rich_text><rich_text>
+    没有发送，也没有接收，处于standby或power down(由应用设置来决定的).     
+ 
+    </rich_text><rich_text weight="heavy">2). </rich_text><rich_text foreground="#000000" weight="heavy">GZLL_HOST_ACTIVE</rich_text><rich_text>
+    监听数据
+    调用gzll_rx_data()函数进入Host状态; 超时，自动切换到Idle状态。
+    调用gzll_goto_idle()从Host切换到Idle状态
+ 
+    </rich_text><rich_text weight="heavy">3). </rich_text><rich_text foreground="#000000" weight="heavy">GZLL_DEVICE_ACTIVE</rich_text><rich_text>
+    发送数据    
+    调用gzll_tx_data()函数进入Device状态；超时，自动切换到Idle状态。
+    调用gzll_goto_idle()从Device切换到Idle状态。
+
+</rich_text><rich_text scale="h3" weight="heavy">3. Channel selection policies</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1). in asynchronous mode</rich_text><rich_text>
+    • Frequency agility (FA)
+    • Frequency hopping spread spectrum (FHSS)
+
+</rich_text><rich_text weight="heavy">2). in semi-synchronous mode</rich_text><rich_text>
+    • Frequency agility (FA)
+    • Frequency hopping spread spectrum (FHSS)
+    • Low latency frequency hopping spread spectrum (smart FHSS)
+    
+
+</rich_text><rich_text scale="h3" weight="heavy">4. Protocol timing in Gazell</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1). Low latency mode</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">2). Low power mode </rich_text><rich_text>
+
+</rich_text><rich_text scale="h2" weight="heavy">二.Gazell Pairing Library (gzp)</rich_text><rich_text>
+</rich_text></node></node><node name="nrf51" prog_lang="custom-colors" readonly="False" tags="" unique_id="8"><rich_text></rich_text><node name="app_timer" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1.里面用到RTC1的compare中断和SWI0（软件中断）</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1). RTC1中断</rich_text><rich_text>
+static void rtc1_init(uint32_t prescaler)   </rich_text><rich_text foreground="#00000000ffff">//定义prescaler=0， 每1/32768秒，counter加1.</rich_text><rich_text>
+{
+    NRF_RTC1-&gt;PRESCALER = prescaler;
+    NVIC_SetPriority(RTC1_IRQn, RTC1_IRQ_PRI);
+}
+
+/**@brief Function for starting the RTC1 timer.
+ */
+static void rtc1_start(void)
+{
+    NRF_RTC1-&gt;EVTENSET = RTC_EVTEN_COMPARE0_Msk;
+    NRF_RTC1-&gt;INTENSET = RTC_INTENSET_COMPARE0_Msk;     </rich_text><rich_text foreground="#00000000ffff">//允许COMPARE0事件和中断产生。</rich_text><rich_text>
+
+    NVIC_ClearPendingIRQ(RTC1_IRQn);
+    NVIC_EnableIRQ(RTC1_IRQn);                                                   </rich_text><rich_text foreground="#00000000ffff">//上面定义的中断的入口都是RTC1_IRQn中断</rich_text><rich_text>
+
+    NRF_RTC1-&gt;TASKS_START = 1;
+    nrf_delay_us(MAX_RTC_TASKS_DELAY);                                  </rich_text><rich_text foreground="#00000000ffff">//MAX_RTC_TASKS_DELAY=47</rich_text><rich_text>
+}
+
+/**@brief Function for stopping the RTC1 timer.
+ */
+static void rtc1_stop(void)
+{
+    NVIC_DisableIRQ(RTC1_IRQn);
+
+    NRF_RTC1-&gt;EVTENCLR = RTC_EVTEN_COMPARE0_Msk;
+    NRF_RTC1-&gt;INTENCLR = RTC_INTENSET_COMPARE0_Msk;
+
+    NRF_RTC1-&gt;TASKS_STOP = 1;
+    nrf_delay_us(MAX_RTC_TASKS_DELAY);
+}
+
+void RTC1_IRQHandler(void)
+{
+    // Clear all events (also unexpected ones)
+    NRF_RTC1-&gt;EVENTS_COMPARE[0] = 0;
+    NRF_RTC1-&gt;EVENTS_COMPARE[1] = 0;
+    NRF_RTC1-&gt;EVENTS_COMPARE[2] = 0;
+    NRF_RTC1-&gt;EVENTS_COMPARE[3] = 0;
+    NRF_RTC1-&gt;EVENTS_TICK       = 0;
+    NRF_RTC1-&gt;EVENTS_OVRFLW     = 0;
+
+    // Check for expired timers
+    timer_timeouts_check();
+}
+
+static void timer_timeouts_check(void)
+{
+    // Handle expired of timer 
+    if (m_timer_id_head != TIMER_NULL)
+    {
+        uint32_t ticks_expired;
+        uint8_t  ticks_elapsed_last;
+
+        // Initialize actual elapsed ticks being consumed to 0 
+        ticks_expired = 0;
+
+        // Queue the ticks elapsed (to make the value context safe)
+        ticks_elapsed_last = m_ticks_elapsed_last + 1;
+        if (ticks_elapsed_last == CONTEXT_QUEUE_SIZE_MAX)
+        {
+            ticks_elapsed_last = 0;
+        }
+
+        if (ticks_elapsed_last != m_ticks_elapsed_first)
+        {
+            app_timer_id_t timer_id;
+            uint32_t       ticks_elapsed;
+
+            // Ticks_elapsed is collected here, job will use it
+            ticks_elapsed = ticks_diff_get(rtc1_counter_get(), m_ticks_latest);
+
+            // Auto variable containing the head of timers expiring 
+            timer_id = m_timer_id_head;
+
+            // Expire all timers within ticks_elapsed and collect ticks_expired 
+            while (timer_id != TIMER_NULL)
+            {
+                timer_node_t * p_timer;
+
+                </rich_text><rich_text foreground="#00000000ffff">// Auto variable for current timer node </rich_text><rich_text>
+                p_timer = &amp;mp_nodes[timer_id];
+
+                </rich_text><rich_text foreground="#00000000ffff">// Do nothing if timer did not expire </rich_text><rich_text>
+                if (ticks_elapsed &lt; p_timer-&gt;ticks_to_expire)
+                {
+                    break;
+                }
+
+                </rich_text><rich_text foreground="#00000000ffff">// Decrement ticks_elapsed and collect expired ticks </rich_text><rich_text>
+                ticks_elapsed -= p_timer-&gt;ticks_to_expire;
+                ticks_expired += p_timer-&gt;ticks_to_expire;
+
+                </rich_text><rich_text foreground="#00000000ffff">// Move to next timer </rich_text><rich_text>
+                timer_id = p_timer-&gt;next;
+
+                </rich_text><rich_text foreground="#00000000ffff">// Execute Task </rich_text><rich_text>
+                timeout_handler_exec(p_timer);
+            }
+        }
+
+        // Queue the elapsed value 
+        m_ticks_elapsed[m_ticks_elapsed_last] = ticks_expired;
+        m_ticks_elapsed_last                  = ticks_elapsed_last;
+
+        timer_list_handler_sched();
+    }
+}
+timer_timeouts_check()根据ticks_elapsed和timer中的ticks_to_expire比较， 如果大于， 执行timer的任务处理函数；处理完, 把ticks_expired的值压到
+队列m_ticks_elapsed中，这个队列的值留给SWI0中断来处理， 然后调用timer_list_handler_sched(), 触发SWI0中断。
+中断的延时是在SWI0_IRQHandler()中的compare_reg_update()设置的（包括rtc1_start()和rtc1_stop()函数的调用）， 时间根据timer list中的第一个timer的ticks_to_expire来设置的
+</rich_text><rich_text foreground="#8b8b69691414">static void compare_reg_update(app_timer_id_t timer_id_head_old)
+{</rich_text><rich_text>
+</rich_text><rich_text foreground="#8b8b69691414">    // Setup the timeout for timers on the head of the list 
+    if (m_timer_id_head != TIMER_NULL)
+    {
+        </rich_text><rich_text foreground="#ffff00000000">uint32_t ticks_to_expire = mp_nodes[m_timer_id_head].ticks_to_expire;</rich_text><rich_text foreground="#8b8b69691414">
+</rich_text><rich_text foreground="#ffff00000000">        uint32_t counter         = rtc1_counter_get();
+        uint32_t cc              = m_ticks_latest;
+        uint32_t ticks_elapsed   = ticks_diff_get(counter, cc) + RTC_COMPARE_OFFSET_MIN;</rich_text><rich_text foreground="#8b8b69691414">
+        
+        if (timer_id_head_old == TIMER_NULL)
+        {
+            // No timers were already running, start RTC
+            rtc1_start();
+        }
+                
+</rich_text><rich_text foreground="#ffff00000000">        cc += (ticks_elapsed &lt; ticks_to_expire) ? ticks_to_expire : ticks_elapsed;
+        cc &amp;= MAX_RTC_CNT;
+        
+        rtc1_compare0_set(cc);</rich_text><rich_text foreground="#8b8b69691414">
+        
+        if (ticks_diff_get(rtc1_counter_get(), counter) &gt; ticks_diff_get(cc, counter))  </rich_text><rich_text foreground="#00000000ffff">//如果时间到，立即触发RTC1中断，处理timer expire</rich_text><rich_text foreground="#8b8b69691414">
+        {
+            timer_timeouts_check_sched();
+        }
+    }
+    else
+    {
+        // No timers are running, stop RTC
+        rtc1_stop();
+    }
+} </rich_text><rich_text foreground="#ffff00000000">       
+</rich_text><rich_text foreground="#00000000ffff">ticks_to_expire表示相邻两个timer的定时差</rich_text><rich_text foreground="#ffff00000000">
+</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">2). SWI0中断</rich_text><rich_text>
+void SWI0_IRQHandler(void)
+{
+    timer_list_handler();
+}
+
+static void timer_list_handler(void)
+{
+    app_timer_id_t restart_list_head = TIMER_NULL;
+    uint32_t       ticks_elapsed;
+    uint32_t       ticks_previous;
+    bool           ticks_have_elapsed;
+    bool           compare_update;
+    app_timer_id_t timer_id_head_old;
+    
+    // Back up the previous known tick and previous list head
+    ticks_previous    = m_ticks_latest;
+    timer_id_head_old = m_timer_id_head;
+    
+    // Get number of elapsed ticks
+    ticks_have_elapsed = elapsed_ticks_acquire(&amp;ticks_elapsed); </rich_text><rich_text foreground="#00000000ffff">//从m_ticks_elapsed队列获取ticks_elapsed, 并m_ticks_latest += ticks_elapsed</rich_text><rich_text>
+
+    // Handle list deletions
+    compare_update = list_deletions_handler();  </rich_text><rich_text foreground="#00000000ffff">//处理user stop op</rich_text><rich_text>
+    
+    // Handle expired timers
+    if (ticks_have_elapsed)
+    {
+        expired_timers_handler(ticks_elapsed, ticks_previous, &amp;restart_list_head);  </rich_text><rich_text foreground="#00000000ffff">//根据ticks_elapsed, 处理到时的timer node(移除或移动到restart_list_head中)</rich_text><rich_text>
+        compare_update = true;
+    }
+    
+    // Handle list insertions
+    if (list_insertions_handler(restart_list_head)) </rich_text><rich_text foreground="#00000000ffff">//把restart_list_head和user start op的timer node插入到m_timer_id_head(根据ticks_to_expire)</rich_text><rich_text>
+    {
+        compare_update = true;  </rich_text><rich_text foreground="#00000000ffff">//需要更新timer中断的延时</rich_text><rich_text>
+    }
+
+    // Update compare register if necessary
+    if (compare_update)
+    {
+        compare_reg_update(timer_id_head_old);  </rich_text><rich_text foreground="#00000000ffff">//更新RTC1 Compare0</rich_text><rich_text>
+    }
+}
+timer_list_handler()函数处理timer list中timer node的删除，添加。用户调用app_timer_start, app_timer_stop, app_timer_stop_all都会调用
+timer_list_handler_sched()函数触发SWI0中断，来处理timer list的。 
+</rich_text></node><node name="app_gpiote" prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text scale="h2" weight="heavy">1.GPIO中断</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">根据gpio level的变化， 产生中断，判断是上升或下降， 来执行响应的回调函数。</rich_text><rich_text>
+void GPIOTE_IRQHandler(void)
+{
+    uint8_t  i;
+    uint32_t pins_state = NRF_GPIO-&gt;IN;
+    
+    </rich_text><rich_text foreground="#00000000ffff">// Clear event.</rich_text><rich_text>
+    NRF_GPIOTE-&gt;EVENTS_PORT = 0;
+    
+    </rich_text><rich_text foreground="#00000000ffff">// Check all users.</rich_text><rich_text>
+    for (i = 0; i &lt; m_user_count; i++)
+    {
+        gpiote_user_t * p_user = &amp;mp_users[i];
+
+        // Check if user is enabled.
+        if (((1 &lt;&lt; i) &amp; m_enabled_users_mask) != 0)
+        {
+            uint32_t transition_pins;
+            uint32_t event_low_to_high;
+            uint32_t event_high_to_low;
+
+            </rich_text><rich_text foreground="#00000000ffff">// Find set of pins on which there has been a transition.</rich_text><rich_text>
+            transition_pins = (pins_state ^ ~p_user-&gt;sense_high_pins) &amp; p_user-&gt;pins_mask;
+
+            </rich_text><rich_text foreground="#00000000ffff">// Toggle SENSE level for all pins that have changed state.</rich_text><rich_text>
+            sense_level_toggle(p_user, transition_pins);    </rich_text><rich_text foreground="#00000000ffff">//修改sense_high_pins中状态发生改变的bit, 并修改NRF_GPIO-&gt;PIN_CNF[pin_no]的level设置</rich_text><rich_text>
+            
+            // Call user event handler if an event has occurred.
+            event_high_to_low = (~pins_state &amp; p_user-&gt;pins_high_to_low_mask) &amp; transition_pins;
+            event_low_to_high = (pins_state &amp; p_user-&gt;pins_low_to_high_mask) &amp; transition_pins;
+
+            if ((event_low_to_high | event_high_to_low) != 0)
+            {
+                p_user-&gt;event_handler(event_low_to_high, event_high_to_low);    </rich_text><rich_text foreground="#00000000ffff">//执行用户的处理函数</rich_text><rich_text>
+            }
+        }
+    }
+}
+
+</rich_text><rich_text foreground="#00000000ffff">sense_high_pins记录下一个变化gpio level, 如果当前是高，置0；否则置1。</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">pins_high_to_low_mask是电平由高到低的gpio mask。 
+pins_low_to_high_mask是电平由低到高的gpio mask。
+pins_mask等于(event_low_to_high | event_high_to_low) 
+transition_pins表示当前那些gpio的状态发生改变
+</rich_text><rich_text>
+</rich_text></node><node name="ble stack" prog_lang="custom-colors" readonly="False" tags="" unique_id="11"><rich_text scale="h2" weight="heavy">1.Bluetooth 4.0 compliant low energy (BLE)
+</rich_text><rich_text weight="heavy">1). Generic Attribute Protocol (GATT)</rich_text><rich_text>
+    通用属性配置文件，管理所有的profiles(配置文件)，处理和发现不同的属性。   包括：服务，特性，描述
+        
+</rich_text><rich_text weight="heavy">2). Attribute Protocol (ATT)</rich_text><rich_text>
+    属性协议：所有数据托管和应用，快速简单依靠连接逻辑。              
+    客户和服务的数据结构：服务提供的数据，客户需要的数据。       
+        Handle – 在ATT Table索引，用ATT传输数据协议单元。       
+        UUID –全局唯一的标识符（UUID）是一个标准的128-bit格式的string ID       
+        Permissions – 操作读、写、加密、验证。       
+        Value – 客户读或写的数据。
+
+</rich_text><rich_text weight="heavy">3). Generic Access Protocol (GAP)</rich_text><rich_text>
+    可以命令BR、EPR和BLE。掌管BLE配置文件。处理、发现、连接设备。   
+    角色：外设（slave）中心（master）广播（advertiser）查询(scanner)
+    
+</rich_text><rich_text weight="heavy">4). Security Manager (SM)</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">5). Logic Link Control and Adaptation Protocol (L2CAP)</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">6). profile
+</rich_text><rich_text>    可选的栈特性，描述特别应用。要求特别GATT服务。有各种：profiles我想他们就象做好了的例子一样，使用都只是拿过来简单的修改下就可以用
+    比如：人体血压剂profiles、无线HID profiles（无线鼠标，无线键盘）、电池电量检测profiles。心率剂profiles。 
+</rich_text><rich_text scale="h2" weight="heavy">
+2. SoftDeivce APIs</rich_text><rich_text> (nRF51 SDK)
+
+        
+                                        </rich_text></node></node></cherrytree>
