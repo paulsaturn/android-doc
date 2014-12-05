@@ -16321,7 +16321,103 @@ sudo sysv-rc-conf  </rich_text></node><node name="OpenGrok的安装及使用 " 
     ./opt/opengrok-0.12.1/bin/OpenGrok index    
          
     完工～ 登录http://xxx.xxx.xxx.xxx:8080/source 即可查看源码
-      </rich_text></node></node><node name="libevent事件处理框架分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="38"><rich_text>libevent最大的特点就是封装了对以下三种事件的响应:IO事件,定时器事件,信号事件.这里就分析libevent如果做到这一点的,在libevent中还包括一些其他的功能(如缓冲区),但是我这里就重点讲解这一部分了.
+      </rich_text></node><node name="使用nice、cpulimit和cgroups获取进程的..." prog_lang="custom-colors" readonly="False" tags="" unique_id="98"><rich_text>    Linux内核是一个令人难以置信的马戏团的表演者，可以很小心的玩弄许多进程和它们的资源需求，来保证你的服务器一直嗡嗡作响。内核也是关于公平的一切：当有资源竞争时，内核试图公平的分发这些资源。
+ 然而，如果你有一个需要优先级的重要进程怎么办？一个低优先级的进程呢？或者，限制一组进程的资源呢？
+    
+    所有进程最开始都拥有相同的优先级，Linux内核会为每个任务分配均匀的CPU调度时间。总不能让一个CPU密集型的进程只运行在低优先级吧？所以，你需要告诉调度器你需要怎么样的优先级。 
+ 最少可以有三种方法来控制我们可以为进程获得多少CPU时间： 
+  •   使用 nice 命令手动降低任务的优先级。 
+  •   使用 cpulimit 命令来反复挂起进程，使进程不超过一定的时间限制。 
+  •   使用 Linux's 内置的 control groups, control groups是一种告诉调度器去限制进程能获取的资源数量的机制。 
+   下面我们来看一下这些方法如何工作，还有它们的优缺点。 
+
+</rich_text><rich_text scale="h2" weight="heavy">模拟CPU高使用率</rich_text><rich_text scale="h2">   </rich_text><rich_text>
+    在看这几个方法前，我们需要找一个工具来模拟系统上CPU负载的情况。我们将使用CentOS作为测试操作系统，然后，为了能人为地加大处理器的负荷，我们可以使用来自Mathomatic toolkit 质数生成器。 
+ 因为在CentOS上并没有现成的质数生成器的包，所以我们需要手工编译一下。从</rich_text><rich_text link="webs http://mathomatic.orgserve.de">http://mathomatic.orgserve.de</rich_text><rich_text>/mathomatic-16.0.5.tar.bz2下载源码，然后解压。切换目录到 mathomatic-16.0.5/primes. 运行   
+    make &amp;&amp; sudo make install
+ 进行编译和安装.完成后，可执行文件就会在/usr/local/bin  目录下。 
+    /usr/local/bin/matho-primes 0 9999999999 &gt; /dev/null &amp;                              
+ 
+ 这个命令会生成一个从0到999999999的质数列表。这个列表我们并不需要保存，所以结果输出到 /dev/null。
+ 现在运行一个top命令，可以看到 matho-primes 进程正在使用所有可用的CPU资源。
+  
+ 退出 top (按 q 键) ，然后kill掉</rich_text><rich_text background="#F6F6F6">matho-primes进程</rich_text><rich_text> (使用 fg命令把进程推到前台，然后按 CTRL+C )。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">nice</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+    nice 命令会调整进程的优先级，这样这个进程就不会经常运行。当你需要运行一个CPU密集型的后台任务或者批处理任务的时候，这是非常有用的。niceness 值（注：调度优先级）范围从-20 (优先级最高) 到 19 (优先级最低)。 Linux上，进程的优先级默认是0。nice命令(没有额外参数)  会以10的优先级来启动进程。这个优先级下，调度器会把这个任务看作一个低优先级的任务并且分配较少的CPU资源。 
+  启动两个matho-primes任务, 一个使用nice，一个不使用nice: 
+    nice matho-primes 0 9999999999 &gt; /dev/null &amp;matho-primes 0 9999999999 &gt; /dev/null &amp;
+ 现在看一下 top 。 
+
+    注意观察没有使用nice启动的进程（优先级为0的进程）获得了更多的处理器时间，相反，使用nice启动，优先级为10的进程则获得了很少处理器时间。 
+ 这有什么实际意义呢？如果你要运行一个CPU密集型任务，你可以使用nice启动它，接下来，调度器就总会让其他任务的优先级比它高。这意味着，即使服务器（或者桌面系统）在高负荷下仍然能够保持响应。 
+ Nice有一个相关的命令叫 renice。 这个命令可以重新改变一个正在运行中的进程的优先级。使用方法，找出占用CPU时间的进程的PID（使用ps命令），然后运行 renice:    
+    renice +10 1234                                              
+    
+ 这里， 1234 就是进程的PID. 
+ 在完成实验后，不要忘了使用niceand renice 把matho-primes都kill掉。
+
+</rich_text><rich_text scale="h2" weight="heavy">cpulimit</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+  cpulimit工具通过在不同的时间间隔挂起进程来限制进程的CPU使用率，让进程在指定的上限中运行。cpulimit程序通过发送 SIGSTOP 和 SIGCONT 信号给进程来。这不会改变进程的优先级，相反，它会监控CPU的真实使用率。 
+  当你想保证进程的CPU使用率在一定限度下的时候，cpulimit是很有用的。nice的缺点就是，当系统空闲时，进程也不会使用所有可用的CPU时间。 
+  在CentOS上安装cpulimit的方法:   
+    wget -O cpulimit.zip https://github.com/opsengine/cpulimit/archive/master.zip
+    unzip cpulimit.zip
+    cd cpulimit-mastermake
+    sudo cp src/cpulimit /usr/bin
+ 这个命令会从GitHub下载源码，解压，然后编译，拷贝文件到/usr/bin目录下。
+ cpulimit 的使用方法和nice类似，但是，你需要使用‘-l’参数给进程明确地定义能使用最大的CPU上限。例如： 
+    cpulimit -l 50 matho-primes 0 9999999999 &gt; /dev/null &amp;
+   
+ 注意，现在matho-primes进程只占用了50%CPU time。在我的测试系统上，剩余的CPU时间是空闲的。 
+ 你还可以使用 ‘-p’ 参数，提供进程的PID，来限制一个正在运行的进程。例如： 
+    cpulimit -l 50 -p 1234
+ 这里，1234是进程的PID。 
+
+</rich_text><rich_text scale="h2" weight="heavy">cgroups</rich_text><rich_text scale="h2"> </rich_text><rich_text>
+    控制组(cgroups)是一个Linux内核特性，它允许你指定内核应该如何给一个进程组分配特定的资源。你可以用cgroups指定在某一个组中的进程使用多少cpu时间、系统内存、网络带宽，或者这些组合资源。
+</rich_text><rich_text weight="heavy">控制组相对于nice或cpulimit的优势在于，限制是针对一个进程集合，而不只是一个进程</rich_text><rich_text>。还有，nice或cpulimit仅仅限制进程的CPU使用率，而cgroups可以限制其他进程资源。
+    审慎地使用cgroups使得一个服务器的完整子系统的资源可控。 例如在</rich_text><rich_text link="webs http://www.oschina.net/p/coreos">CoreOS</rich_text><rich_text>中，为大规模服务器部署设计的Linux最小化发行，升级进程是由一个cgroup控制。这意味着系统的下载和安装不影响系统性能。
+为了演示cgroups，我们将创建两个拥有不同CPU资源分配的组，分别叫做‘cpulimited’和‘lesscpulimited’；
+用cgcreate创建组的命令如下： 
+    sudo cgcreate -g cpu:/cpulimited
+    sudo cgcreate -g cpu:/lesscpulimited
+                              
+    命令的&quot;-g cpu'部分告诉cgroups，可以对该组中的进程设置CPU资源分配限制，其他控制包括cpuset,memory和blkio。cpuset控制在允许一个组中进程绑定到一个指定的CPU或CPU核集中和cpu控制相关。
+cpu控制有一个属性是cpu.shares。内核用它决定cgroups中进程间可用的CPU共享资源，默认值是1024。一个组（lesscpulimited）使用默认值1024，另一个组（cpulimited）设置成512，内核按2:1比例划分CPU资源。
+在cpulimted组中将cpu.shares设置成512：
+    sudo cgset -r cpu.shares=512 cpulimited
+    
+使用cgexec命令启动一个cgroup任务。 为了测试这两个组，在cpulimited组中启动matho-primes:
+    sudo cgexec -g cpu:cpulimited /usr/local/bin/matho-primes 0 9999999999 &gt; /dev/null &amp;
+ 
+如果你运行top命令，你会看到进程使用了所有的CPU可用时间。
+  
+    这是因为当一个单独的进程运行时，它使用尽可能多的的CPU，不论它在哪一个cgroup。CPU限制仅仅在两个或更多进程竞争CPU资源时起作用。
+现在在cpulimited组中启动另一个matho-primes进程:
+    sudo cgexec -g cpu:lesscpulimited /usr/local/bin/matho-primes 0 9999999999 &gt; /dev/null &amp;                                              
+ 
+top命令显示了cgroup中有更大cpu.shares值的进程得到更多的CPU时间。
+  
+现在在cpulimited组中启动另一个matho-primes进程:
+    sudo cgexec -g cpu:cpulimited /usr/local/bin/matho-primes 0 9999999999 &gt; /dev/null &amp;
+ 
+观察CPU是如何仍旧按2:1比例分配。现在cpulimited组中的两个matho-primes任务在均匀地共享CPU，而另一个组中的进程仍然获得了更多的处理器时间。
+你可以</rich_text><rich_text link="webs https://access.redhat.com/documentation/en-US/Red_Hat_Enterprise_Linux/7/html/Resource_Management_and_Linux_Containers_Guide/chap-Introduction_to_Control_Groups.html">从Red Hat阅读完全的控制组文档</rich_text><rich_text> (同样适用于 CentOS 7).
+
+</rich_text><rich_text scale="h2" weight="heavy">使用 Scout 监控CPU使用率</rich_text><rich_text scale="h2">   </rich_text><rich_text>
+监控CPU使用率是简单的方法是什么? 在服务器上安装了监控agent后， Scout 会自动跟踪CPU和内存使用的轨迹。 
+   scout server view
+   
+你还可以创建触发器，当进程超过指定的CPU和内存使用率上限的时候提醒你。 
+免费注册Scout，试一下CPU进程监控。 
+
+</rich_text><rich_text scale="h2" weight="heavy">Overview</rich_text><rich_text scale="h2">    </rich_text><rich_text>
+  任务服务器或者桌面系统的有限资源都是宝贵的。上面说的这些工具可以帮你有效地管理这些资源，特别是CPU资源： 
+   •   nice ，一个很好的工具来“一次性”调整系统。 
+   •   cpulimit ，当你需要运行CPU密集型任务，但是CPU空闲时间对系统的快速响应又很重要的时候，cpulimit非常有用。 
+   •   cgroups 是限制进程的瑞士军刀，它为系统提供了极大的灵活性。                              
+   </rich_text></node></node><node name="libevent事件处理框架分析" prog_lang="custom-colors" readonly="False" tags="" unique_id="38"><rich_text>libevent最大的特点就是封装了对以下三种事件的响应:IO事件,定时器事件,信号事件.这里就分析libevent如果做到这一点的,在libevent中还包括一些其他的功能(如缓冲区),但是我这里就重点讲解这一部分了.
 
 事件原型,简单看一看用于封装事件的结构体定义:
 </rich_text><rich_text foreground="#0000ff">struct</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#0000ff">event</rich_text><rich_text foreground="#000000"> {

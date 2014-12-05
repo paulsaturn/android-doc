@@ -1550,7 +1550,327 @@ fap_tx_data(&amp;wdp_general_buffer, WDP_TX_DATA_TIMEOUT);
 </rich_text><rich_text weight="heavy">2). Low power mode </rich_text><rich_text>
 
 </rich_text><rich_text scale="h2" weight="heavy">二.Gazell Pairing Library (gzp)</rich_text><rich_text>
-</rich_text></node></node><node name="nrf51" prog_lang="custom-colors" readonly="False" tags="" unique_id="8"><rich_text></rich_text><node name="app_timer" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1.里面用到RTC1的compare中断和SWI0（软件中断）</rich_text><rich_text>
+基于Gazell Link Layer的动态配对功能库
+</rich_text><rich_text scale="h3" weight="heavy">1.功能描述</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1.1. gzl的限制(restrictions)</rich_text><rich_text>
+  1). gzp使用pipe0, pipe1来交换配对参数和加密的用户数据, 主应用只能用pipe2 - pipe5
+  2). gzp会管理channels和addresses, 所以主应用不能直接使用下面的函数:
+    gzll_set_channels()
+    gzll_set_param(), modyfing the parameters GZLL_PARAM_RX_PIPES
+    gzll_set_address()
+
+</rich_text><rich_text weight="heavy">1.2. 邻近配对(proximity paring)</rich_text><rich_text>
+  使用载波检测(carrier detect)功能， 通过接收信号的强度来判断申请匹配的设备是否邻近。只允许距离host 10 - 30cm的设备才能配对。
+  
+</rich_text><rich_text weight="heavy">1.3. 数据交换各个阶段(data exchange stages)</rich_text><rich_text>
+  1). 配对 (Paring)
+       系统地址交换 (System address exchange)
+       主机ID交换 (Host ID exchange)
+       
+  2). 动态键交换 (Dynamic key exchange)       
+  3). 加密的用户数据交换 (Encrypted user data exchange)
+  
+  如果设备和主机之间需要发送加密的用户数据，那么上面的过程都需要; 如果不需要加密， 在发送不加密的用户数据之前，只需要“系统地址交换”过程。
+
+</rich_text><rich_text weight="heavy">1.4. 工厂预设 (Factory preset)</rich_text><rich_text>        
+  1). 没有配对的主机和设备共享下面的工厂预设参数：
+    Secret key
+    Paring key
+    Packet validation id
+
+  另外， 每个主机有下面独特的参数
+    System address
+    Host ID
+  System address是用来作为已配对的设备和主机通信的地址; 也作为产生RF channels子集的种子。
+  Host ID是尽量唯一， 区分不同的主机。
+
+</rich_text><rich_text weight="heavy">1.5. 系统地址交换 (System address exchange)</rich_text><rich_text>    
+在系统地址交换中，主机提供一个唯一的地址给设备。系统地址不认为是一个机密。使用paring address来发送system address给device,
+system address也用来产生RF channels的子集(用来跳频)。
+
+</rich_text><rich_text weight="heavy">1.6. 主机ID交换 (Host ID exchange)</rich_text><rich_text>
+Host ID认为是一个机密， 需要下面的安全预防措施： 
+    • 使用AES加密来防止被动的窃听 (Passive eavesdropping prevented by using AES encryption)
+    • 使用由键盘发送过来的会话环来防止重复攻击 (Replay attacks prevented by using session tokens sent from keyboard)
+    • 在发送Host ID给设备之前， 需要用户验证这个交换防止攻击 (Man-in-the-middle attacks / &quot;hostile&quot; Device attacks may be prevented by requiring that the user validates the exchange before the Host ID is sent to Device (optional))
+    
+</rich_text><rich_text weight="heavy">1.7. 验证阶段 (The validation stage)</rich_text><rich_text> 
+    交换加密数据之前需要验证设备
+
+</rich_text><rich_text weight="heavy">1.8. 动态键交换 (Dynamic key exchange)</rich_text><rich_text>   
+动态键用来加密用户数据。设备可以随时更新动态键。
+动态键采用下面的安全预防措施：
+    • Passive eavesdropping prevented by using AES encryption of the key exchange sequence
+    • Replay attacks prevented by using session tokens sent from Host
+    • Only Devices knowing the Host ID will be able to update the Dynamic Key in the Host
+    
+1.9 攻击类型
+</rich_text><rich_text weight="heavy">1). Frequency analysis attacks (频率分析攻击)</rich_text><rich_text>
+   频率分析是学习密文中的字符或字符组合的出现频率。
+   
+</rich_text><rich_text weight="heavy">2). &quot;Hostile&quot; Device attack (敌对设备攻击)</rich_text><rich_text>  
+    一个敌对的第三方设备能够配对主机，并发送主机可以解释的数据
+    
+</rich_text><rich_text weight="heavy">3). Man-in-the-middle attack (中间窃听攻击)</rich_text><rich_text>    
+   设备的数据都是经过这个中间层， 而设备以为直接和主机通信.
+
+</rich_text><rich_text weight="heavy">4). Replay attacks (重复攻击)</rich_text><rich_text>      
+   第三方设备记录以前发送包或包组，重发给接收者。
+   
+</rich_text><rich_text weight="heavy">1.10 Session token</rich_text><rich_text>
+    会话令牌是一个随机或伪随机的数字， 来增加数据包加密的随机性。
+    会话令牌是在新的会话之前产生， 在会话结束之后丢弃。
+    一个会话包括发送消息和返回消息的过程
+         
+</rich_text><rich_text scale="h3" weight="heavy">2.功能实现</rich_text><rich_text scale="h3">    </rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">2.1 gzp配置信息</rich_text><rich_text>
+/** 
+  Definition of &quot;secret key&quot; used during &quot;Host ID exchange&quot;.
+*/  
+
+#define GZP_SECRET_KEY {1, 5, 45, 7, 26, 68, 12, 2, 13, 73, 34, 62, 24 45, 25, 77}
+
+//-----------------------------------------------------------------------------
+
+/** 
+  Definition of the first static selected pairing channel. Should be located in
+  the lower Nth of the channel range, where N is the size if the channel subset
+  selected by the application.
+*/  
+#define GZP_CHANNEL_LOW 2
+
+/** 
+  Definition of the second static selected pairing channel. Should be located in
+  the upper Nth of the channel range, where N is the size if the channel subset
+  selected by the application.
+*/  
+#define GZP_CHANNEL_HIGH 79
+
+/** 
+  Definition of the static &quot;global&quot; pairing address.
+*/ 
+#define GZP_ADDRESS 6, 4, 2, 43
+
+/** 
+  Definition of output power to be used when sending a pairing request. 
+*/ 
+#define GZP_POWER HAL_NRF_18DBM
+
+/** 
+  Definition of pairing request timeout. 
+*/ 
+#define GZP_REQ_TX_TIMEOUT 200
+
+/** 
+  Definition of the maximimum number of &quot;backoff&quot; packets (step 0) to be transmitted. 
+*/  
+#define GZP_MAX_BACKOFF_PACKETS 100
+
+/**
+  Definition of the period a device shall wait before attempting to send the packet for
+  fetching the pairing response (step 1).
+*/
+#define GZP_TX_ACK_WAIT_TIMEOUT (GZP_CLOSE_PROXIMITY_BACKOFF_RX_TIMEOUT + 50)
+
+/** 
+  Definition of the period a device in close proximity shall back off on the pairing 
+  address after a backoff packet has been received.  
+*/  
+#define GZP_CLOSE_PROXIMITY_BACKOFF_RX_TIMEOUT ((GZP_REQ_TX_TIMEOUT / 2) + 50)
+
+/** 
+  Definition of the period a device NOT in close proximity shall back off on the pairing 
+  address after a backoff packet has been received.  
+*/   
+#define GZP_NOT_PROXIMITY_BACKOFF_RX_TIMEOUT (GZP_CLOSE_PROXIMITY_BACKOFF_RX_TIMEOUT + GZP_STEP1_RX_TIMEOUT)
+
+/**
+  Definition of the time the host waits for a device to complete
+  transmission of the pairing request step 1 packet.  
+*/
+#define GZP_STEP1_RX_TIMEOUT (((GZP_REQ_TX_TIMEOUT / 2) + GZP_TX_ACK_WAIT_TIMEOUT) + 50)
+
+/** 
+  Definition of the lowest boundary for the channel range to be used.
+*/
+#define GZP_CHANNEL_MIN 2
+
+/** 
+  Definition of the upper boundary for the channel range to be used.
+*/  
+#define GZP_CHANNEL_MAX 80
+
+/** 
+  Definition of the minimum channel spacing for the channel subset generated
+  during pairing.
+*/  
+#define GZP_CHANNEL_SPACING_MIN 5
+
+</rich_text><rich_text weight="heavy">2.2. 设备Device</rich_text><rich_text>
+void main(void)
+{
+  bool send_crypt_data = false;
+  bool tx_success = false;
+  gzp_id_req_res_t id_req_status;
+  uint8_t payload[GZLL_MAX_PAYLOAD_LENGTH];
+  
+  mcu_init();
+  
+  // Initialize Gazell Link Layer
+  gzll_init();
+  
+  // Initialize Gazell Pairing Library
+  </rich_text><rich_text foreground="#ffff00000000">gzp_init();</rich_text><rich_text>
+
+  EA = 1;
+
+  for(;;)  {      
+    payload[0] = ~P0;
+    
+    // Send every other packet as encrypted data  
+    
+    if(send_crypt_data) {
+      // Send encrypted packet using the Gazell pairing library
+      </rich_text><rich_text foreground="#ffff00000000">tx_success = gzp_crypt_data_send(payload, GZP_ENCRYPTED_USER_DATA_MAX_LENGTH);</rich_text><rich_text>
+    } else {
+      // Send packet as plaintext on pipe 2
+      gzll_tx_data(payload, GZLL_MAX_FW_PAYLOAD_LENGTH, 2);   
+      while(gzll_get_state() != GZLL_IDLE){
+      }
+      tx_success = gzll_tx_success();
+    }
+    send_crypt_data = !send_crypt_data;
+
+    // If data transfer failed
+    if(!tx_success)
+    {
+      // Send &quot;system address request&quot;. Needed for sending any user data to Host.
+      </rich_text><rich_text foreground="#ffff00000000">gzp_address_req_send();</rich_text><rich_text>
+      
+      // Send &quot;Host ID request&quot;. Needed for sending encrypted user data to host.
+      </rich_text><rich_text foreground="#ffff00000000">id_req_status = gzp_id_req_send();</rich_text><rich_text>
+    }
+
+    // If waiting for Host to grant or reject ID request
+    if(id_req_status == GZP_ID_RESP_PENDING)
+    {
+      // Send new ID request for fetching response
+      </rich_text><rich_text foreground="#ffff00000000">id_req_status = gzp_id_req_send();</rich_text><rich_text>
+    }
+  }  
+}
+
+</rich_text><rich_text weight="heavy">2.3. 主机Host </rich_text><rich_text>
+void main(void)
+{
+  uint8_t payload[GZLL_MAX_PAYLOAD_LENGTH];
+
+  mcu_init();
+  gzll_init();
+  </rich_text><rich_text foreground="#ffff00000000">gzp_init();</rich_text><rich_text>
+  </rich_text><rich_text foreground="#ffff00000000">gzp_pairing_enable(true);</rich_text><rich_text>
+
+  // Open pipe 2. (Pipe 0 and 1 are reserved by pairing library).
+  gzll_set_param(GZLL_PARAM_RX_PIPES, gzll_get_param(GZLL_PARAM_RX_PIPES) | (1 &lt;&lt; 2));
+  
+  // Set P0 as output
+  P0DIR = 0;                                          
+
+  EA = 1;
+
+  // Enter host mode (start monitoring for data)
+  gzll_rx_start();                                          
+  
+  for(;;)
+  { 
+    // If gzpair_host_execute() returns true, a pairing request has been received
+    </rich_text><rich_text foreground="#ffff00000000">gzp_host_execute();</rich_text><rich_text>
+
+    // If Host ID request received
+    if(</rich_text><rich_text foreground="#ffff00000000">gzp_id_req_received()</rich_text><rich_text>)
+    {
+      // Always grant request
+      </rich_text><rich_text foreground="#ffff00000000">gzp_id_req_grant();</rich_text><rich_text>
+    }
+   
+    // If any data received (plaintext on pipe 2 or encrypted through Gazell pairing library)
+    if((</rich_text><rich_text foreground="#ffff00000000">gzll_get_rx_data_ready_pipe_number()</rich_text><rich_text> == 2) || (</rich_text><rich_text foreground="#ffff00000000">gzp_crypt_user_data_received()</rich_text><rich_text>))
+    {
+      // Plaintext data received? 
+      if(gzll_rx_fifo_read(payload, NULL, NULL))
+      {
+        // Write received payload[0] to port 0
+        P0 = payload[0];
+      }
+      else
+      {
+        // Read data from Gazell pairing library
+        </rich_text><rich_text foreground="#ffff00000000">gzp_crypt_user_data_read(payload, NULL);</rich_text><rich_text>
+        // Write received payload[0] to port 0
+        P0 = payload[0];
+      }
+    }   
+  }          
+}
+
+</rich_text><rich_text scale="h3" weight="heavy">2.4 API</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">(1). void gzp_init(void)</rich_text><rich_text>
+  设备和主机在初始化的时候都要调用这个函数，后面才能调用gzp_xxx的函数
+  这个函数内部主要是读配置信息，设置paring address, 并调用gzp_generate_channels函数生成channels子集, 并设置子集。
+  
+</rich_text><rich_text weight="heavy">(2). bool gzp_address_req_send(void)</rich_text><rich_text>
+  设备发送&quot;system address&quot;的请求给主机
+  先发送GZP_CMD_HOST_ADDRESS_REQ，等待发送完成
+  延时GZP_TX_ACK_WAIT_TIMEOUT(200ms)， 再发送GZP_CMD_HOST_ADDRESS_FETCH, 等待发送完成，
+  然后读取主机返回的GZP_CMD_HOST_ADDRESS_RESP数据包, 获取system address。
+  </rich_text><rich_text foreground="#ffff00000000">接受到第一个命令host那边在ack playload中准备好数据，接受到第二个命令就可以把ack playload返回给device</rich_text><rich_text>
+  
+</rich_text><rich_text weight="heavy">(3). gzp_id_req_res_t gzp_id_req_send(void)</rich_text><rich_text>
+  设备请求Host ID
+  如果不是pending, 那么调用gzp_random_numbers_generate产生session token, 发送GZP_CMD_HOST_ID_REQ(包含session token)， 发送成功，进入pending状态， 返回GZP_ID_RESP_PENDING; 否则，发送GZP_CMD_HOST_ID_FETCH(包含secret key加密的数据)和GZP_CMD_FETCH_RESP，获取Host ID， 返回包偏移GZP_CMD_HOST_ID_FETCH_RESP_STATUS中的状态。所以设备在通信过程要调用两次gzp_id_req_send()才能获取到Host ID。
+  主机返回来的数据有加密(secret key和session token)，所以要通过gzp_crypt来解密。 
+  session token和Host ID都是5个字节。
+      
+  返回值：
+  </rich_text><rich_text weight="heavy">GZP_ID_RESP_PENDING</rich_text><rich_text>
+    if a &quot;Host ID request&quot; has been sent to the Host, but the Host application has not yet decided whether to Grant or Reject the &quot;ID request&quot;.    
+  </rich_text><rich_text weight="heavy">GZP_ID_RESP_GRANTED  </rich_text><rich_text>
+    </rich_text><rich_text foreground="#000000">if the &quot;Host ID&quot; has been received from the Host. The received &quot;Host ID&quot; will be stored in non volatile memory.</rich_text><rich_text>
+  </rich_text><rich_text weight="heavy">GZP_ID_RESP_REJECTED</rich_text><rich_text>
+    </rich_text><rich_text foreground="#000000">if the Host application has rejected the &quot;Host ID request&quot;.</rich_text><rich_text>
+  </rich_text><rich_text weight="heavy">GZP_ID_RESP_FAILED</rich_text><rich_text>
+    </rich_text><rich_text foreground="#000000">if failing to send a request or receive a response from the Host</rich_text><rich_text>
+
+</rich_text><rich_text weight="heavy">(4). bool gzp_crypt_data_send(const uint8_t *src, uint8_t length);</rich_text><rich_text>
+    设备加密数据，并发送数据包GZP_CMD_ENCRYPTED_USER_DATA， 等待返回数据包GZP_CMD_ENCRYPTED_USER_DATA_RESP;
+    如果gzp_crypt_tx_transaction()不成功，那么调用gzp_key_update()函数， 发送GZP_CMD_KEY_UPDATE_PREPARE和GZP_CMD_KEY_UPDATE
+    命令，session token同步主机的session counter，更新dynamic key。</rich_text><rich_text foreground="#ffff00000000">dynamic key作用于secret key用来加密用户数据(GZP_DATA_EXCHANGE)。</rich_text><rich_text>    
+        
+</rich_text><rich_text weight="heavy">(5). void gzp_pairing_enable(bool enable)</rich_text><rich_text> 
+    允许或禁止主机进入匹配模式。如果允许，主机就开始监听设备的“system address&quot;和&quot;Host ID&quot;请求。
+    &quot;system address&quot;请求主机都授权，而&quot;Host ID&quot;请求主机可以授权，拒绝，取消等处理方式。    
+    
+</rich_text><rich_text weight="heavy">(6). void gzp_host_execute(void);</rich_text><rich_text>
+    接收和出来数据包, 在应用的主循环中调用, 非阻塞的。
+
+</rich_text><rich_text weight="heavy">(7). bool gzp_id_req_received(void)</rich_text><rich_text>
+    是否有Host ID请求(gzp_id_req_stat != GZP_ID_REQ_IDLE)
+    在gzp_host_execute()函数中接收到GZP_CMD_HOST_ID_REQ, 设置GZP_ID_REQ_PENDING状态, 
+
+</rich_text><rich_text weight="heavy">(8). void gzp_id_req_grant(void)</rich_text><rich_text>
+    主机授权Host ID.
+    gzp_id_req_stat = GZP_ID_REQ_PENDING_AND_GRANTED;
+    在gzp_host_execute()函数中接收到GZP_CMD_FETCH_RESP时，把包含Host ID的ack payload返回给设备。
+    
+</rich_text><rich_text weight="heavy">(9). bool gzp_crypt_user_data_received(void)</rich_text><rich_text>
+    是否接收到加密的用户数据。
+
+</rich_text><rich_text weight="heavy">(10). bool gzp_crypt_user_data_read(uint8_t* dst, uint8_t* length)</rich_text><rich_text>
+    读取加密的用户数据
+
+</rich_text><rich_text weight="heavy">(11). bool gzp_address_exchanged(void)</rich_text><rich_text>        
+    主机已经把system address发送给设备(接收到GZP_CMD_HOST_ADDRESS_FETCH)
+    </rich_text></node></node><node name="nrf51" prog_lang="custom-colors" readonly="False" tags="" unique_id="8"><rich_text></rich_text><node name="app_timer" prog_lang="custom-colors" readonly="False" tags="" unique_id="9"><rich_text scale="h2" weight="heavy">1.里面用到RTC1的compare中断和SWI0（软件中断）</rich_text><rich_text>
 </rich_text><rich_text scale="h3" weight="heavy">1). RTC1中断</rich_text><rich_text>
 static void rtc1_init(uint32_t prescaler)   </rich_text><rich_text foreground="#00000000ffff">//定义prescaler=0， 每1/32768秒，counter加1.</rich_text><rich_text>
 {
