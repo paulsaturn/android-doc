@@ -67,6 +67,26 @@ git commit -m &quot;add user cjc&quot;
 git push origin master
 git clone git@192.168.1.108:test.git
 
+9.config
+提交代码的log里面会显示提交者的信息  
+git config --global user.name [username]
+git config --global user.email [email]
+
+在git命令中开启颜色显示  
+git config --global color.ui true
+
+下面的命令将修改/etc/gitconfig文件，这是全局配置，所以admin来做一次就可以了。  配置一些git的常用命令alias
+#git st 
+sudo git config --system alias.st status     
+#git ci  
+sudo git config --system alias.ci commit
+#git co     
+sudo git config --system alias.co checkout
+#git br  
+sudo git config --system alias.br  branch
+#git last  
+sudo git config --system alias.last 'log -1' 
+
 ================================================================================
 常用的git命令
 ================================================================================
