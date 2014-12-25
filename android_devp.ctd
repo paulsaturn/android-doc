@@ -1134,7 +1134,170 @@ aapt a[dd] [-v] file.{zip,jar,apk} file1 [file2 ...]
 
 6. 显示aapt的版本
 aapt v[ersion]   
-</rich_text></node></node><node name="高效开发Android App的10个建议" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text>假如要Google Play上做一个最失败的案例，那最好的秘诀就是界面奇慢无比、耗电、耗内存。接下来就会得到用户的消极评论，最后名声也就臭了。即使你的应用</rich_text><rich_text foreground="#0099cc" link="webs http://www.azoft.com/design/">设计精良</rich_text><rich_text>、创意无限也没用。
+</rich_text></node></node><node name="android学习之路" prog_lang="custom-colors" readonly="False" tags="" unique_id="20"><rich_text></rich_text><node name="(17).widget" prog_lang="custom-colors" readonly="False" tags="" unique_id="22"><rich_text>widget指的是桌面小部件，在手机或模拟器的主屏幕(Home screen)上长时间点击，会弹出一个菜单栏，叫添加到主屏幕(Add to Home screen)，然后选择Android小部件(widgets)就会出现我们说的widget。
+ 
+　　实现步骤：
+　　1.创建在主屏幕上显示的画面布局文件my_layout.xml，
+　　2.创建widget描述文件my_appwidget.xml，
+　　3.创建一个类MyWidget，继承AppWidgetProvider,并且重写父类的onUpdate()方法。
+　　4.在AndroidManifest中注册。
+</rich_text></node><node name="(18) Read/Write" prog_lang="custom-colors" readonly="False" tags="" unique_id="21"><rich_text>Android中文件存放方式有很多种，而且对不同类型的文件读写操作也不一样，这里总结了下Android中常用的集中文件读写方式。包括数据区文件的读写，sdcard文件的读写，资源文件的读写。
+ 
+</rich_text><rich_text scale="h3" weight="heavy">一、数据区文件的读写。</rich_text><rich_text>
+数据区中的文件默认只能被自己的应用程序访问，存放路径为data/data/应用程序名/文件名。
+读：
+FileInputStream in = openFileInput(filename);
+int length = in.available();
+byte[] buf = new byte[length];
+in.read(buf);
+String res = EncodingUtils.getString(buf,&quot;UTF-8&quot;);
+in.cloise();
+写：
+FileOutputStream out = openFileOutput(filename,MODE_PRIVATE);
+byte[] bytes = message.getBytes();
+out.write(bytes);
+out.close();
+
+</rich_text><rich_text scale="h3" weight="heavy">二、sdcard文件的读写。</rich_text><rich_text>
+向sdcard中写数据必须要添加权限android.permission.WRITE_EXTERNAL_STORAGE,存放路径为mnt/sdcard/文件名
+sdcard_filename = Environment.getExternalStorageDirectory()+&quot;/&quot;+filename;
+读：
+FileInputStream in = new FileInputStream(sdcard_filename);
+int length = in.available();
+byte[] buf = new byte[length];
+in.read(buf);
+String res = EncodingUtils.getString(buf,&quot;UTF-8&quot;);
+in.close();
+写：
+FileOutputStream out = new FileOutputStream(sdcard_filename);
+byte[] bytes = message.getBytes();
+out.write(bytes);
+out.close();
+
+</rich_text><rich_text scale="h3" weight="heavy">三、raw文件的读写。</rich_text><rich_text>
+资源文件raw在res目录下，只能被读取，不能被写入。存放路径为应用程序名/res/raw/raw/文件名
+InputStream in = getResources().openRawResource(R.raw.filename);
+int length = in.available();
+byte[] buf = new byte[length];
+in.read(buf);
+String res = EncodingUtils.getString(buf,&quot;UTF-8&quot;);
+in.close();
+
+</rich_text><rich_text scale="h3" weight="heavy">四、assets文件的读取。</rich_text><rich_text>
+资源文件assets在应用程序目录写，只能被读取，不能被写入，粗放路径为应用程序名/assets/文件名。
+InputStream in= getResources().getAssets().open(filename);
+int length = in.avilable();
+byte[] buf = new byte[length];
+in.read(buf);
+String res = EncodingUtiles.getString(buf,&quot;UTF-8&quot;);
+in.close();
+</rich_text></node><node name="(19). SQLite" prog_lang="custom-colors" readonly="False" tags="" unique_id="23"><rich_text>    SQLite是一款开源的嵌入式数据库引擎，有处理速度快，占用资源少等优点。SQLite中所有数据库信息全部集中在一个文件中，在 Android平台下SQLite的数据库文件位于data/data/应用程序名/databases目录下，任何一个SQLite数据库对于创建该数 据库的应用程序来说都是私有的。
+ 
+　　SQLite操作步骤：
+　　一、创建数据库对象。
+　　新建一个类MySQLite，继承SQLiteOpenHelper,重写父类的onCreate()方法。
+　　/*当数据库首次被创建时执行该方法，一般将创建表等初始化操作放在该方法中*/
+　　public void onCreate(SQLiteDatabase db){
+　　　　String sql = &quot;create table if not exists mytable&quot;+&quot;(id integer primary key,name varchar,num integer)&quot;;
+　　　　db.execSQL(sql);
+　　}
+
+　　二、插入数据。
+　　/*向数据库中插入数据*/
+　　public void insert(String name,int num){
+　　　　SQLiteDatabase db = this.getWritableDatabase();
+　　　　db.execSQL(&quot;insert into mytable(name,num) values (&quot;zhangsan&quot;,6)&quot;);
+　　　　db.close();
+　　}
+
+　　三、更新数据。
+
+　　四、查询数据。
+
+　　五、删除数据。
+　　public void delete(){
+　　　　SQLiteDatebase db = this.getWritableDatabase();
+　　　　db.delete(&quot;mytable&quot;,&quot;1&quot;,&quot;null&quot;);
+　　}
+</rich_text></node><node name="(20). Socket和http" prog_lang="custom-colors" readonly="False" tags="" unique_id="24"><rich_text>说到网络开发首先想到的一定是socket变成呢个，在Android系统中也一样。socket(套接字)编程一般分为两部分：服务端(java)和客户端(android)。
+　　服务器端java代码：
+
+        ServerSocket ss = </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        Socket s </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        DataInputStream din </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        DataOutputStream dout </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        
+        </rich_text><rich_text foreground="#0000ff">try</rich_text><rich_text foreground="#000000">{
+            ss </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text> ServerSocket(8888);</rich_text><rich_text foreground="#008000">//监听8888端口</rich_text><rich_text>
+        }</rich_text><rich_text foreground="#0000ff">catch</rich_text><rich_text foreground="#000000">(Exception e){
+            e.printStackTrace();
+        }
+        </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text>(</rich_text><rich_text foreground="#0000ff">true</rich_text><rich_text foreground="#000000">){
+            </rich_text><rich_text foreground="#0000ff">try</rich_text><rich_text foreground="#000000">{
+                s </rich_text><rich_text>= ss.accept();</rich_text><rich_text foreground="#008000">//等待客户端连接</rich_text><rich_text>
+                din = </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text foreground="#000000"> DataInputStream(s.getInputStream());
+                dout </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text> DataOutputStream(s.getOutputStream());</rich_text><rich_text foreground="#008000">//得到输入输出流</rich_text><rich_text>
+                String readmsg = din.readUTF();</rich_text><rich_text foreground="#008000">//接收客户端消息</rich_text><rich_text>
+</rich_text><rich_text foreground="#000000">                System.out.println(readmsg);
+                dout.writeUTF(</rich_text><rich_text>&quot;Hello Client&quot;);</rich_text><rich_text foreground="#008000">//向客户端发送消息</rich_text><rich_text>
+            }</rich_text><rich_text foreground="#0000ff">catch</rich_text><rich_text foreground="#000000">(Exception e){
+                e.printStackTrace();
+            }</rich_text><rich_text foreground="#0000ff">finally</rich_text><rich_text foreground="#000000">{
+                </rich_text><rich_text foreground="#008000">//关闭输入输出流和socket</rich_text><rich_text>
+</rich_text><rich_text foreground="#000000">            }
+        }</rich_text><rich_text>
+        
+        客户端Android代码：
+        Socket s = </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        DataInputStream din </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        DataOutputStream dout </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        </rich_text><rich_text foreground="#0000ff">try</rich_text><rich_text foreground="#000000">{
+            s </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text foreground="#000000"> Socket();
+            </rich_text><rich_text foreground="#008000">//连接服务器超过三秒即连接失败</rich_text><rich_text>
+            s.connect(</rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text> InetSocketAddress(&quot;127.0.0.1&quot;, 8888),3000</rich_text><rich_text foreground="#000000">);
+            din </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text foreground="#000000"> DataInputStream(s.getInputStream());
+            dout </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text foreground="#000000"> DataOutputStream(s.getOutputStream());
+            </rich_text><rich_text foreground="#008000">//得到输入输出流</rich_text><rich_text>
+            String readmsg = din.readUTF();</rich_text><rich_text foreground="#008000">//接收服务端消息</rich_text><rich_text>
+            dout.writeUTF(&quot;Hello Server!&quot;);</rich_text><rich_text foreground="#008000">//向服务端发送消息</rich_text><rich_text>
+            s.setSoTimeout(3000);</rich_text><rich_text foreground="#008000">//超过三秒发送失败</rich_text><rich_text>
+        }</rich_text><rich_text foreground="#0000ff">catch</rich_text><rich_text foreground="#000000">(Exception e){
+            e.printStackTrace();
+        }</rich_text><rich_text foreground="#0000ff">finally</rich_text><rich_text foreground="#000000">{
+            </rich_text><rich_text foreground="#008000">//关闭输入输出流和socket</rich_text><rich_text>
+        }
+         
+　　Android另外一种网络编程技术为HTPP协议，其中最简单的应用就是通过URL获取网络资源。使用HTTP协议需要添加网络权限android.permission.INTERNET。
+　　代码：
+        URLConnection ucon = </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        BufferedInputStream bufin </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        ByteArrayBuffer bab </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+        
+        </rich_text><rich_text foreground="#0000ff">try</rich_text><rich_text foreground="#000000">{
+            URL myURL </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text> URL(&quot;http://www.baidu.com/&quot;);</rich_text><rich_text foreground="#008000">//初始化URL</rich_text><rich_text>
+            ucon = myURL.openConnection();</rich_text><rich_text foreground="#008000">//打开连接</rich_text><rich_text>
+            bufin = </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text> BufferedInputStream(ucon.getInputStream());</rich_text><rich_text foreground="#008000">//得到输入流</rich_text><rich_text>
+            </rich_text><rich_text foreground="#0000ff">int</rich_text><rich_text> current = 0</rich_text><rich_text foreground="#000000">;
+            bab </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">new</rich_text><rich_text> ByteArrayBuffer(1000</rich_text><rich_text foreground="#000000">);
+            </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text>((current = bufin.read())!=-1</rich_text><rich_text foreground="#000000">){
+                bab.append((</rich_text><rich_text foreground="#0000ff">char</rich_text><rich_text>)current);</rich_text><rich_text foreground="#008000">//将收到的信息添加到ByteArrayBuffer中</rich_text><rich_text>
+</rich_text><rich_text foreground="#000000">            }
+            String res </rich_text><rich_text>= EncodingUtils.getString(bab.toByteArray(), &quot;UTF-8&quot;</rich_text><rich_text foreground="#000000">);
+        }</rich_text><rich_text foreground="#0000ff">catch</rich_text><rich_text foreground="#000000">(MalformedURLException e){
+            e.printStackTrace();
+        }</rich_text><rich_text foreground="#0000ff">catch</rich_text><rich_text foreground="#000000">(IOException e){
+            e.printStackTrace();
+        }</rich_text><rich_text foreground="#0000ff">finally</rich_text><rich_text foreground="#000000">{
+            </rich_text><rich_text foreground="#0000ff">try</rich_text><rich_text foreground="#000000">{
+                </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text>(bufin!=</rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">){
+                    bufin.close();
+                    bufin </rich_text><rich_text>= </rich_text><rich_text foreground="#0000ff">null</rich_text><rich_text foreground="#000000">;
+                }
+            }</rich_text><rich_text foreground="#0000ff">catch</rich_text><rich_text foreground="#000000">(Exception e){
+                e.printStackTrace();
+            }
+        }</rich_text><rich_text>
+        </rich_text></node></node><node name="高效开发Android App的10个建议" prog_lang="custom-colors" readonly="False" tags="" unique_id="7"><rich_text>假如要Google Play上做一个最失败的案例，那最好的秘诀就是界面奇慢无比、耗电、耗内存。接下来就会得到用户的消极评论，最后名声也就臭了。即使你的应用</rich_text><rich_text foreground="#0099cc" link="webs http://www.azoft.com/design/">设计精良</rich_text><rich_text>、创意无限也没用。
 耗电或者内存占用等影响产品效率的每一个问题都会影响App的成功。这就是为什么在开发中确保最优化、运行流畅而且不会使Android系统出问题 是至关重要的了。这里不需要讨论高效编程，因为我们不会关心你写的代码是否能够经得起测试。即使高效的代码也是需要时间来运行。今天这篇文章我们就讲讲怎 么尽可能地缩短运行时间，以及如何开发用户喜欢的</rich_text><rich_text foreground="#0099cc" link="webs http://www.azoft.com/google-android-development.htm">App</rich_text><rich_text>。
 
 </rich_text><rich_text scale="h1" weight="heavy">高效地利用线程</rich_text><rich_text>
