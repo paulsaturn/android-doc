@@ -2073,7 +2073,7 @@ endif
 map = $(__gmsl_tr2)$(strip $(foreach a,$2,$(call $1,$a)))
 </rich_text><rich_text foreground="#00000000ffff">#definitions.mk</rich_text><rich_text foreground="#ffff00000000">
 module-get-installed = $(__ndk_modules.$1.INSTALLED)
-</rich_text><rich_text foreground="#00000000ffff">#在moudle_add中有调用$(eval LOCAL_INSTALLED := $(LOCAL_BUILT_MODULE)) 
+</rich_text><rich_text foreground="#00000000ffff">#在module-add中有调用$(eval LOCAL_INSTALLED := $(LOCAL_BUILT_MODULE)) 
 #并$(eval __ndk_modules.$1.$(__local) := $(LOCAL_$(__local))), 保存到__ndk_modules.$1.INSTALLED
 </rich_text><rich_text>
 </rich_text><rich_text foreground="#00000000ffff">#definitions.mk</rich_text><rich_text foreground="#ffff00000000">
@@ -2110,7 +2110,7 @@ ALL_DEPENDENCY_DIRS := $(patsubst %/,%,$(sort $(ALL_DEPENDENCY_DIRS)))
 .PHONY: ndk-app-$(_app)
 ndk-app-$(_app): $(NDK_APP_MODULES)
 all: ndk-app-$(_app)
-</rich_text><rich_text foreground="#00000000ffff">#$(NDK_APP_MODULES)是Application.mk中APP_MODULES, 编译APP_MODULES指定的模块</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#$(NDK_APP_MODULES)是Application.mk中APP_MODULES(在setup-app.mk中复制定义), 编译APP_MODULES指定的模块</rich_text><rich_text>
 </rich_text><rich_text foreground="#00000000ffff">#如果出现相同伪标号(all, clean等), 依赖是合并处理</rich_text><rich_text>
 
 # Each ABI
@@ -2139,8 +2139,10 @@ $(call ndk-stl-select,$(NDK_APP_STL))
 # now parse the Android.mk for the application, this records all
 # module declarations, but does not populate the dependency graph yet.
 include $(NDK_APP_BUILD_SCRIPT)
+</rich_text><rich_text foreground="#00000000ffff">#setup-app.mk</rich_text><rich_text>
 </rich_text><rich_text foreground="#00000000ffff">#NDK_APP_BUILD_SCRIPT=APP_BUILD_SCRIPT=jni/Android.mk
-#在setup-app.mk把APP_BUILD_SCRIPT重新命名为NDK_APP_BUILD_SCRIPT</rich_text><rich_text>
+#把NDK_APP_BUILD_SCRIPT定义为某app的APP_BUILD_SCRIPT</rich_text><rich_text>
+</rich_text><rich_text foreground="#00000000ffff">#NDK_APP_MODULES定义为某app的APP_MODULES</rich_text><rich_text>
 </rich_text><rich_text foreground="#ffff00000000">_map := NDK_APP.$(_app)</rich_text><rich_text>
 </rich_text><rich_text foreground="#ffff00000000">
 NDK_APP_NAME           := $(_app)
@@ -2150,16 +2152,8 @@ $(foreach __name,$(NDK_APP_VARS),\
   $(eval NDK_$(__name) := $(call get,$(_map),$(__name)))\
 )
 
-</rich_text><rich_text foreground="#00000000ffff">#add-application.mk</rich_text><rich_text foreground="#ffff00000000">
-# Record all app-specific variable definitions
-$(foreach __name,$(NDK_APP_VARS),\
-  $(call set,$(_map),$(__name),$($(__name)))\
-)
-
-
-</rich_text><rich_text foreground="#00000000ffff">#add-application.mk中设置了变量
-</rich_text><rich_text foreground="#ffff00000000">$(call set,$(_map),defined,$(_application_mk))
-
+</rich_text><rich_text foreground="#00000000ffff">#add-application.mk
+#把APP_xxx变量保存在NDK_APP.$(_app).APP_xx</rich_text><rich_text foreground="#ffff00000000">
 # Record all app-specific variable definitions
 $(foreach __name,$(NDK_APP_VARS),\
   $(call set,$(_map),$(__name),$($(__name)))\
