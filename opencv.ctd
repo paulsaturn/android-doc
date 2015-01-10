@@ -1,0 +1,91 @@
+<?xml version="1.0" ?><cherrytree><node name="笔记" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. ubuntu14.04
+sudo apt-get install build-essential cmake libgtk2.0-dev pkg-config python-dev python-numpy libavcodec-dev libavformat-dev libswscale-dev  
+
+2. 
+1).编译
+cd opencv2.4.10
+mkdir release
+cd release
+cmake -D CMAKE_BUILD_TYPE=RELEASE -D CMAKE_INSTALL_PREFIX=/usr/local .. 
+make
+
+2).安装
+sudo make install
+
+3).配置
+在/etc/ld.so.conf中添加
+include /usr/local/lib
+
+3. 测试
+1). 在某个目录下建立一个test.cpp文件
+
+#include &lt;cv.h&gt;  
+#include &lt;highgui.h&gt;  
+ 
+using namespace cv;  
+ 
+int main(int argc, char* argv[])  
+{  
+    Mat image;  
+    image = imread(argv[1], 1);  
+ 
+    if (argc != 2 || !image.data)   
+    {  
+        printf(&quot;No image data\n&quot;);  
+        return -1;  
+    }  
+ 
+    namedWindow(&quot;Display Image&quot;, CV_WINDOW_AUTOSIZE);  
+    imshow(&quot;Display Image&quot;, image);  
+    waitKey(0);  
+    return 0;  
+}
+
+直接编译：
+g++ test.cpp -o test `pkg-config --cflags --libs opencv` 
+
+2).写一个cmake的makefile，也叫CMakeLists.txt
+project(test)  
+find_package(OpenCV REQUIRED)  
+add_executable(test test)  
+target_link_libraries(test ${OpenCV_LIBS})  
+cmake_minimum_required(VERSION 2.8)
+
+3). 编译+运行
+    cmake .  
+    make      
+    得到可执行文件test
+
+4. 在qt中测试
+    #include &lt;iostream&gt;  
+    #include &lt;opencv2/core/core.hpp&gt;  
+    #include &lt;opencv2/highgui/highgui.hpp&gt;  
+    #include &lt;opencv2/imgproc/imgproc.hpp&gt;  
+    using namespace cv;  
+    using namespace std;  
+      
+    int main()  
+    {  
+            namedWindow( &quot;src&quot;);  
+            Mat img = imread( &quot;/home/gzhao/lena.jpg&quot; );  
+      
+            if(!img.data) {  
+                cout&lt;&lt;&quot;file not fount&quot;&lt;&lt;endl;  
+                return 1;  
+            }  
+            else {  
+                 imshow( &quot;src&quot;, img );  
+                 waitKey();  
+                 return 0;  
+            }  
+    }  
+
+然后在×××.pro文件中添加如下配置
+    INCLUDEPATH += /usr/local/include \  
+                    /usr/local/include/opencv \  
+                    /usr/local/include/opencv2  
+      
+    LIBS += /usr/local/lib/libopencv_highgui.so \  
+            /usr/local/lib/libopencv_core.so    \  
+            /usr/local/lib/libopencv_imgproc.so  
+</rich_text></node></cherrytree>
