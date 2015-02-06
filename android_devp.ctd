@@ -1134,7 +1134,62 @@ aapt a[dd] [-v] file.{zip,jar,apk} file1 [file2 ...]
 
 6. 显示aapt的版本
 aapt v[ersion]   
-</rich_text></node></node><node name="android学习之路" prog_lang="custom-colors" readonly="False" tags="" unique_id="20"><rich_text></rich_text><node name="(17).widget" prog_lang="custom-colors" readonly="False" tags="" unique_id="22"><rich_text>widget指的是桌面小部件，在手机或模拟器的主屏幕(Home screen)上长时间点击，会弹出一个菜单栏，叫添加到主屏幕(Add to Home screen)，然后选择Android小部件(widgets)就会出现我们说的widget。
+</rich_text></node></node><node name="Android 的HashMap介绍 " prog_lang="custom-colors" readonly="False" tags="" unique_id="26"><rich_text>在Android开发中我们经常需要对数据进行分类和操作，对于轻量级的数据存储我们可能不需要动用SQLite或效率以及类库不完善的XML，由于SharedPreferences不具备数据枚举方法，如果仅仅是一个String或Int数组可以通过一个标记分割设计外，我们还是主要来看看Android或者说Java提供的基础数据类型辅助类ArrayList LinkedList Set HashMap的介绍，如果你熟悉C++的STL或Boost库可以略过本文。    在Java中提供了Collection和Map接口。其中List和Set继承了Collection接口；同时用Vector、ArrayList、 LinkedList三个类实现List接口，HashSet、TreeSet实现Set接口。直接有HashTable、HashMap、 TreeMap实现Map接口。 
+    Vector基于Array的List，性能也就不可能超越Array，并且Vector是“sychronized”的，这个也是Vector和ArrayList的唯一的区别。
+    ArrayList：同Vector一样是一个基于Array的，但是不同的是ArrayList不是同步的。所以在性能上要比Vector优越一些。Android123提示大家适用于顺序性的查找
+     LinkedList：不同于前面两种List，它不是基于Array的，作为链表数据结构方式，所以不受Array性能的限制。当对 LinkedList做添加，删除动作的时候只要更改nextNode的相关信息就可以实现了所以它适合于进行频繁进行插入和删除操作。这就是 LinkedList的优势，当然对于元素的位置获取等方面就逊色很多。
+    List：
+        1. 所有的List中只能容纳单个不同类型的对象组成的表，而不是Key－Value键值对。例如：[ tom,1,c ]；
+        2. 所有的List中可以有相同的元素，例如Vector中可以有 [ tom,koo,too,koo ]；
+        3. 所有的List中可以有null元素，例如[ tom,null,1 ]；
+        4. 基于Array的List（Vector，ArrayList）适合查询，而LinkedList（链表）适合添加，删除操作。
+虽然Set同List都实现了Collection接口，但是他们的实现方式却大不一样。List基本上都是以Array为基础。但是Set则是在HashMap的基础上来实现的，这个就是Set和List的根本区别。
+     HashSet：HashSet的存储方式是把HashMap中的Key作为Set的对应存储项，HashMap的key是不能有重复的。HashSet能快速定位一个元素，但是放到HashSet中的对象需要实现hashCode()方法0。
+    TreeSet：将放入其中的元素按序存放，这就要求你放入其中的对象是可排序的。TreeSet不同于HashSet的根本是TreeSet是有序的。它是通过SortedMap来实现的。
+    Set总结： 1. Set实现的基础是Map（HashMap）； 2. Set中的元素是不能重复的，如果使用add(Object obj)方法添加已经存在的对象，则会覆盖前面的对象，不能包含两个元素e1、e2（e1.equals（e2））。
+    Map是一种把键对象和值对象进行关联的容器，Map有两种比较常用的实现： HashTable、HashMap和TreeMap。
+    HashMap也用到了哈希码的算法，以便快速查找一个键，
+    TreeMap则是对键按序存放，因此它有一些扩展的方法，比如firstKey(),lastKey()等。
+    HashMap和Hashtable的区别。 HashMap允许空（null）键（key）或值（value），由于非线程安全，效率上可能高于Hashtable。 Hashtable不允许空（null）键（key）或值（value）。
+</rich_text></node><node name="android xml" prog_lang="custom-colors" readonly="False" tags="" unique_id="25"><rich_text scale="h2" weight="heavy">android strings.xml转义字符, 注意细节解决</rich_text><rich_text scale="h2">         </rich_text><rich_text>
+</rich_text><rich_text weight="heavy">XML转义字符</rich_text><rich_text> 
+以下为XML标志符的数字和字符串转义符 
+ &quot;     (&amp;#34; 或 &amp;quot;) 
+ '     (&amp;#39; 或 &amp;apos;) 
+ &amp;     (&amp;#38; 或 &amp;amp;) 
+ lt(&lt;) (&amp;#60; 或 &amp;lt;) 
+ gt(&gt;) (&amp;#62; 或 &amp;gt;) 
+
+
+如题： 
+ 比如：在string.xml中定义如下一个字符串， 
+ &lt;string name=&quot;first&quot;&gt;大家好，欢迎来到eoeandroid社区。welcome to here！&lt;/string&gt; 
+ 我想以 
+ 大家好，欢迎来到eoeandroid社区。 
+ welcome to here！ 
+ 两行的形式输出,如何做？加\n，看下面： 
+&lt;string name=&quot;hello&quot;&gt;大家好，欢迎来到eoeandroid社区。\nwelcome to here！&lt;/string&gt; 
+
+ android中的空格编码 string.xml前后加空格的技巧 
+ &lt;string name=&quot;space&quot;&gt;&amp;#160;&amp;#160;&amp;#160;&amp;#160;我来看空格&lt;/string&gt; 
+ &amp;#160; 这个就代表着空格 
+
+
+1. 遇到如下错误的时候说明你需要在单引号签名加转义字符(\): 
+ Description Resource Path Location Type error: Apostrophe not preceded by \ (in Search' Titles) strings.xml 
+ 只要将定义的字符串中的单引号('), 修改为(\')即可 
+
+2. 变量文本格式(%s)提示： 
+ Multiple annotations found at this line: 
+ - error: Multiple substitutions specified in non-positional format; did you mean to add the formatted=&quot;false&quot; 
+ attribute? 
+ - error: Unexpected end tag string 
+ 这是由于新的SDK(虽然从没用过老的)采用了新版本的aapt(Android项目编译器), 这个版本的aapt编译起来会比老版本更加的严格, 在Android最新的开发文档中描述String的部分，已经说明了如何去设置 %s 等符号, 可以点击去看. 
+ 简单解决方法就是:把%s之类的变量格式替换成%1$s, %1表示第一个位置的变量, $s表示为字符串类型 
+ 例如: 
+ 
+ &lt;string name=&quot;welcome_messages&quot;&gt;Your First Var is %1$s! You Second Var is %2$d.&lt;/string&gt; 
+</rich_text></node><node name="android学习之路" prog_lang="custom-colors" readonly="False" tags="" unique_id="20"><rich_text></rich_text><node name="(17).widget" prog_lang="custom-colors" readonly="False" tags="" unique_id="22"><rich_text>widget指的是桌面小部件，在手机或模拟器的主屏幕(Home screen)上长时间点击，会弹出一个菜单栏，叫添加到主屏幕(Add to Home screen)，然后选择Android小部件(widgets)就会出现我们说的widget。
  
 　　实现步骤：
 　　1.创建在主屏幕上显示的画面布局文件my_layout.xml，
