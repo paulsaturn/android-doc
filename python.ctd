@@ -151,7 +151,50 @@ print('总共处理了 %s 张图片'%(i))
 输出结果：
 程序运行耗时:0.11
 总共处理了 109 张图片
-</rich_text></node><node name="类型转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>int(x [,base ])         将x转换为一个整数    
+
+
+=====================================================
+</rich_text><rich_text scale="h2">os 与 stat 在文件中获取相关的信息</rich_text><rich_text>
+=====================================================
+1.
+import os,stat,time
+
+    fileStats = os.stat('new.txt')
+    print 'size:',fileStats[stat.ST_SIZE]/1024,'KB'
+    if stat.S_ISDIR(fileStats[stat.ST_MODE]): #判断文件类型    
+        print 'type:','DIRECTORY'
+    if stat.S_ISREG(fileStats[stat.ST_MODE]):    
+        print 'type:','REGULAR'
+    if stat.S_ISLNK(fileStats[stat.ST_MODE]):    
+        print 'type:','LINK'
+
+    print 'atime:',time.ctime(fileStats[stat.ST_ATIME])
+    print 'mtime:',time.ctime(fileStats[stat.ST_MTIME])
+    print 'ctime:',time.ctime(fileStats[stat.ST_CTIME])
+
+2.
+import os,stat,time
+
+    fileStats = os.stat('new.txt')
+    print 'size:',os.path.getsize('new.txt')
+    print 'atime:',os.path.getatime('new.txt')
+    print 'mtime:',os.path.getmtime('new.txt')
+    print 'ctime:',os.path.getctime('new.txt')
+
+3.
+import os,stat,time
+
+    path = '../1/new.txt'
+    print ''print os.path.abspath(path)    #返回绝对路径
+    print os.path.split(path)           #将path分割成目录和文件名二元组返回
+    print os.path.dirname(path)    #返回path的目录。其实就是os.path.split(path)的第一个元素。
+    print os.path.basename(path)   #返回path最后的文件名。如何path以／或\结尾，那么就会返回空值。即os.path.split(path)的第二个元素。
+    print os.path.exists(path)     #如果path存在，返回True；否则，返回False
+    print os.path.isabs(path)      #如果path是绝对路径，返回True
+    print os.path.isfile(path)     #如果path是一个存在的文件，返回True。否则返回False
+    print os.path.isdir(path)      #如果path是一个存在的目录，则返回True。否则返回False
+    print os.path.dirname(os.path.abspath(path))
+    </rich_text></node><node name="类型转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>int(x [,base ])         将x转换为一个整数    
 long(x [,base ])        将x转换为一个长整数    
 float(x )               将x转换到一个浮点数    
 complex(real [,imag ])  创建一个复数    
