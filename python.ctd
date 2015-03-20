@@ -207,4 +207,153 @@ chr(x )                 将一个整数转换为一个字符    
 unichr(x )              将一个整数转换为Unicode字符    
 ord(x )                 将一个字符转换为它的整数值    
 hex(x )                 将一个整数转换为一个十六进制字符串    
-oct(x )                 将一个整数转换为一个八进制字符串  </rich_text></node></cherrytree>
+oct(x )                 将一个整数转换为一个八进制字符串  </rich_text></node><node name="字符串操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text scale="h2">去空格及特殊符号</rich_text><rich_text>
+s.strip().lstrip().rstrip(</rich_text><rich_text foreground="#800000">','</rich_text><rich_text>)
+
+</rich_text><rich_text scale="h2">复制字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strcpy(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'strcpy'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>=</rich_text><rich_text foreground="#000000"> sStr1
+sStr1 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'strcpy2'</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr2
+
+</rich_text><rich_text scale="h2">连接字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strcat(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'strcat'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'append'</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>+=</rich_text><rich_text foreground="#000000"> sStr2
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1
+
+</rich_text><rich_text scale="h2">查找字符</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strchr(sStr1,sStr2)
+# &lt; 0 为未找到</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'strchr'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'s'</rich_text><rich_text foreground="#000000">
+nPos </rich_text><rich_text>=</rich_text><rich_text foreground="#000000"> sStr1.index(sStr2)
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> nPos
+
+</rich_text><rich_text scale="h2">比较字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strcmp(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'strchr'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'strch'</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> cmp(sStr1,sStr2)
+
+</rich_text><rich_text scale="h2">扫描字符串是否包含指定的字符</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strspn(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'12345678'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'456'</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#sStr1 and chars both in sStr1 and sStr2</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> len(sStr1 </rich_text><rich_text foreground="#0000ff">and</rich_text><rich_text> sStr2)
+
+</rich_text><rich_text scale="h2">字符串长度</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strlen(sStr1)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'strlen'</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> len(sStr1)
+
+</rich_text><rich_text scale="h2">将字符串中的大小写转换</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strlwr(sStr1)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'JCstrlwr'</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>=</rich_text><rich_text foreground="#000000"> sStr1.upper()
+</rich_text><rich_text foreground="#008000">#sStr1 = sStr1.lower()</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1
+
+</rich_text><rich_text scale="h2">追加指定长度的字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strncat(sStr1,sStr2,n)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'12345'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'abcdef'</rich_text><rich_text foreground="#000000">
+n </rich_text><rich_text>= 3</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>+=</rich_text><rich_text foreground="#000000"> sStr2[0:n]
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1
+</rich_text><rich_text scale="h2">字符串指定长度比较</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strncmp(sStr1,sStr2,n)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'12345'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'123bc'</rich_text><rich_text foreground="#000000">
+n </rich_text><rich_text>= 3
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> cmp(sStr1[0:n],sStr2[0:n])
+
+</rich_text><rich_text scale="h2">复制指定长度的字符</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strncpy(sStr1,sStr2,n)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">''</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'12345'</rich_text><rich_text foreground="#000000">
+n </rich_text><rich_text>= 3</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>=</rich_text><rich_text foreground="#000000"> sStr2[0:n]
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1
+
+</rich_text><rich_text scale="h2">将字符串前n个字符替换为指定的字符</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strnset(sStr1,ch,n)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'12345'</rich_text><rich_text foreground="#000000">
+ch </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'r'</rich_text><rich_text foreground="#000000">
+n </rich_text><rich_text>= 3</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>= n * ch + sStr1[3</rich_text><rich_text foreground="#000000">:]
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1
+
+</rich_text><rich_text scale="h2">扫描字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strpbrk(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'cekjgdklab'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'gka'</rich_text><rich_text foreground="#000000">
+nPos </rich_text><rich_text>= -1
+</rich_text><rich_text foreground="#0000ff">for</rich_text><rich_text> c </rich_text><rich_text foreground="#0000ff">in</rich_text><rich_text foreground="#000000"> sStr1:
+    </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text> c </rich_text><rich_text foreground="#0000ff">in</rich_text><rich_text foreground="#000000"> sStr2:
+        nPos </rich_text><rich_text>=</rich_text><rich_text foreground="#000000"> sStr1.index(c)
+        </rich_text><rich_text foreground="#0000ff">break</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> nPos
+
+</rich_text><rich_text scale="h2">翻转字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strrev(sStr1)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'abcdefg'</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>= sStr1[::-1</rich_text><rich_text foreground="#000000">]
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1
+
+</rich_text><rich_text scale="h2">查找字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strstr(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'abcdefg'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'cde'</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> sStr1.find(sStr2)
+
+</rich_text><rich_text scale="h2">分割字符串</rich_text><rich_text>
+</rich_text><rich_text foreground="#008000">#strtok(sStr1,sStr2)</rich_text><rich_text>
+sStr1 = </rich_text><rich_text foreground="#800000">'ab,cde,fgh,ijk'</rich_text><rich_text foreground="#000000">
+sStr2 </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">','</rich_text><rich_text foreground="#000000">
+sStr1 </rich_text><rich_text>= sStr1[sStr1.find(sStr2) + 1</rich_text><rich_text foreground="#000000">:]
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text foreground="#000000"> sStr1
+</rich_text><rich_text foreground="#008000">#或者</rich_text><rich_text>
+s = </rich_text><rich_text foreground="#800000">'ab,cde,fgh,ijk'</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text>(s.split(</rich_text><rich_text foreground="#800000">','</rich_text><rich_text>))
+
+</rich_text><rich_text scale="h2">连接字符串</rich_text><rich_text>
+delimiter = </rich_text><rich_text foreground="#800000">','</rich_text><rich_text foreground="#000000">
+mylist </rich_text><rich_text>= [</rich_text><rich_text foreground="#800000">'Brazil'</rich_text><rich_text>, </rich_text><rich_text foreground="#800000">'Russia'</rich_text><rich_text>, </rich_text><rich_text foreground="#800000">'India'</rich_text><rich_text>, </rich_text><rich_text foreground="#800000">'China'</rich_text><rich_text foreground="#000000">]
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> delimiter.join(mylist)
+
+</rich_text><rich_text scale="h2">PHP 中 addslashes 的实现</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">def</rich_text><rich_text foreground="#000000"> addslashes(s):
+    d </rich_text><rich_text>= {</rich_text><rich_text foreground="#800000">'&quot;'</rich_text><rich_text>:</rich_text><rich_text foreground="#800000">'\\&quot;'</rich_text><rich_text>, </rich_text><rich_text foreground="#800000">&quot;'&quot;</rich_text><rich_text>:</rich_text><rich_text foreground="#800000">&quot;\\'&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#800000">&quot;\0&quot;</rich_text><rich_text>:</rich_text><rich_text foreground="#800000">&quot;\\\0&quot;</rich_text><rich_text>, </rich_text><rich_text foreground="#800000">&quot;\\&quot;</rich_text><rich_text>:</rich_text><rich_text foreground="#800000">&quot;\\\\&quot;</rich_text><rich_text foreground="#000000">}
+    </rich_text><rich_text foreground="#0000ff">return</rich_text><rich_text> </rich_text><rich_text foreground="#800000">''</rich_text><rich_text>.join(d.get(c, c) </rich_text><rich_text foreground="#0000ff">for</rich_text><rich_text> c </rich_text><rich_text foreground="#0000ff">in</rich_text><rich_text foreground="#000000"> s)
+ 
+s </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">&quot;John 'Johny' Doe (a.k.a. \&quot;Super Joe\&quot;)\\\0&quot;</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text foreground="#000000"> s
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text> addslashes(s)
+
+</rich_text><rich_text scale="h2">只显示字母与数字</rich_text><rich_text>
+</rich_text><rich_text foreground="#0000ff">def</rich_text><rich_text> OnlyCharNum(s,oth=</rich_text><rich_text foreground="#800000">''</rich_text><rich_text foreground="#000000">):
+    s2 </rich_text><rich_text>=</rich_text><rich_text foreground="#000000"> s.lower();
+    fomart </rich_text><rich_text>= </rich_text><rich_text foreground="#800000">'abcdefghijklmnopqrstuvwxyz0123456789'</rich_text><rich_text>
+    </rich_text><rich_text foreground="#0000ff">for</rich_text><rich_text> c </rich_text><rich_text foreground="#0000ff">in</rich_text><rich_text foreground="#000000"> s2:
+        </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text> </rich_text><rich_text foreground="#0000ff">not</rich_text><rich_text> c </rich_text><rich_text foreground="#0000ff">in</rich_text><rich_text foreground="#000000"> fomart:
+            s </rich_text><rich_text>= s.replace(c,</rich_text><rich_text foreground="#800000">''</rich_text><rich_text foreground="#000000">);
+    </rich_text><rich_text foreground="#0000ff">return</rich_text><rich_text foreground="#000000"> s;
+ 
+</rich_text><rich_text foreground="#0000ff">print</rich_text><rich_text>(OnlyStr(</rich_text><rich_text foreground="#800000">&quot;a000 aa-b&quot;</rich_text><rich_text>)) 
+
+</rich_text><rich_text scale="h2">截取字符串</rich_text><rich_text>
+str = ’0123456789′
+print str[0:3] #截取第一位到第三位的字符
+print str[:] #截取字符串的全部字符
+print str[6:] #截取第七个字符到结尾
+print str[:-3] #截取从头开始到倒数第三个字符之前
+print str[2] #截取第三个字符
+print str[-1] #截取倒数第一个字符
+print str[::-1] #创造一个与原字符串顺序相反的字符串
+print str[-3:-1] #截取倒数第三位与倒数第一位之前的字符
+print str[-3:] #截取倒数第三位到结尾
+print str[:-5:-3] #逆序截取，具体啥意思没搞明白？</rich_text></node></cherrytree>
