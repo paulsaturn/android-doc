@@ -1,0 +1,760 @@
+<?xml version="1.0" ?><cherrytree><node name="sqlite3" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text weight="heavy">1.sqlite3.php</rich_text><rich_text>
+header(&quot;Content-Type: text/html;charset=utf-8&quot;);   
+
+try {
+	$dbh = new PDO('sqlite:game.db'); 
+	if ($dbh){ 
+		$dbh-&gt;beginTransaction(); 
+		$sth = $dbh-&gt;prepare('select * from game_list'); 
+		$sth-&gt;execute();
+		$sth-&gt;setFetchMode(PDO::FETCH_ASSOC);
+		$result = $sth-&gt;fetchAll();
+		echo json_encode($result, JSON_UNESCAPED_UNICODE);		
+	}else{ 
+		echo 'connect bad'; 
+	}
+} catch (PDOException $e) {
+	echo 'Connection failed: '.$e-&gt;getMessage();
+}</rich_text></node><node name="mysql" prog_lang="custom-colors" readonly="False" tags="" unique_id="5"><rich_text> 繁写：
+ &lt;?php
+    echo &quot;This is a test&lt;/br&gt;&quot;; 
+    echo &quot;asdfasdfadsf&quot;;
+    $mysql_server_name=&quot;localhost&quot;; //数据库服务器名称
+    $mysql_username=&quot;root&quot;; // 连接数据库用户名
+    $mysql_password=&quot;??????&quot;; // 连接数据库密码
+    $mysql_database=&quot;??????&quot;; // 数据库的名字
+    
+    // 连接到数据库
+    $conn=mysql_connect($mysql_server_name, $mysql_username,
+                        $mysql_password);
+                        
+     // 从表中提取信息的sql语句
+    $strsql=&quot;SELECT * FROM `gbook`&quot;;
+    // 执行sql查询
+    $result=mysql_db_query($mysql_database, $strsql, $conn);
+    // 获取查询结果
+    $row=mysql_fetch_row($result);
+    
+     
+    echo '&lt;font face=&quot;verdana&quot;&gt;';
+    echo '&lt;table border=&quot;1&quot; cellpadding=&quot;1&quot; cellspacing=&quot;2&quot;&gt;';
+
+    // 显示字段名称
+    echo &quot;&lt;/b&gt;&lt;tr&gt;&lt;/b&gt;&quot;;
+    for ($i=0; $i&lt;mysql_num_fields($result); $i++)
+    {
+      echo '&lt;td bgcolor=&quot;#000F00&quot;&gt;&lt;b&gt;'.
+      mysql_field_name($result, $i);
+      echo &quot;&lt;/b&gt;&lt;/td&gt;&lt;/b&gt;&quot;;
+    }
+    echo &quot;&lt;/tr&gt;&lt;/b&gt;&quot;;
+    // 定位到第一条记录
+    mysql_data_seek($result, 0);
+    // 循环取出记录
+    while ($row=mysql_fetch_row($result))
+    {
+      echo &quot;&lt;tr&gt;&lt;/b&gt;&quot;;
+      for ($i=0; $i&lt;mysql_num_fields($result); $i++ )
+      {
+        echo '&lt;td bgcolor=&quot;#00FF00&quot;&gt;';
+        echo $row[$i];
+        echo '&lt;/td&gt;';
+      }
+      echo &quot;&lt;/tr&gt;&lt;/b&gt;&quot;;
+    }
+   
+    echo &quot;&lt;/table&gt;&lt;/b&gt;&quot;;
+    echo &quot;&lt;/font&gt;&quot;;
+    // 释放资源
+    mysql_free_result($result);
+    // 关闭连接
+    mysql_close($conn);  
+?&gt;
+ 
+简写：
+&lt;?php
+ $conn=mysql_connect(&quot;localhost&quot;, &quot;root&quot;, &quot;password&quot;);             
+ $result=mysql_db_query(&quot;Database&quot;, &quot;SELECT * FROM `info`&quot;, $conn);
+    // 获取查询结果
+     $row=mysql_fetch_row($result);
+    
+     
+    echo '&lt;font face=&quot;verdana&quot;&gt;';
+    echo '&lt;table border=&quot;1&quot; cellpadding=&quot;1&quot; cellspacing=&quot;2&quot;&gt;';
+
+    // 显示字段名称
+    echo &quot;&lt;/b&gt;&lt;tr&gt;&lt;/b&gt;&quot;;
+    for ($i=0; $i&lt;mysql_num_fields($result); $i++)
+    {
+      echo '&lt;td bgcolor=&quot;#000F00&quot;&gt;&lt;b&gt;'.
+      mysql_field_name($result, $i);
+      echo &quot;&lt;/b&gt;&lt;/td&gt;&lt;/b&gt;&quot;;
+    }
+    echo &quot;&lt;/tr&gt;&lt;/b&gt;&quot;;
+    // 定位到第一条记录
+    mysql_data_seek($result, 0);
+    // 循环取出记录
+    while ($row=mysql_fetch_row($result))
+    {
+      echo &quot;&lt;tr&gt;&lt;/b&gt;&quot;;
+      for ($i=0; $i&lt;mysql_num_fields($result); $i++ )
+      {
+        echo '&lt;td bgcolor=&quot;#00FF00&quot;&gt;';
+        echo $row[$i];
+        echo '&lt;/td&gt;';
+      }
+      echo &quot;&lt;/tr&gt;&lt;/b&gt;&quot;;
+    }
+   
+    echo &quot;&lt;/table&gt;&lt;/b&gt;&quot;;
+    echo &quot;&lt;/font&gt;&quot;;
+    // 释放资源
+    mysql_free_result($result);
+    // 关闭连接
+    mysql_close($conn);  
+?&gt; 
+</rich_text></node><node name="文件操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text></rich_text><node name="读取文件的几个方法 " prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>整理了一下PHP中读取文件的几个方法，方便以后查阅。
+
+</rich_text><rich_text scale="h2" weight="heavy">1.fread</rich_text><rich_text>
+　　string fread ( int $handle , int $length )
+　　fread() 从 handle 指向的文件中读取最多 length 个字节。该函数在读取完最多 length 个字节数，或到达  EOF 的时候，或（对于网络流）当一个包可用时，或（在打开用户空间流之后）已读取了 8192 个字节时就会停止读取文件，视乎先碰到哪种情况。
+　　fread() 返回所读取的字符串，如果出错返回 FALSE。
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text> = &quot;/usr/local/something.txt&quot;;
+    </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text>, &quot;r&quot;);</rich_text><rich_text foreground="#008000">//读取二进制文件时，需要将第二个参数设置成'rb'
+    
+    //通过filesize获得文件大小，将整个文件一下子读到一个字符串中
+</rich_text><rich_text>    </rich_text><rich_text foreground="#800080">$contents</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fread</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>, </rich_text><rich_text foreground="#008080">filesize</rich_text><rich_text> (</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text>));
+    </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>);
+?&gt;
+ 　　如果所要读取的文件不是本地普通文件，而是远程文件或者流文件，就不能用这种方法，因为，filesize不能获得这些文件的大小。此时，你需要通过feof()或者fread()的返回值判断是否已经读取到了文件的末尾。
+　　例如：
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text>('http://www.baidu.com', 'r');
+    </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text> = '';
+    </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text>(!</rich_text><rich_text foreground="#008080">feof</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>)){
+        </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text> .= </rich_text><rich_text foreground="#008080">fread</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>, 8080);
+    }
+    </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text>;
+    </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>);
+?&gt;
+或者：
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text>('http://www.baidu.com', 'r');
+    </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text> = '';
+    </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text>(</rich_text><rich_text foreground="#0000ff">false</rich_text><rich_text> != (</rich_text><rich_text foreground="#800080">$a</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fread</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>, 8080))){</rich_text><rich_text foreground="#008000">//返回false表示已经读取到文件末尾
+</rich_text><rich_text>        </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text> .= </rich_text><rich_text foreground="#800080">$a</rich_text><rich_text>;
+    }
+    </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text>;
+    </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>);
+?&gt; 
+
+</rich_text><rich_text scale="h2" weight="heavy">2.fgets</rich_text><rich_text>
+　　string fgets ( int $handle [, int $length ] )
+　　fgets()从 handle 指向的文件中读取一行并返回长度最多为 length  - 1 字节的字符串。碰到换行符（包括在返回值中）、EOF 或者已经读取了 length - 1  字节后停止（看先碰到那一种情况）。如果没有指定 length，则默认为 1K，或者说 1024 字节。
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text>('./file.txt', 'r');
+    </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text>(!</rich_text><rich_text foreground="#008080">feof</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>)){
+        </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> </rich_text><rich_text foreground="#008080">fgets</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>, 1024);
+    }
+    </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>);
+?&gt;　　
+    Note: length 参数从 PHP 4.2.0 起成为可选项，如果忽略，则行的长度被假定为  1024。从 PHP 4.3 开始，忽略掉 length 将继续从流中读取数据直到行结束。如果文件中的大多数行都大于  8KB，则在脚本中指定最大行的长度在利用资源上更为有效。从 PHP 4.3 开始本函数可以安全用于二进制文件。早期的版本则不行。
+ 
+</rich_text><rich_text scale="h2" weight="heavy">3.fgetss</rich_text><rich_text>
+　　string fgetss ( resource $handle [, int $length [, string $allowable_tags ]] )
+　　跟fgets功能一样，但是fgetss会尝试从读取的文本中去掉任何 HTML 和 PHP 标记，可以用可选的第三个参数指定哪些标记不被去掉。
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text>('./file.txt', 'r');
+    </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text>(!</rich_text><rich_text foreground="#008080">feof</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>)){
+        </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> </rich_text><rich_text foreground="#008080">fgetss</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>, 1024, '&lt;br&gt;');
+    }
+    </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>);
+?&gt; 
+
+</rich_text><rich_text scale="h2" weight="heavy">4.file</rich_text><rich_text>
+　　array file ( string $filename [, int $use_include_path [, resource $context ]] )
+ 　　将文件内容读入一个数组中，数组的每一项对应文件中的一行，包括换行符在内。不需要行结束符时可以使用 rtrim() 函数过滤换行符。
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$a</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">file</rich_text><rich_text>('./file.txt');
+    </rich_text><rich_text foreground="#0000ff">foreach</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$a</rich_text><rich_text> </rich_text><rich_text foreground="#0000ff">as</rich_text><rich_text> </rich_text><rich_text foreground="#800080">$line</rich_text><rich_text> =&gt; </rich_text><rich_text foreground="#800080">$content</rich_text><rich_text>){
+        </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> 'line '.(</rich_text><rich_text foreground="#800080">$line</rich_text><rich_text> + 1).':'.</rich_text><rich_text foreground="#800080">$content</rich_text><rich_text>;
+    }
+?&gt;
+</rich_text><rich_text scale="h2">
+</rich_text><rich_text scale="h2" weight="heavy">5.readfile</rich_text><rich_text>
+　　int readfile ( string $filename [, bool $use_include_path [, resource $context ]] )
+　　读入一个文件并写入到输出缓冲。返回从文件中读入的字节数。如果出错返回 FALSE 并且除非是以 @readfile() 形式调用，否则会显示错误信息。
+&lt;?php
+    </rich_text><rich_text foreground="#800080">$size</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">readfile</rich_text><rich_text>('./file.txt');
+    </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> </rich_text><rich_text foreground="#800080">$size</rich_text><rich_text>;
+?&gt; 
+
+</rich_text><rich_text scale="h2" weight="heavy">6.file_get_contents</rich_text><rich_text>
+　　string file_get_contents ( string $filename [, bool $use_include_path [, resource $context [, int $offset [, int $maxlen ]]]] )
+　　将文件读入一个字符串。第三个参数$context可以用来设置一些参数，比如访问远程文件时，设置超时等等。
+　　另外，file_get_contents相对于以上几个函数，性能要好得多，所以应该优先考虑使用file_get_contents。但是readfile貌似比file_get_contents性能好一点</rich_text><rich_text foreground="#ff0000">（？）</rich_text><rich_text>，因为它不需要调用fopen。
+&lt;?php 
+    </rich_text><rich_text foreground="#800080">$ctx</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">stream_context_create</rich_text><rich_text>(</rich_text><rich_text foreground="#0000ff">array</rich_text><rich_text>( 
+        'http' =&gt; </rich_text><rich_text foreground="#0000ff">array</rich_text><rich_text>( 
+            'timeout' =&gt; 1    </rich_text><rich_text foreground="#008000">//设置超时
+</rich_text><rich_text>            ) 
+        ) 
+    ); 
+    </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text> </rich_text><rich_text foreground="#008080">file_get_contents</rich_text><rich_text>(&quot;http://www.baidu.com/&quot;, 0, </rich_text><rich_text foreground="#800080">$ctx</rich_text><rich_text>); 
+?&gt;
+</rich_text><rich_text scale="h2">
+</rich_text><rich_text scale="h2" weight="heavy">7.fpassthru</rich_text><rich_text>
+ 　　int fpassthru ( resource $handle )
+　　将给定的文件指针从当前的位置读取到 EOF 并把结果写到输出缓冲区。
+&lt;?php 
+    </rich_text><rich_text foreground="#008080">header</rich_text><rich_text>(&quot;Content-Type:text/html;charset=utf-8&quot;); 
+    </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text>('./test2.php', 'r');
+    </rich_text><rich_text foreground="#008080">fseek</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>, 1024);</rich_text><rich_text foreground="#008000">//将指针定位到1024字节处
+</rich_text><rich_text>    </rich_text><rich_text foreground="#008080">fpassthru</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text>);
+?&gt; 
+
+</rich_text><rich_text scale="h2" weight="heavy">8.parse_ini_file</rich_text><rich_text>
+　　array parse_ini_file ( string $filename [, bool $process_sections ] )
+　　parse_ini_file() 载入一个由 filename 指定的 ini 文件，并将其中的设置作为一个联合数组返回。如果将最后的  process_sections 参数设为 TRUE，将得到一个多维数组，包括了配置文件中每一节的名称和设置。process_sections  的默认值是 FALSE。
+　　注意：
+1. 如果 ini 文件中的值包含任何非字母数字的字符，需要将其括在双引号中（&quot;）。
+ 2. 有些保留字不能作为 ini 文件中的键名，包括：null，yes，no，true 和 false。值为 null，no 和 false  等效于 &quot;&quot;，值为 yes 和 true 等效于 &quot;1&quot;。字符 {}|&amp;~![()&quot;  也不能用在键名的任何地方，而且这些字符在选项值中有着特殊的意义。
+test.ini文件内容：
+; This is a sample configuration </rich_text><rich_text foreground="#008080">file</rich_text><rich_text>
+; Comments start with ';', </rich_text><rich_text foreground="#0000ff">as</rich_text><rich_text> in php.ini
+
+[first_section]
+one = 1
+five = 5
+animal = BIRD
+
+[second_section]
+path = &quot;/usr/local/bin&quot;
+URL = &quot;http://www.example.com/~username
+test.php内容：
+&lt;?php 
+    </rich_text><rich_text foreground="#800080">$config</rich_text><rich_text> = </rich_text><rich_text foreground="#008080">parse_ini_file</rich_text><rich_text>('./test.ini', ture);
+    </rich_text><rich_text foreground="#008080">print_r</rich_text><rich_text>(</rich_text><rich_text foreground="#800080">$config</rich_text><rich_text>);
+?&gt;
+
+输出内容：
+Array
+(
+    [first_section] =&gt; Array
+        (
+            [one] =&gt; 1
+            [five] =&gt; 5
+            [animal] =&gt; BIRD
+        )
+
+    [second_section] =&gt; Array
+        (
+            [path] =&gt; /usr/local/bin
+            [URL] =&gt; http://www.example.com/~username
+        )
+
+) 
+ 
+几个注意事项：
+　　1. 鼓励在处理二进制文件时使用 b 标志，即使系统并不需要，这样可以使脚本的移植性更好。 
+　　2. allow_url_fopen选项激活了 URL 形式的 fopen 封装协议使得可以访问 URL  对象例如文件。默认的封装协议提供用 ftp 和 http 协议来访问远程文件，一些扩展库例如 zlib  可能会注册更多的封装协议。出于安全性考虑，此选项只能在 php.ini 中设置。
+　　3. 如果要打开有特殊字符的 URL （比如说有空格），就需要使用 urlencode() 进行 URL 编码。
+</rich_text></node><node name="常用的文件操作函数集锦 " prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text scale="h2" weight="heavy">一 、解析路径：</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1 获得文件名:</rich_text><rich_text>
+ basename();
+ 给出一个包含有指向一个文件的全路径的字符串，本函数返回基本的文件名。如果文件名是以 suffix 结束的，那这一部分也会被去掉。
+ eg:
+ 
+</rich_text><rich_text foreground="#800080">$path</rich_text><rich_text foreground="#000000"> = &quot;/home/httpd/html/index.php&quot;;
+</rich_text><rich_text foreground="#800080">$file</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">basename</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$path</rich_text><rich_text foreground="#000000">,&quot;.php&quot;); </rich_text><rich_text foreground="#008000">// $file is set to &quot;index&quot;</rich_text><rich_text> 
+
+</rich_text><rich_text scale="h3" weight="heavy">2 得到目录部分：</rich_text><rich_text>
+ dirname();
+ 给出一个包含有指向一个文件的全路径的字符串，本函数返回去掉文件名后的目录名。
+ eg:
+ 
+</rich_text><rich_text foreground="#800080">$path</rich_text><rich_text foreground="#000000"> = &quot;/etc/passwd&quot;;
+</rich_text><rich_text foreground="#800080">$file</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">dirname</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$path</rich_text><rich_text foreground="#000000">); </rich_text><rich_text foreground="#008000">// $file is set to &quot;/etc&quot;</rich_text><rich_text> 
+ 
+</rich_text><rich_text scale="h3" weight="heavy">3 得到路径关联数组</rich_text><rich_text>
+ pathinfo();
+ 得到一个指定路径中的三个部分：目录名，基本名，扩展名。
+ eg:
+ 
+</rich_text><rich_text foreground="#800080">$pathinfo</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">pathinfo</rich_text><rich_text foreground="#000000">(&quot;www/test/index.html&quot;);
+</rich_text><rich_text foreground="#008080">var_dump</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$pathinfo</rich_text><rich_text foreground="#000000">);
+</rich_text><rich_text foreground="#008000">// $path['dirname']
+</rich_text><rich_text foreground="#800080">$path</rich_text><rich_text foreground="#000000">['basename']
+</rich_text><rich_text foreground="#800080">$path</rich_text><rich_text foreground="#000000">['extenssion']</rich_text><rich_text> 
+
+</rich_text><rich_text scale="h2" weight="heavy">二、文件类型</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1. filetype();</rich_text><rich_text>
+返回文件的类型。可能的值有 fifo，char，dir，block，link，file 和 unknown。
+eg:
+</rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#008080">filetype</rich_text><rich_text foreground="#000000">('/etc/passwd'); </rich_text><rich_text foreground="#008000">// file
+</rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#008080">filetype</rich_text><rich_text foreground="#000000">('/etc/');        </rich_text><rich_text foreground="#008000">// dir</rich_text><rich_text> 
+
+</rich_text><rich_text scale="h2" weight="heavy">三、得到给定文件有用信息数组(</rich_text><rich_text foreground="#ff0000" scale="h2" weight="heavy">很有用</rich_text><rich_text scale="h2" weight="heavy">)</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1. fstat();</rich_text><rich_text>
+ 通过已打开的文件指针取得文件信息
+ 获取由文件指针 handle 所打开文件的统计信息。本函数和 stat() 函数相似，除了它是作用于已打开的文件指针而不是文件名。
+ eg:
+</rich_text><rich_text foreground="#008000">// 打开文件
+ </rich_text><rich_text foreground="#800080">$fp</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text foreground="#000000">(&quot;/etc/passwd&quot;, &quot;r&quot;);
+ </rich_text><rich_text foreground="#008000">// 取得统计信息
+ </rich_text><rich_text foreground="#800080">$fstat</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">fstat</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$fp</rich_text><rich_text foreground="#000000">);
+ </rich_text><rich_text foreground="#008000">// 关闭文件
+ </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$fp</rich_text><rich_text foreground="#000000">);
+ </rich_text><rich_text foreground="#008000">// 只显示关联数组部分
+ </rich_text><rich_text foreground="#008080">print_r</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#008080">array_slice</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$fstat</rich_text><rich_text foreground="#000000">, 13));</rich_text><rich_text>2. stat()
+ 获取由 filename 指定的文件的统计信息(类比fstat())
+
+</rich_text><rich_text scale="h2" weight="heavy">四、计算大小</rich_text><rich_text>
+</rich_text><rich_text weight="heavy"> 1. filesize()</rich_text><rich_text>
+ 返回文件大小的字节数，如果出错返回 FALSE 并生成一条 E_WARNING 级的错误。
+ eg:
+</rich_text><rich_text foreground="#008000">// 输出类似：somefile.txt: 1024 bytes
+ </rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000"> = 'somefile.txt';
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000"> . ': ' . </rich_text><rich_text foreground="#008080">filesize</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000">) . ' bytes';</rich_text><rich_text> 
+</rich_text><rich_text weight="heavy"> 
+ 2. disk_free_space()</rich_text><rich_text>
+ 获得目录所在磁盘分区的可用空间（字节单位）
+ eg 
+</rich_text><rich_text foreground="#008000">// $df 包含根目录下可用的字节数
+ </rich_text><rich_text foreground="#800080">$df</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">disk_free_space</rich_text><rich_text foreground="#000000">(&quot;/&quot;);
+ </rich_text><rich_text foreground="#008000">//在 Windows 下:
+ </rich_text><rich_text foreground="#008080">disk_free_space</rich_text><rich_text foreground="#000000">(&quot;C:&quot;);
+ </rich_text><rich_text foreground="#008080">disk_free_space</rich_text><rich_text foreground="#000000">(&quot;D:&quot;);
+ </rich_text><rich_text> 
+ </rich_text><rich_text weight="heavy">3. disk_total_space()</rich_text><rich_text>
+ 返回一个目录的磁盘总大小
+ eg:(同上，换掉函数)
+ 
+另：如需要计算一个目录大小，可以编写一个递归函数来实现
+</rich_text><rich_text foreground="#0000ff">function</rich_text><rich_text foreground="#000000"> dir_size(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">){
+ </rich_text><rich_text foreground="#800080">$dir_size</rich_text><rich_text foreground="#000000"> = 0;
+ </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dh</rich_text><rich_text foreground="#000000"> = @</rich_text><rich_text foreground="#008080">opendir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">)){
+ </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text foreground="#000000">((</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">readdir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dh</rich_text><rich_text foreground="#000000">)) != </rich_text><rich_text foreground="#0000ff">false</rich_text><rich_text foreground="#000000">){
+ </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000"> !='.' and </rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000"> !='..'){
+    </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#008080">is_file</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">.'/'.</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000">)){
+ </rich_text><rich_text>      </rich_text><rich_text foreground="#800080">$dir_size</rich_text><rich_text foreground="#000000"> +=</rich_text><rich_text foreground="#008080">filesize</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">.'/'.</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000">);
+    }</rich_text><rich_text foreground="#0000ff">else</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#008080">is_dir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">.'/'.</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000">)){ 
+       </rich_text><rich_text foreground="#800080">$dir_size</rich_text><rich_text foreground="#000000"> +=dir_size(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">.'/'.</rich_text><rich_text foreground="#800080">$filename</rich_text><rich_text foreground="#000000">);
+    }
+ }
+}</rich_text><rich_text foreground="#008000">#end while </rich_text><rich_text foreground="#000000">
+}</rich_text><rich_text foreground="#008000"># end opendir
+ </rich_text><rich_text foreground="#000000">
+ @</rich_text><rich_text foreground="#008080">closedir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dh</rich_text><rich_text foreground="#000000">);
+ </rich_text><rich_text foreground="#0000ff">return</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#800080">$dir_size</rich_text><rich_text foreground="#000000">;
+} </rich_text><rich_text foreground="#008000">#end function
+ </rich_text><rich_text> 
+</rich_text><rich_text scale="h2" weight="heavy">五、 访问与修改时间</rich_text><rich_text>
+</rich_text><rich_text weight="heavy"> 1. fileatime(): 最后访问时间
+ 2. filectime(): 最后改变时间（任何数据的修改）
+ 3. filemtime(): 最后修改时间（指仅是内容修改）</rich_text><rich_text>
+ 
+</rich_text><rich_text scale="h2" weight="heavy">六、 文件的I/O操作</rich_text><rich_text>
+</rich_text><rich_text weight="heavy">1. fopen -- 打开文件或者 URL</rich_text><rich_text>
+ mode 说明
+ 'r' 只读方式打开，将文件指针指向文件头。
+ 'r+' 读写方式打开，将文件指针指向文件头。
+ 'w' 写入方式打开，将文件指针指向文件头并将文件大小截为零。如果文件不存在则尝试创建之。
+ 'w+' 读写方式打开，将文件指针指向文件头并将文件大小截为零。如果文件不存在则尝试创建之。
+ 'a' 写入方式打开，将文件指针指向文件末尾。如果文件不存在则尝试创建之。
+ 'a+' 读写方式打开，将文件指针指向文件末尾。如果文件不存在则尝试创建之。
+ 'x' 创建并以写入方式打开，将文件指针指向文件头。如果文件已存在，则 fopen() 调用失败并返回 FALSE，
+ 'x+' 创建并以读写方式打开，将文件指针指向文件头。如果文件已存在，则 fopen() 调用失败并返回 FALSE
+ eg:
+ 
+</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text foreground="#000000">(&quot;/home/rasmus/file.txt&quot;, &quot;r&quot;);</rich_text><rich_text> 
+
+</rich_text><rich_text weight="heavy">2. file -- 把整个文件读入一个数组中(</rich_text><rich_text foreground="#ff0000" weight="heavy">此函数是很有用的</rich_text><rich_text weight="heavy">)</rich_text><rich_text>
+ 和 file_get_contents() 一样，只除了 file() 将文件作为一个数组返回。数组中的每个单元都是文件中相应的一行，包括换行符在内。如果失败 file() 返回 FALSE。
+ eg:
+</rich_text><rich_text foreground="#800080">$lines</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">file</rich_text><rich_text foreground="#000000">('http://www.example.com/');
+ </rich_text><rich_text foreground="#008000">// 在数组中循环，显示 HTML 的源文件并加上行号。
+ </rich_text><rich_text foreground="#0000ff">foreach</rich_text><rich_text foreground="#000000"> (</rich_text><rich_text foreground="#800080">$lines</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#0000ff">as</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#800080">$line_num</rich_text><rich_text foreground="#000000"> =&gt; </rich_text><rich_text foreground="#800080">$line</rich_text><rich_text foreground="#000000">) {
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> &quot;Line #&lt;b&gt;{</rich_text><rich_text foreground="#800080">$line_num</rich_text><rich_text foreground="#000000">}&lt;/b&gt; : &quot; . </rich_text><rich_text foreground="#008080">htmlspecialchars</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$line</rich_text><rich_text foreground="#000000">) . &quot;&lt;br /&gt;\n&quot;;
+ }
+ </rich_text><rich_text foreground="#008000">// 另一个例子将 web 页面读入字符串。参见 file_get_contents()。
+ </rich_text><rich_text foreground="#800080">$html</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">implode</rich_text><rich_text foreground="#000000">('', </rich_text><rich_text foreground="#008080">file</rich_text><rich_text foreground="#000000"> ('http://www.example.com/'));</rich_text><rich_text>
+ 
+</rich_text><rich_text weight="heavy">3. fgets -- 从文件指针中读取一行</rich_text><rich_text>
+ 从 handle 指向的文件中读取一行并返回长度最多为 length - 1 字节的字符串。碰到换行符（包括在返回值中）、EOF 或者已经读取了  length - 1 字节后停止（看先碰到那一种情况）。如果没有指定 length，则默认为 1K，或者说 1024 字节。
+ eg:
+ 
+</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000"> = @</rich_text><rich_text foreground="#008080">fopen</rich_text><rich_text foreground="#000000">(&quot;/tmp/inputfile.txt&quot;, &quot;r&quot;);
+ </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text foreground="#000000"> (</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">) {
+ </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text foreground="#000000"> (!</rich_text><rich_text foreground="#008080">feof</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">)) {
+ </rich_text><rich_text foreground="#800080">$buffer</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">fgets</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">, 4096);
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> </rich_text><rich_text foreground="#800080">$buffer</rich_text><rich_text foreground="#000000">;
+ }
+ </rich_text><rich_text foreground="#008080">fclose</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">); 
+ }</rich_text><rich_text> 
+ 
+</rich_text><rich_text weight="heavy">4. fgetss -- 从文件指针中读取一行并过滤掉 HTML 标记</rich_text><rich_text>
+ 和 fgets() 相同，只除了 fgetss 尝试从读取的文本中去掉任何 HTML 和 PHP 标记。
+   可以用可选的第三个参数指定哪些标记不被去掉
+
+ 另：对的目录的操作：
+</rich_text><rich_text weight="heavy"> 1. opendir </rich_text><rich_text>-- 打开目录句柄，打开一个目录句柄，可用于之后的 closedir()，readdir() 和 rewinddir() 调用中。
+</rich_text><rich_text weight="heavy"> 2. readdir </rich_text><rich_text>-- 从目录句柄中读取条目，返回目录中下一个文件的文件名。文件名以在文件系统中的排序返回。
+ eg:
+ 
+</rich_text><rich_text foreground="#008000">// 注意在 4.0.0-RC2 之前不存在 !== 运算符 </rich_text><rich_text foreground="#000000">
+ </rich_text><rich_text foreground="#0000ff">if</rich_text><rich_text foreground="#000000"> (</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">opendir</rich_text><rich_text foreground="#000000">('/path/to/files')) {
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> &quot;Directory handle: </rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">\n&quot;;
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> &quot;Files:\n&quot;;
+   
+ </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text foreground="#000000"> (</rich_text><rich_text foreground="#0000ff">false</rich_text><rich_text foreground="#000000"> !== (</rich_text><rich_text foreground="#800080">$file</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">readdir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">))) {
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> &quot;</rich_text><rich_text foreground="#800080">$file</rich_text><rich_text foreground="#000000">\n&quot;;
+ }
+    
+ </rich_text><rich_text foreground="#0000ff">while</rich_text><rich_text foreground="#000000"> (</rich_text><rich_text foreground="#800080">$file</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">readdir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">)) {
+ </rich_text><rich_text foreground="#0000ff">echo</rich_text><rich_text foreground="#000000"> &quot;</rich_text><rich_text foreground="#800080">$file</rich_text><rich_text foreground="#000000">\n&quot;;
+ }
+      </rich_text><rich_text foreground="#008080">closedir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$handle</rich_text><rich_text foreground="#000000">);
+ }</rich_text><rich_text> 
+
+</rich_text><rich_text weight="heavy"> 3. scandir</rich_text><rich_text> -- 列出指定路径中的文件和目录(很有用),返回一个 array，包含有 directory 中的文件和目录。
+ 默认的排序顺序是按字母升序排列。如果使用了可选参数 sorting_order（设为 1），则排序顺序是按字母降序排列。
+ eg:
+ 
+</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">    = '/tmp';
+ </rich_text><rich_text foreground="#800080">$files1</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">scandir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">);
+ </rich_text><rich_text foreground="#800080">$files2</rich_text><rich_text foreground="#000000"> = </rich_text><rich_text foreground="#008080">scandir</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$dir</rich_text><rich_text foreground="#000000">, 1);
+ 
+ </rich_text><rich_text foreground="#008080">print_r</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$files1</rich_text><rich_text foreground="#000000">);
+ </rich_text><rich_text foreground="#008080">print_r</rich_text><rich_text foreground="#000000">(</rich_text><rich_text foreground="#800080">$files2</rich_text><rich_text foreground="#000000">);   </rich_text><rich_text> 
+另外注：
+
+</rich_text><rich_text scale="h2" weight="heavy">七、 对文件属性的操作（操作系统环境不同，可能有所不一样，这点要注意）</rich_text><rich_text>
+    1.</rich_text><rich_text foreground="#0000ff">文件是否可读</rich_text><rich_text>：
+          </rich_text><rich_text weight="heavy">bool is_readable ( string filename )</rich_text><rich_text>
+          如果由 filename 指定的文件或目录存在并且可读则返回 TRUE。
+         记住 PHP 也许只能以运行 webserver 的用户名（通常为 'nobody'）来访问文件。不计入安全模式的限制。
+    2.</rich_text><rich_text foreground="#0000ff">文件是否可写</rich_text><rich_text>
+          </rich_text><rich_text weight="heavy">bool is_writable ( string filename )</rich_text><rich_text>
+         如果文件存在并且可写则返回 TRUE。filename 参数可以是一个允许进行是否可写检查的目录名。
+          记住 PHP 也许只能以运行 webserver 的用户名（通常为 'nobody'）来访问文件。不计入安全模式的限制
+   3.</rich_text><rich_text foreground="#0000ff">检查文件是否存在</rich_text><rich_text>
+        </rich_text><rich_text weight="heavy">bool file_exists ( string filename )</rich_text><rich_text>
+       如果由 filename 指定的文件或目录存在则返回 TRUE，否则返回 FALSE
+=====================================</rich_text><rich_text background="#ffff66" foreground="#ff0000">PHP文件操作类</rich_text><rich_text>=========================================
+1. &lt;?php  
+2. /*************************************************************************************** 
+3. 文件名：File.cls.php 
+4. 文件简介：类clsFile的定义，对文件操作的封装 
+5. 版本：2.0  最后修改日期：2011-8-23 
+6. ****************************************************************************************/  
+7. !defined('INIT_PHPV') &amp;&amp; die('No direct script access allowed');  
+8. class clsFile  
+9. {  
+10.    private $fileName_str;         //文件的路径  
+11.    private $fileOpenMethod_str;   //文件打开模式  
+12.      
+13.    function __construct($fileName_str='',$fileOpenMethod_str='readOnly')//路径，默认为空；模式，默认均为只读  
+14.    {  
+15.        //构造函数，完成数据成员的初始化  
+16.        $this-&gt;fileName_str=$fileName_str;  
+17.        $this-&gt;fileOpenMethod_str=$fileOpenMethod_str;  
+18.    }  
+19.      
+20.    function __destruct()  
+21.    {  
+22.        //析构函数  
+23.    }  
+24.      
+25.    public function __get($valName_val)//欲取得的数据成员名称  
+26.    {  
+27.        //特殊函数，取得指定名称数据成员的值  
+28.           return $this-&gt;$valName_val;  
+29.    }  
+30.      
+31.    private function on_error($errMsg_str='Unkown Error!',$errNo_int=0)//错误信息，错误代码  
+32.    {  
+33.         echo '程序错误：'.$errMsg_str.'错误代码：'.$errNo_int;//出错处理函数  
+34.    }  
+35.      
+36.    public function open()  
+37.    {  
+38.        //打开相应文件，返回文件资源标识  
+39.           //根据fileOpenMethod_str选择打开方式  
+40.           switch($this-&gt;fileOpenMethod_str)  
+41.           {  
+42.                  case 'readOnly':  
+43.                     $openMethod_str='r';      //只读，指针指向文件头  
+44.                     break;  
+45.                  case 'readWrite':  
+46.                     $openMethod_str='r+';     //读写，指针指向文件头  
+47.                     break;  
+48.                  case 'writeAndInit':  
+49.                     $openMethod_str='w';      //只写，指针指向文件头将大小截为零，不存在则创建  
+50.                     break;  
+51.                  case 'readWriteAndInit':  
+52.                     $openMethod_str='r+';     //读写，指针指向文件头将大小截为零，不存在则创建  
+53.                     break;  
+54.                  case 'writeAndAdd':  
+55.                     $openMethod_str='a';      //只写，指针指向文件末尾，不存在则创建  
+56.                     break;  
+57.                  case 'readWriteAndAdd':  
+58.                     $openMethod_str='a+';     //读写，指针指向文件末尾，不存在则创建  
+59.                     break;  
+60.                  default:  
+61.                     $this-&gt;on_error('Open method error!',310);//出错处理  
+62.                     exit;  
+63.           }  
+64.             
+65.           //打开文件         
+66.           if(!$fp_res=fopen($this-&gt;fileName_str,$openMethod_str))  
+67.           {  
+68.                  $this-&gt;on_error('Can\'t open the file!',301);//出错处理  
+69.                  exit;  
+70.           }  
+71.             
+72.           return $fp_res;  
+73.    }  
+74.      
+75.    public function close($fp_res)//由open返回的资源标识  
+76.    {  
+77.        //关闭所打开的文件  
+78.           if(!fclose($fp_res))  
+79.           {  
+80.                  $this-&gt;on_error('Can\'t close the file!',302);//出错处理  
+81.                  exit;  
+82.           }  
+83.    }  
+84.      
+85.    public function write()//$fp_res,$data_str,$length_int:文件资源标识，写入的字符串，长度控制  
+86.    {  
+87.        //将字符串string_str写入文件fp_res，可控制写入的长度length_int  
+88.           //判断参数数量，调用相关函数  
+89.           $argNum_int=func_num_args();//参数个数  
+90.             
+91.           $fp_res=func_get_arg(0);          //文件资源标识  
+92.           $data_str=func_get_arg(1);        //写入的字符串  
+93.             
+94.           if($argNum_int==3)  
+95.           {  
+96.               $length_int=func_get_arg(2);  //长度控制  
+97.               if(!fwrite($fp_res,$data_str,$length_int))  
+98.               {  
+99.                     $this-&gt;on_error('Can\'t write the file!',303);//出错处理  
+100.                     exit;  
+101.               }  
+102.           }  
+103.           else  
+104.           {  
+105.                  if(!fwrite($fp_res,$data_str))  
+106.               {  
+107.                     $this-&gt;on_error('Can\'t write the file!',303);//出错处理  
+108.                     exit;  
+109.               }  
+110.           }  
+111.    }  
+112.      
+113.    public function read_line()//$fp_res,$length_int:文件资源标识，读入长度  
+114.    {  
+115.        //从文件fp_res中读入一行字符串，可控制长度  
+116.           //判断参数数量  
+117.           $argNum_int=func_num_args();  
+118.           $fp_res=func_get_arg(0);  
+119.             
+120.           if($argNum_int==2)  
+121.           {  
+122.               $length_int=func_get_arg(1);  
+123.               if($string_str=!fgets($fp_res,$length_int))  
+124.               {  
+125.                     $this-&gt;on_error('Can\'t read the file!',304);//出错处理  
+126.                     exit;  
+127.               }  
+128.               return $string_str;  
+129.        }  
+130.        else  
+131.        {  
+132.               if(!$string_str=fgets($fp_res))  
+133.               {  
+134.                     $this-&gt;on_error('Can\'t read the file!',304);//出错处理  
+135.                     exit;  
+136.               }  
+137.               return $string_str;  
+138.           }  
+139.    }  
+140.      
+141.    public function read($fp_res,$length_int)//文件资源标识，长度控制  
+142.    {  
+143.        //读入文件fp_res，最长为length_int  
+144.           if(!$string_str=fread($fp_res,$length_int))  
+145.           {  
+146.                  $this-&gt;on_error('Can\'t read the file!',305);//出错处理  
+147.                  exit;  
+148.           }  
+149.           return $string_str;  
+150.    }  
+151.      
+152.    public function is_exists($fileName_str)//文件名  
+153.    {  
+154.        //检查文件$fileName_str是否存在，存在则返回true，不存在返回false  
+155.           return file_exists($fileName_str);  
+156.    }  
+157.   
+158. /******************取得文件大小*********************/  
+159. /* 
+160. 取得文件fileName_str的大小 
+161. $fileName_str 是文件的路径和名称 
+162. 返回文件大小的值 
+163. */  
+164.    public function get_file_size($fileName_str)//文件名  
+165.    {  
+166.        return filesize($fileName_str);  
+167.    }  
+168.   
+169. /******************转换文件大小的表示方法*********************/  
+170. /* 
+171. $fileSize_int文件的大小，单位是字节 
+172. 返回转换后带计量单位的文件大小 
+173. */  
+174.    public function change_size_express($fileSize_int)//文件名  
+175.    {  
+176.        if($fileSize_int&gt;1024)  
+177.        {  
+178.           $fileSizeNew_int=$fileSize_int/1024;//转换为K  
+179.           $unit_str='KB';  
+180.             if($fileSizeNew_int&gt;1024)  
+181.              {  
+182.               $fileSizeNew_int=$fileSizeNew_int/1024;//转换为M  
+183.               $unit_str='MB';  
+184.              }  
+185.           $fileSizeNew_arr=explode('.',$fileSizeNew_int);  
+186.           $fileSizeNew_str=$fileSizeNew_arr[0].'.'.substr($fileSizeNew_arr[1],0,2).$unit_str;  
+187.        }  
+188.        return $fileSizeNew_str;  
+189.    }  
+190. /******************重命名文件*********************/  
+191. /* 
+192. 将oldname_str指定的文件重命名为newname_str 
+193. $oldName_str是文件的原名称 
+194. $newName_str是文件的新名称 
+195. 返回错误信息 
+196. */   
+197.    public function rename_file($oldName_str,$newName_str)  
+198.    {  
+199.           if(!rename($oldName_str,$newName_str))  
+200.           {  
+201.                  $this-&gt;on_error('Can\'t rename file!',308);  
+202.                  exit;  
+203.           }  
+204.    }  
+205.   
+206. /******************删除文件*********************/  
+207. /* 
+208. 将filename_str指定的文件删除 
+209. $fileName_str要删除文件的路径和名称 
+210. 返回错误信息 
+211. */  
+212.    public function delete_file($fileName_str)//  
+213.    {  
+214.           if(!unlink($fileName_str))  
+215.           {  
+216.                  $this-&gt;on_error('Can\'t delete file!',309);//出错处理  
+217.                  exit;  
+218.           }  
+219.    }  
+220.   
+221. /******************取文件的扩展名*********************/  
+222. /* 
+223. 取filename_str指定的文件的扩展名 
+224. $fileName_str要取类型的文件路径和名称 
+225. 返回文件的扩展名 
+226. */  
+227.    public function get_file_type($fileName_str)  
+228.    {  
+229.           $fileNamePart_arr=explode('.',$fileName_str);  
+230.           while(list(,$fileType_str)=each($fileNamePart_arr))  
+231.           {  
+232.            $type_str=$fileType_str;  
+233.           }  
+234.            return $type_str;  
+235.    }  
+236.   
+237. /******************判断文件是否是规定的文件类型*********************/  
+238. /* 
+239. $fileType_str规定的文件类型 
+240. $fileName_str要取类型的文件路径和名称 
+241. 返回false或true 
+242. */  
+243.    public function is_the_type($fileName_str,$fileType_arr)  
+244.    {  
+245.        $cheakFileType_str=$this-&gt;get_file_type($fileName_str);  
+246.        if(!in_array($cheakFileType_str,$fileType_arr))  
+247.        {  
+248.         return false;  
+249.           }  
+250.        else  
+251.        {  
+252.           return true;  
+253.        }  
+254.    }  
+255.   
+256. /******************上传文件，并返回上传后的文件信息*********************/  
+257. /* 
+258. $fileName_str本地文件名 
+259. $filePath上传文件的路径，如果$filePath是str则上传到同一目录用一个文件命名，新文件名在其加-1，2，3..，如果是arr则顺序命名 
+260. $allowType_arr允许上传的文件类型，留空不限制 
+261. $maxSize_int允许文件的最大值，留空不限制 
+262. 返回的是新文件信息的二维数组：$reFileInfo_arr 
+263. */  
+264.    public function upload_file($fileName_str,$filePath,$allowType_arr='',$maxSize_int='')  
+265. {        
+266.        $fileName_arr=$_FILES[$fileName_str]['name'];  //文件的名称  
+267.        $fileTempName_arr=$_FILES[$fileName_str]['tmp_name'];  //文件的缓存文件  
+268.        $fileSize_arr=$_FILES[$fileName_str]['size'];//取得文件大小  
+269.        $reFileInfo_arr=array();  
+270.        $num=count($fileName_arr)-1;  
+271.        for($i=0;$i&lt;=$num;$i++)  
+272.       {  
+273.            if($fileName_arr[$i]!='')   
+274.         {  
+275.           if($allowType_arr!='' and !$this-&gt;is_the_type($fileName_arr[$i],$allowType_arr))//判断是否是允许的文件类型  
+276.           {  
+277.            $this-&gt;on_error('The file is not allowed type!',310);//出错处理  
+278.            break;  
+279.           }  
+280.   
+281.           if($maxSize_int!='' and $fileSize_arr[$i]&gt;$maxSize_int)  
+282.           {  
+283.            $this-&gt;on_error('The file is too big!',311);//出错处理  
+284.            break;  
+285.           }  
+286.     
+287.           $j=$i+1;  
+288.           $fileType_str=$this-&gt;get_file_type($fileName_arr[$i]);//取得文件类型  
+289.           if(!is_array($filePath))  
+290.           {  
+291.           $fileNewName_str=$filePath.'-'.($j).'.'.$fileType_str;  
+292.           }  
+293.           else  
+294.           {  
+295.           $fileNewName_str=$filePath_arr[$i].'.'.$fileType_str;  
+296.           }  
+297.           copy($fileTempName_arr[$i],$fileNewName_str);//上传文件  
+298.           unlink($fileTempName_arr[$i]);//删除缓存文件  
+299.   
+300.           //---------------存储文件信息--------------------//  
+301.           $doFile_arr=explode('/',$fileNewName_str);  
+302.           $doFile_num_int=count($doFile_arr)-1;  
+303.           $reFileInfo_arr[$j]['name']=$doFile_arr[$doFile_num_int];  
+304.           $reFileInfo_arr[$j]['type']=$fileType_str;  
+305.           $reFileInfo_arr[$j]['size']=$this-&gt;change_size_express($fileSize_arr[$i]);  
+306.       }  
+307.    }  
+308.    return $reFileInfo_arr;  
+309. }  
+310.   
+311. /******************备份文件夹*********************/  
+312. }  
+313.   
+314. ?&gt;  
+</rich_text></node></node></cherrytree>
