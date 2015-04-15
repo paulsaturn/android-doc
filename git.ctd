@@ -27,6 +27,14 @@ sudo chown git:git /home/git/repositories
 sudo chmod 755 /home/git/repositories
 git config --global user.name &quot;cjcheng&quot;
 git config --global user.email &quot;caijicheng2006@163.com&quot;
+
+git config --global core.editor vim
+git config --global merge.tool vimdiff
+
+git config --global branch.autosetuprebase always
+
+查看config
+git config --list
  
 5. 服务器初始化gitosis
 sudo -H -u git gitosis-init &lt; /tmp/id_rsa.pub
@@ -460,7 +468,44 @@ commit2: add test2.c
 
 commit1: add test1.c
 
-这里也可以使用另外一种方法来实现：git cherry-pick 63ee781</rich_text></node><node name="git submodule" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>Git Submodule 对于大型团队项目来说，是个很好的团队协作工具，它允许你的项目模块化成为每一个 Repository，最终汇聚成一个完整的项目。换句话说，Git Submodule 可以别人的 Repo 挂到你自己的 Repo 中的任何位置，成为的 Repo 的一部分。
+这里也可以使用另外一种方法来实现：git cherry-pick 63ee781</rich_text></node><node name="8 个 git 的小技巧 " prog_lang="custom-colors" readonly="False" tags="" unique_id="3"><rich_text>    git 已经成为了我日常必备工具之一，我总结我几乎每天使用的8个有用（且简洁）的小技巧。
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">使用-p选择性添加</rich_text><rich_text scale="h3">            </rich_text><rich_text>
+    当你想提交内容时，你可以通过使用 git commit -am 来选择所有文件或使用 git add file 来添加特定文件。然而，有时候你可能想只添加文件的一部分来提交。你可以用 git add -p 交互性地选择哪些你想提交的部分。
+    在选择完你所想要提交的区块后，只需要做一个 git commit（没有 -a），这样只会提交选中的部分。同样可以使用 git checkout -p 来选择需要恢复的部分。添加后，你可以使用 git diff </rich_text><rich_text foreground="#0088ff">--cached 来查看差异。</rich_text><rich_text>
+
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">交互式的重建基准(Interactive Rebase)</rich_text><rich_text scale="h3">            </rich_text><rich_text>
+    如果你在一个分支上工作，同时进行了一些 WIP 提交（commit） ，以用来压缩合并（squash）或者删除一个提交（commit）以及这个提交的恢复， 你可以做一个交互式的重建基准（rebase），用来重新组织提交。
+    为了做到这点，你需要运行命令 git rebase -i  &lt;commit&gt;，这里的&lt;commit&gt;是你想要重写之前的一个提交（commit）的sha1值。接下来，它将在你的编辑器 （在$EDITOR环境变量，或者git配置里面指定的编辑器）上面打开一些指令，用来变更提交（commit）历史，你可以选择压缩合并（将两次提交合 并为一次新的提交），重写（变更提交信息），编辑甚至删除一个提交（commit）。
+    请注意这改变了历史信息，因此，如果你提交了这个变更，你将不得不再一次强制提交（push），所以，绝不要在主分支，或者有其他人（除你之外）在使用的分支上面做这个操作。
+
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">储藏（Stashing）</rich_text><rich_text scale="h3">            </rich_text><rich_text>
+    如果你正忙于什么事情，你必须更改文本去修复其他问题，去git stash查到到储藏在当前中的更改。然而，过一段时间后，你可能就会忘记关于这个已储藏的变更。因此，我试着去保持一个储藏0（就像收件箱0如果没有储藏的情况）规则。每一次我储藏一个美元信号出现在我的输出，并且我通过git stash show -p检查，还可以通过git stash pop弹出或者通过git stash clear丢弃。
+    
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">全局gitignore</rich_text><rich_text scale="h3">            </rich_text><rich_text>
+    在项目的根目录，你可以通过文件.gitignore来指定git需要忽略的文件。但是，如果存在git需要忽略的文件，同时，你又是唯一创建这个文件的人 （如vim的  bkp文件，编辑器或者操作系统生成的一些文件，如OSX生成的.DS_Store文件），你可以在配置文件中指定全局的gitignore文件，它和工 程中的.gitignore文件使用一样的语法格式。
+    git config --global core.excludesfile=/Users/flores/.gitignore</rich_text><rich_text foreground="#0088ff">
+                            
+</rich_text><rich_text foreground="#0088ff" scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">空格警告</rich_text><rich_text>
+    我不得不承认：有时候我忘记代码尾部的一些空格。但是，通常我不会提交它们，因为我使用了这个选项：apply.whitespace=warn。每次我通 过git add -p增加文件中的一大块代码，同时，这个代码块尾部包含空格，由于git给出警告提示，因此我可以在提交前修正它们。
+            
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">自动重建代码基准（Auto setup rebase）</rich_text><rich_text scale="h3">            </rich_text><rich_text>
+    另一个很酷的技巧是自动重建代码基准（auto setup  rebase）。如果你有一个分支，并做了一些commit但并未push。同时，其他人也在这个分支上进行了commit和push。当你pull的时候，git会创建一个commit来合并你的commit到上游（upstream）commit。由于这个commit毫无意义，我更倾向于，在pull时，通过配置来自动重建代码基准（auto setup rebase）：branch.autosetuprebase=always。设置之后，每个pull操作，git都会尝试在当前版本的上游 （upsteam）分支重新使用你的commit。
+
+    git config --global branch.autosetuprebase always
+
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">更好的日志(logging)</rich_text><rich_text>
+    你是否尝试过在一个分支中找一个特定的提交啊？ git log 给我们提供了一些基本的信息，不过你使用下面的命令会得到更多有用的信息：
+    git log --graph --decorate --pretty=oneline --abbrev-commit                                                
+            --graph 会在各个提交之间打印出线条，这些线条可以展示出分支之间的关系。
+            --decorate 显示出分支处在哪一次提交上。
+            --pretty=oneline 只是在一行中显示 sha1 和 提交的注释(译者将title一词应对到更精确的注释)
+            --abbrev-commit 用开始的7个sha1字符代替整个sha1（他在你的仓库中是唯一的）。
+            
+            你可以到</rich_text><rich_text link="webs http://explainshell.com/explain?cmd=git+log+--graph+--decorate+--pretty%3Doneline+--abbrev-commit"> explain shell</rich_text><rich_text> 去看这些选项的更详细（且是完整）的解释。
+
+</rich_text><rich_text scale="h3">   </rich_text><rich_text scale="h3" weight="heavy">改写提交的注释</rich_text><rich_text scale="h3">            </rich_text><rich_text>
+    如果你在提交代码的时候注释不能准确的描述当前提交，或者你写了错别字。你可以使用 git commit --amend 来改写你已经提交的注释。  他允许你在命令行中通过 -m 选项来指定新注释或直接打开系统默认编辑器让你来编辑新的注释。   另外你还可以把一些新的变化加入到上一次提交中。请记住 该操作和 Interactive Rebase  一样，他会改变提交历史。如果你已经把你改动的这次提交push了，那么你需要强制（force）push这次变化。                                                
+</rich_text></node><node name="git submodule" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>Git Submodule 对于大型团队项目来说，是个很好的团队协作工具，它允许你的项目模块化成为每一个 Repository，最终汇聚成一个完整的项目。换句话说，Git Submodule 可以别人的 Repo 挂到你自己的 Repo 中的任何位置，成为的 Repo 的一部分。
 下面说说一些基本的操作
 </rich_text><rich_text foreground="#a5a52a2a2a2a" scale="h2" weight="heavy">1. 增加一个 Submodule 到你的项目</rich_text><rich_text>
 $ git submodule add git@domain.com:another_project.git another_project
