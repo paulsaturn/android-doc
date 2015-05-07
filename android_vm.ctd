@@ -6667,7 +6667,492 @@
        4. 将MarkCompact类的成员变量objects_before_forwarding_和objects_with_lockword_置空。它们在每次Mark-Compact GC的标记阶段会被重新创建和初始化，并且在回收阶段进行使用。
        至此，Mark-Compact GC的执行过程就分析完成了。与前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/45017207">ART运行时Semi-Space（SS）和Generational Semi-Space（GSS）GC执行过程分析</rich_text><rich_text>一 文分析的Semi-Space GC和Generational Semi-Space  GC相比，它们的共同特点都是在Sotp-the-word前提下进行的，并且都是通过移动对象来实现垃圾回收和内存压缩的目的。不过前者的对象移动操作 是就地进行的，而后两者的对象移动操作是要通过一个额外的Space来进行的。当然，Mark-Compact  GC的对象移动操作可以就地进行并不是免费的午餐，它要付出的代价在回收阶段执行一个额外的新地址计算操作。这又是一个计算机世界以时间换空间或者说以空 间换时间的例子。
        现在，我们就对ART运行时的Mark-Sweep GC和Compacting  GC都做了分析，也知道了它们的优缺点。如果我们能够扬长避智短，那么就可以既解决GC的效率问题，又能解决内存的碎片问题。在接下来的一篇文章中，我们 就会重点分析ART运行时是如何最大限度地发挥Mark-Sweep GC和Compacting  GC的长处的，敬请关注！更多的信息也可以关注老罗的新浪微博：</rich_text><rich_text link="webs http://weibo.com/shengyangluo/home">http://weibo.com/shengyangluo/home</rich_text><rich_text>。
-</rich_text><encoded_png char_offset="384">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</encoded_png></node></node><node name="Dalvik" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text></rich_text><node name="1.Dalvik虚拟机垃圾收集机制简要介绍和学习计划 " prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text>    伴随着“Dalvikis dead，long live  Dalvik“这行AOSP代码提交日志，在Android5.0中，ART运行时取代了Dalvik虚拟机。虽然Dalvik虚拟机已不再使用，但是它 曾经的作用是不可磨灭的。因此，在研究ART运行时的垃圾收集机制之前，先理解Dalvik虚拟机的垃圾收集机制也是很重要和有帮助的。因此，本文就对 Dalvik虚拟机的垃圾收集机进行简要介绍和制定学习计划。
+</rich_text><encoded_png char_offset="384">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</encoded_png></node><node name="8).ART运行时Foreground GC和Background GC切换过程分析 " prog_lang="custom-colors" readonly="False" tags="" unique_id="13"><rich_text>    在前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44513977">ART运行时Compacting GC简要介绍和学习计划</rich_text><rich_text>和</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44789295">ART运行时Compacting GC堆创建过程分析</rich_text><rich_text>这 两篇文章中，我们都有提到了ART运行时的Foreground GC和Background  GC。它们是在ART运行时启动通过-Xgc和-XX:BackgroundGC指定的。但是在某同一段时间，ART运行时只会执行Foreground  GC或者Background GC。也就是说，Foreground GC和Background  GC在整个应用程序的生命周期中是交替执行的。这就涉及到从Foreground GC切换到Background GC，或者从Background  GC切换到Foreground GC的问题。
+      现在两个问题就来了：什么时候执行Foreground GC，什么时候执行Background GC？什么GC作为Foreground GC最合适，什么GC作为Background GC最合适？
+      顾名思义，Foreground指的就是应用程序在前台运行时，而Background就是应用程序在后台运行时。因此，Foreground GC就是应用程序在前台运行时执行的GC，而Background就是应用程序在后台运行时执行的GC。
+        应用程序在前台运行时，响应性是最重要的，因此也要求执行的GC是高效的。相反，应用程序在后台运行时，响应性不是最重要的，这时候就适合用来解决堆的内 存碎片问题。因此，Mark-Sweep GC适合作为Foreground GC，而Compacting GC适合作为Background GC。
+        但是，ART运行时又是怎么知道应用程序目前是运行在前台还是后台呢？这就需要负责管理应用程序组件的系统服务 ActivityManagerService闪亮登场了。因为ActivityManagerService清楚地知识应用程序的每一个组件的运行状 态，也就是它们当前是在前台运行还是后台运行，从而得到应用程序是前台运行还是后台运行的结论。
+      我们通过图1来描述应用程序的运行状态与Foreground GC和Background GC的时序关系，如下所示：
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+
+图1 应用程序运行状态与Foreground GC和Background GC的时序关系
+        从图1还可以看到，当从Foreground GC切换到Background GC，或者从Background  GC切换到Foreground GC，会发生一次Compacting GC的行为。这是由于Foreground GC和Background  GC的底层堆空间结构是一样的，因此发生Foreground GC和Background  GC切换时，需要将当前存活的对象从一个Space转移到另外一个Space上去。这个刚好就是Semi-Space GC和Generational  Semi-Space GC合适干的事情。
+        图1中的显示了应用程序的两个状态：kProcessStateJankPerceptible和 kProcessStateJankImperceptible。其中，kProcessStateJankPerceptible说的就是应用程序处于 用户可感知的状态，这就相当于是前台状态；而kProcessStateJankImperceptible说的就是应用程序处于用户不可感知的状态，这 就相当于是后台状态。
+       接下来，我们就结合ActivityManagerService来分析Foreground GC和Background GC的切换过程。
+       从前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6685853">Android应用程序的Activity启动过程简要介绍和学习计划</rich_text><rich_text>这 个系列的文章可以知道，应用程序组件是通过ActivityManagerService进行启动的。例如，当我们从Launcher启动一个应用程序 时，实际的是在这个应用程序中Action和Category分别被配置为MAIN和LAUNCHER的Activity。这个Activity最终由 ActivityManagerService通知其所在的进程进行启动工作的，也就是通过ApplicationThread类的成员函数 scheduleLaunchActivity开始执行启动工作的。其它类型的组件的启动过程也是类似的，这里我们仅以Activity的启动过程作为示 例，来说明ART运行时如何知道要进行Foreground GC和Background GC切换的。
+       ApplicationThread类的成员函数scheduleLaunchActivity的实现如下所示：
+
+1. public final class ActivityThread {  
+2.     ......  
+3.   
+4.     private class ApplicationThread extends ApplicationThreadNative {  
+5.         ......  
+6.   
+7.         public final void scheduleLaunchActivity(Intent intent, IBinder token, int ident,  
+8.                 ActivityInfo info, Configuration curConfig, CompatibilityInfo compatInfo,  
+9.                 IVoiceInteractor voiceInteractor, int procState, Bundle state,  
+10.                 PersistableBundle persistentState, List&lt;ResultInfo&gt; pendingResults,  
+11.                 List&lt;Intent&gt; pendingNewIntents, boolean notResumed, boolean isForward,  
+12.                 ProfilerInfo profilerInfo) {  
+13.   
+14.             updateProcessState(procState, false);  
+15.   
+16.             ActivityClientRecord r = new ActivityClientRecord();  
+17.   
+18.             r.token = token;  
+19.             r.ident = ident;  
+20.             r.intent = intent;  
+21.             r.voiceInteractor = voiceInteractor;  
+22.             r.activityInfo = info;  
+23.             r.compatInfo = compatInfo;  
+24.             r.state = state;  
+25.             r.persistentState = persistentState;  
+26.   
+27.             r.pendingResults = pendingResults;  
+28.             r.pendingIntents = pendingNewIntents;  
+29.   
+30.             r.startsNotResumed = notResumed;  
+31.             r.isForward = isForward;  
+32.   
+33.             r.profilerInfo = profilerInfo;  
+34.   
+35.             updatePendingConfiguration(curConfig);  
+36.   
+37.             sendMessage(H.LAUNCH_ACTIVITY, r);  
+38.         }  
+39.   
+40.         ......  
+41.     }  
+42.   
+43.     ......  
+44. }  
+
+       这个函数定义在文件frameworks/base/core/java/android/app/ActivityThread.java中。         ApplicationThread类的成员函数scheduleLaunchActivity首先是调用另外一个成员函数 updateProcessState更新进程的当前状态，接着再将其余参数封装在一个ActivityClientRecord对象中，并且将这个 ActivityClientRecord对象通过一个H.LAUNCH_ACTIVITY消息传递给应用程序主线程处理。应用程序主线程处理对这个消息 的处理就是启动指定的Activity，这个过程可以参考前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6685853">Android应用程序的Activity启动过程简要介绍和学习计划</rich_text><rich_text>这个系列的文章。ApplicationThread类的成员函数scheduleLaunchActivity还调用了另外一个成员函数updatePendingConfiguration将参数cureConfig描述的系统当前配置信息保存下来待后面处理。
+       我们主要关注ApplicationThread类的成员函数updateProcessState，因为它涉及到进程状态的更新，它的实现如下所示：
+
+1. public final class ActivityThread {  
+2.     ......  
+3.   
+4.     private class ApplicationThread extends ApplicationThreadNative {  
+5.         ......  
+6.   
+7.         public void updateProcessState(int processState, boolean fromIpc) {  
+8.             synchronized (this) {  
+9.                 if (mLastProcessState != processState) {  
+10.                     mLastProcessState = processState;  
+11.                     // Update Dalvik state based on ActivityManager.PROCESS_STATE_* constants.  
+12.                     final int DALVIK_PROCESS_STATE_JANK_PERCEPTIBLE = 0;  
+13.                     final int DALVIK_PROCESS_STATE_JANK_IMPERCEPTIBLE = 1;  
+14.                     int dalvikProcessState = DALVIK_PROCESS_STATE_JANK_IMPERCEPTIBLE;  
+15.                     // TODO: Tune this since things like gmail sync are important background but not jank perceptible.  
+16.                     if (processState &lt;= ActivityManager.PROCESS_STATE_IMPORTANT_FOREGROUND) {  
+17.                         dalvikProcessState = DALVIK_PROCESS_STATE_JANK_PERCEPTIBLE;  
+18.                     }  
+19.                     VMRuntime.getRuntime().updateProcessState(dalvikProcessState);  
+20.                     ......  
+21.                 }  
+22.             }  
+23.         }  
+24.   
+25.         ......  
+26.     }  
+27.   
+28.     ......  
+29. }  
+       这个函数定义在文件frameworks/base/core/java/android/app/ActivityThread.java中。
+
+         ApplicationThread类的成员变量mLastProcessState描述的是进程上一次的状态，而参数processState描述的 是进程当前的状态。当这两者的值不一致时，就表明进程的状态发生了变化，这时候就需要调用VMRuntime类的成员函数 updateProcessState通知ART运行时，以便ART运行时可以在Foreground GC和Background GC之间切换。
+       ActivityManagerService一共定义了14种进程状态，如下所示：
+
+1. public class ActivityManager {  
+2.     ......  
+3.   
+4.     /** @hide Process is a persistent system process. */  
+5.     public static final int PROCESS_STATE_PERSISTENT = 0;  
+6.   
+7.     /** @hide Process is a persistent system process and is doing UI. */  
+8.     public static final int PROCESS_STATE_PERSISTENT_UI = 1;  
+9.   
+10.     /** @hide Process is hosting the current top activities.  Note that this covers 
+11.      * all activities that are visible to the user. */  
+12.     public static final int PROCESS_STATE_TOP = 2;  
+13.   
+14.     /** @hide Process is important to the user, and something they are aware of. */  
+15.     public static final int PROCESS_STATE_IMPORTANT_FOREGROUND = 3;  
+16.   
+17.     /** @hide Process is important to the user, but not something they are aware of. */  
+18.     public static final int PROCESS_STATE_IMPORTANT_BACKGROUND = 4;  
+19.   
+20.     /** @hide Process is in the background running a backup/restore operation. */  
+21.     public static final int PROCESS_STATE_BACKUP = 5;  
+22.   
+23.     /** @hide Process is in the background, but it can't restore its state so we want 
+24.      * to try to avoid killing it. */  
+25.     public static final int PROCESS_STATE_HEAVY_WEIGHT = 6;  
+26.   
+27.     /** @hide Process is in the background running a service.  Unlike oom_adj, this level 
+28.      * is used for both the normal running in background state and the executing 
+29.      * operations state. */  
+30.     public static final int PROCESS_STATE_SERVICE = 7;  
+31.   
+32.     /** @hide Process is in the background running a receiver.   Note that from the 
+33.      * perspective of oom_adj receivers run at a higher foreground level, but for our 
+34.      * prioritization here that is not necessary and putting them below services means 
+35.      * many fewer changes in some process states as they receive broadcasts. */  
+36.     public static final int PROCESS_STATE_RECEIVER = 8;  
+37.   
+38.     /** @hide Process is in the background but hosts the home activity. */  
+39.     public static final int PROCESS_STATE_HOME = 9;  
+40.   
+41.     /** @hide Process is in the background but hosts the last shown activity. */  
+42.     public static final int PROCESS_STATE_LAST_ACTIVITY = 10;  
+43.   
+44.     /** @hide Process is being cached for later use and contains activities. */  
+45.     public static final int PROCESS_STATE_CACHED_ACTIVITY = 11;  
+46.   
+47.     /** @hide Process is being cached for later use and is a client of another cached 
+48.      * process that contains activities. */  
+49.     public static final int PROCESS_STATE_CACHED_ACTIVITY_CLIENT = 12;  
+50.   
+51.     /** @hide Process is being cached for later use and is empty. */  
+52.     public static final int PROCESS_STATE_CACHED_EMPTY = 13;  
+53.   
+54.     ......  
+55. }  
+       这些进程状态值定义在文件frameworks/base/core/java/android/app/ActivityManager.java。
+         每一个进程状态都通过一个整数来描述，其中，值越小就表示进程越重要。ART运行时将状态值大于等于 PROCESS_STATE_IMPORTANT_FOREGROUND的进程都认为是用户可感知的，也就是前台进程，其余的进程则认为是用户不可感知 的，也就是后台进程。通过这种方式，ApplicationThread类的成员函数updateProcessState就可以简化ART运行时对进程 状态的处理。
+
+        除了上述的Activity的Launch启动生命周期函数被ActivityManagerService通知调用时，Activity的 Resume生命周期函数被ActivityManagerService通知调用调用时，也会发生类似的通过VMRuntime类的成员函数 updateProcessState通知ART运行时应用程序状态发生了改变。对于其它的组件，例如Broadcast  Receiver组件被触发时，Service组件被创建以及被绑定时，也会通过VMRuntime类的成员函数updateProcessState通 知ART运行时应用程序状态发生了改变。
+        不过，上述组件的生命周期对应的都是应用程序处于前台时的情况，也就是要求ART运行时从Background GC切换为Foreground  GC的情况。当应用程序处于后台时，ActivityManagerService是通过直接设置应用程序的状态来通知ART运行时应用程序状态发生了改 变的。
+        ApplicationThread类实现了一个Binder接口setProcessState，供ActivityManagerService直接设置应用程序的状态，它的实现如下所示：
+
+1. public final class ActivityThread {  
+2.     ......  
+3.   
+4.     private class ApplicationThread extends ApplicationThreadNative {  
+5.         ......  
+6.   
+7.         public void setProcessState(int state) {  
+8.             updateProcessState(state, true);  
+9.         }  
+10.   
+11.         ......  
+12.     }  
+13.   
+14.     ......  
+15. }  
+       这个函数定义在文件frameworks/base/core/java/android/app/ActivityThread.java中。
+         ApplicationThread类实现的Binder接口setProcessState也是通过上面分析的成员函数 updateProcessState来通知ART运行时进程状态发生了改变的。不过这时候进程的状态就有可能是从前面进程变为后台进程，例如当运行在该 进程的Activity组件处理Stop状态时。
+       接下来我们继续分析VMRuntime类的成员函数updateProcessState的实现，以便了解ART运行时执行Foreground GC和Background GC切换的过程，如下所示：
+
+1. public final class VMRuntime {  
+2.     ......  
+3.   
+4.     /** 
+5.      * Let the heap know of the new process state. This can change allocation and garbage collection 
+6.      * behavior regarding trimming and compaction. 
+7.      */  
+8.     public native void updateProcessState(int state);  
+9.   
+10.     ......  
+11. }  
+       这个函数定义在文件libcore/libart/src/main/java/dalvik/system/VMRuntime.java中。
+       VMRuntime类的成员函数updateProcessState是一个Native函数，它由C++层的函数VMRuntime_updateProcessState实现，如下所示：
+
+1. static void VMRuntime_updateProcessState(JNIEnv* env, jobject, jint process_state) {  
+2.   Runtime::Current()-&gt;GetHeap()-&gt;UpdateProcessState(static_cast&lt;gc::ProcessState&gt;(process_state));  
+3.   ......  
+4. }  
+       这个函数定义在文件art/runtime/native/dalvik_system_VMRuntime.cc中。
+       函数VMRuntime_updateProcessState主要是调用了Heap类的成员函数UpdateProcessState来通知ART运行时切换Foreground GC和Background GC，后者的实现如下所示：
+
+1. void Heap::UpdateProcessState(ProcessState process_state) {  
+2.   if (process_state_ != process_state) {  
+3.     process_state_ = process_state;  
+4.     ......  
+5.     if (process_state_ == kProcessStateJankPerceptible) {  
+6.       // Transition back to foreground right away to prevent jank.  
+7.       RequestCollectorTransition(foreground_collector_type_, 0);  
+8.     } else {  
+9.       // Don't delay for debug builds since we may want to stress test the GC.  
+10.       // If background_collector_type_ is kCollectorTypeHomogeneousSpaceCompact then we have  
+11.       // special handling which does a homogenous space compaction once but then doesn't transition  
+12.       // the collector.  
+13.       RequestCollectorTransition(background_collector_type_,  
+14.                                  kIsDebugBuild ? 0 : kCollectorTransitionWait);  
+15.     }  
+16.   }  
+17. }  
+       这个函数定义在文件art/runtime/gc/heap.cc中。
+       Heap类的成员变量prcess_state_记录了进程上一次的状态，参数process_state描述进程当前的状态。当这两者的值不相等的时候，就说明进程状态发生了变化。
+         如果是从kProcessStateJankImperceptible状态变为kProcessStateJankPerceptible状态，那么 就调用Heap类的成员函数RequestCollectorTransition请求马上将当前的GC设置为Foreground GC。
+         如果是从kProcessStateJankPerceptible状态变为kProcessStateJankImperceptible，那么就调 用Heap类的成员函数RequestCollectorTransition请求将当前的GC设置为Background  GC。注意，在这种情况下，对于非DEBUG版本的ART运行时，不是马上将当前的GC设置为Background  GC的，而是指定在kCollectorTransitionWait（5秒）时间后再设置。这样使得进程进入后台运行的一小段时间内，仍然可以使用效率 较高的Mark-Sweep GC。
+       Heap类的成员函数RequestCollectorTransition的实现如下所示：
+
+1. void Heap::RequestCollectorTransition(CollectorType desired_collector_type, uint64_t delta_time) {  
+2.   Thread* self = Thread::Current();  
+3.   {  
+4.     MutexLock mu(self, *heap_trim_request_lock_);  
+5.     if (desired_collector_type_ == desired_collector_type) {  
+6.       return;  
+7.     }  
+8.     heap_transition_or_trim_target_time_ =  
+9.         std::max(heap_transition_or_trim_target_time_, NanoTime() + delta_time);  
+10.     desired_collector_type_ = desired_collector_type;  
+11.   }  
+12.   SignalHeapTrimDaemon(self);  
+13. }  
+       这个函数定义在文件art/runtime/gc/heap.cc中。
+
+         Heap类的成员函数RequestCollectorTransition首先将要切换至的目标GC以及时间点记录在成员变量 desired_collector_type_和heap_transition_or_trim_target_time_中，接着再调用另外一个成 员函数SignalHeapTrimDaemon唤醒一个Heap  Trimmer守护线程来执行GC切换操作。注意，如果上一次请求的GC切换还未执行，又请求了下一次GC切换，并且下一次GC切换指定的时间大于上一次 指定的时间，那么上次请求的GC切换就会被取消。
+       Heap类的成员函数RequestCollectorTransition的实现如下所示：
+
+1. void Heap::SignalHeapTrimDaemon(Thread* self) {  
+2.   JNIEnv* env = self-&gt;GetJniEnv();  
+3.   DCHECK(WellKnownClasses::java_lang_Daemons != nullptr);  
+4.   DCHECK(WellKnownClasses::java_lang_Daemons_requestHeapTrim != nullptr);  
+5.   env-&gt;CallStaticVoidMethod(WellKnownClasses::java_lang_Daemons,  
+6.                             WellKnownClasses::java_lang_Daemons_requestHeapTrim);  
+7.   CHECK(!env-&gt;ExceptionCheck());  
+8. }  
+       这个函数定义在文件art/runtime/gc/heap.cc中。
+       Heap类的成员函数RequestCollectorTransition通过JNI接口调用了Daemons类的静态成员函数requestHeapTrim请求执行一次GC切换操作。
+       Daemons类的静态成员函数requestHeapTrim的实现如下所示：
+
+1. public final class Daemons {  
+2.     ......  
+3.   
+4.     public static void requestHeapTrim() {  
+5.         synchronized (HeapTrimmerDaemon.INSTANCE) {  
+6.             HeapTrimmerDaemon.INSTANCE.notify();  
+7.         }  
+8.     }  
+9.   
+10.     ......  
+11. }  
+       这个函数定义在文件libcore/libart/src/main/java/java/lang/Daemons.java中。
+       在前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/42555483">ART运行时垃圾收集（GC）过程分析</rich_text><rich_text>一文中提到，Java层的java.lang.Daemons类在加载的时候，会启动五个与堆或者GC相关的守护线程，其中一个守护线程就是HeapTrimmerDaemon，这里通过调用它的成员函数notify来唤醒它。
+       HeapTrimmerDaemon原先被Block在成员函数run中，当它被唤醒之后 ，就会继续执行它的成员函数run，如下所示：
+
+1. public final class Daemons {  
+2.     ......  
+3.   
+4.     private static class HeapTrimmerDaemon extends Daemon {  
+5.         private static final HeapTrimmerDaemon INSTANCE = new HeapTrimmerDaemon();  
+6.   
+7.         @Override public void run() {  
+8.             while (isRunning()) {  
+9.                 try {  
+10.                     synchronized (this) {  
+11.                         wait();  
+12.                     }  
+13.                     VMRuntime.getRuntime().trimHeap();  
+14.                 } catch (InterruptedException ignored) {  
+15.                 }  
+16.             }  
+17.         }  
+18.     }  
+19.   
+20.     ......  
+21. }  
+       这个函数定义在文件libcore/libart/src/main/java/java/lang/Daemons.java中。
+       从这里就可以看到，HeapTrimmerDaemon被唤醒之后，就会调用VMRuntime类的成员函数trimHeap来执行GC切换操作。
+       VMRuntime类的成员函数trimHeap是一个Native函数，由C++层的函数VMRuntime_trimHeap实现，如下所示：
+
+1. static void VMRuntime_trimHeap(JNIEnv*, jobject) {  
+2.   Runtime::Current()-&gt;GetHeap()-&gt;DoPendingTransitionOrTrim();  
+3. }  
+       这个函数定义在文件art/runtime/native/dalvik_system_VMRuntime.cc 。
+       函数VMRuntime_trimHeap又是通过调用Heap类的成员函数DoPendingTransitionOrTrim来执行GC切换操作的，如下所示：
+
+1. void Heap::DoPendingTransitionOrTrim() {  
+2.   Thread* self = Thread::Current();  
+3.   CollectorType desired_collector_type;  
+4.   // Wait until we reach the desired transition time.  
+5.   while (true) {  
+6.     uint64_t wait_time;  
+7.     {  
+8.       MutexLock mu(self, *heap_trim_request_lock_);  
+9.       desired_collector_type = desired_collector_type_;  
+10.       uint64_t current_time = NanoTime();  
+11.       if (current_time &gt;= heap_transition_or_trim_target_time_) {  
+12.         break;  
+13.       }  
+14.       wait_time = heap_transition_or_trim_target_time_ - current_time;  
+15.     }  
+16.     ScopedThreadStateChange tsc(self, kSleeping);  
+17.     usleep(wait_time / 1000);  // Usleep takes microseconds.  
+18.   }  
+19.   // Launch homogeneous space compaction if it is desired.  
+20.   if (desired_collector_type == kCollectorTypeHomogeneousSpaceCompact) {  
+21.     if (!CareAboutPauseTimes()) {  
+22.       PerformHomogeneousSpaceCompact();  
+23.     }  
+24.     // No need to Trim(). Homogeneous space compaction may free more virtual and physical memory.  
+25.     desired_collector_type = collector_type_;  
+26.     return;  
+27.   }  
+28.   // Transition the collector if the desired collector type is not the same as the current  
+29.   // collector type.  
+30.   TransitionCollector(desired_collector_type);  
+31.   ......  
+32.   // Do a heap trim if it is needed.  
+33.   Trim();  
+34. }  
+       这个函数定义在文件art/runtime/gc/heap.cc中。
+         前面提到，下一次GC切换时间记录在Heap类的成员变量heap_transition_or_trim_target_time_中，因 此，Heap类的成员函数DoPendingTransitionOrTrim首先是看看当前时间是否已经达到指定的GC切换时间。如果还没有达到，那么 就进行等待，直到时间到达为止。
+        有一种特殊情况，如果要切换至的GC是kCollectorTypeHomogeneousSpaceCompact，并且Heap类的成员函数 CareAboutPauseTimes表明不在乎执行HomogeneousSpaceCompact  GC带来的暂停时间，那么就会调用Heap类的成员函数PerformHomogeneousSpaceCompact执行一次同构空间压缩。Heap类 的成员函数PerformHomogeneousSpaceCompact执行同构空间压缩的过程，可以参考前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44910271">ART运行时Compacting GC为新创建对象分配内存的过程分析</rich_text><rich_text>一文。
+       Heap类的成员函数CareAboutPauseTimes实际上是判断进程的当前状态是否是用户可感知的，即是否等于kProcessStateJankPerceptible。如果是的话，就说明它在乎GC执行时带来的暂停时间。它的实现如下所示：
+
+1. class Heap {  
+2.  public:  
+3.   ......  
+4.   
+5.   // Returns true if we currently care about pause times.  
+6.   bool CareAboutPauseTimes() const {  
+7.     return process_state_ == kProcessStateJankPerceptible;  
+8.   }  
+9.   
+10.  ......  
+11. };  
+       这个函数定义在文件art/runtime/gc/heap.h中。
+
+         回到Heap类的成员函数DoPendingTransitionOrTrim中，我们继续讨论要切换至的GC是 kCollectorTypeHomogeneousSpaceCompact的情况。如果Heap类的成员函数CareAboutPauseTimes 表明在乎执行HomogeneousSpaceCompact  GC带来的暂停时间，那么就不会调用Heap类的成员函数PerformHomogeneousSpaceCompact执行同构空间压缩。
+       只要切换至的GC是kCollectorTypeHomogeneousSpaceCompact，无论上述的哪一种情况，都不会真正执行GC切换的操作，因此这时候Heap类的成员函数DoPendingTransitionOrTrim就可以返回了。
+        从前面的调用过程可以知道，要切换至的GC要么是Foreground GC，要么是Background  GC。一般来说，我们是不会将Foreground GC设置为HomogeneousSpaceCompact  GC的，但是却有可能将Background GC设置为HomogeneousSpaceCompact  GC。因此，上述讨论的情况只发生在Foreground GC切换为Background GC的时候。
+        另一方面，如果要切换至的GC不是kCollectorTypeHomogeneousSpaceCompact，那么Heap类的成员函数 DoPendingTransitionOrTrim就会调用另外一个成员函数TransitionCollector执行切换GC操作。一旦GC切换完 毕，Heap类的成员函数DoPendingTransitionOrTrim还会调用成员函数Trim对当前ART运行时堆进行裁剪，也就是将现在没有 使用到的内存归还给内核。这个过程可以参考前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/42555483">ART运行时垃圾收集（GC）过程分析</rich_text><rich_text>一文。
+       接下来我们继续分析Heap类的成员函数TransitionCollector的实现，以便了GC的切换过程，如下所示：
+
+1. void Heap::TransitionCollector(CollectorType collector_type) {  
+2.   if (collector_type == collector_type_) {  
+3.     return;  
+4.   }  
+5.   ......  
+6.   ThreadList* const tl = runtime-&gt;GetThreadList();  
+7.   ......  
+8.   // Busy wait until we can GC (StartGC can fail if we have a non-zero  
+9.   // compacting_gc_disable_count_, this should rarely occurs).  
+10.   for (;;) {  
+11.     {  
+12.       ScopedThreadStateChange tsc(self, kWaitingForGcToComplete);  
+13.       MutexLock mu(self, *gc_complete_lock_);  
+14.       // Ensure there is only one GC at a time.  
+15.       WaitForGcToCompleteLocked(kGcCauseCollectorTransition, self);  
+16.       // Currently we only need a heap transition if we switch from a moving collector to a  
+17.       // non-moving one, or visa versa.  
+18.       const bool copying_transition = IsMovingGc(collector_type_) != IsMovingGc(collector_type);  
+19.       // If someone else beat us to it and changed the collector before we could, exit.  
+20.       // This is safe to do before the suspend all since we set the collector_type_running_ before  
+21.       // we exit the loop. If another thread attempts to do the heap transition before we exit,  
+22.       // then it would get blocked on WaitForGcToCompleteLocked.  
+23.       if (collector_type == collector_type_) {  
+24.         return;  
+25.       }  
+26.       // GC can be disabled if someone has a used GetPrimitiveArrayCritical but not yet released.  
+27.       if (!copying_transition || disable_moving_gc_count_ == 0) {  
+28.         // TODO: Not hard code in semi-space collector?  
+29.         collector_type_running_ = copying_transition ? kCollectorTypeSS : collector_type;  
+30.         break;  
+31.       }  
+32.     }  
+33.     usleep(1000);  
+34.   }  
+35.   tl-&gt;SuspendAll();  
+36.   switch (collector_type) {  
+37.     case kCollectorTypeSS: {  
+38.       if (!IsMovingGc(collector_type_)) {  
+39.         // Create the bump pointer space from the backup space.  
+40.         ......  
+41.         std::unique_ptr&lt;MemMap&gt; mem_map(main_space_backup_-&gt;ReleaseMemMap());  
+42.         // We are transitioning from non moving GC -&gt; moving GC, since we copied from the bump  
+43.         // pointer space last transition it will be protected.  
+44.         .....  
+45.         mem_map-&gt;Protect(PROT_READ | PROT_WRITE);  
+46.         bump_pointer_space_ = space::BumpPointerSpace::CreateFromMemMap(&quot;Bump pointer space&quot;,  
+47.                                                                         mem_map.release());  
+48.         AddSpace(bump_pointer_space_);  
+49.         Compact(bump_pointer_space_, main_space_, kGcCauseCollectorTransition);  
+50.         // Use the now empty main space mem map for the bump pointer temp space.  
+51.         mem_map.reset(main_space_-&gt;ReleaseMemMap());  
+52.         // Unset the pointers just in case.  
+53.         if (dlmalloc_space_ == main_space_) {  
+54.           dlmalloc_space_ = nullptr;  
+55.         } else if (rosalloc_space_ == main_space_) {  
+56.           rosalloc_space_ = nullptr;  
+57.         }  
+58.         // Remove the main space so that we don't try to trim it, this doens't work for debug  
+59.         // builds since RosAlloc attempts to read the magic number from a protected page.  
+60.         RemoveSpace(main_space_);  
+61.         RemoveRememberedSet(main_space_);  
+62.         delete main_space_;  // Delete the space since it has been removed.  
+63.         main_space_ = nullptr;  
+64.         RemoveRememberedSet(main_space_backup_.get());  
+65.         main_space_backup_.reset(nullptr);  // Deletes the space.  
+66.         temp_space_ = space::BumpPointerSpace::CreateFromMemMap(&quot;Bump pointer space 2&quot;,  
+67.                                                                 mem_map.release());  
+68.         AddSpace(temp_space_);  
+69.       }  
+70.       break;  
+71.     }  
+72.     case kCollectorTypeMS:  
+73.       // Fall through.  
+74.     case kCollectorTypeCMS: {  
+75.       if (IsMovingGc(collector_type_)) {  
+76.         ......  
+77.         std::unique_ptr&lt;MemMap&gt; mem_map(temp_space_-&gt;ReleaseMemMap());  
+78.         RemoveSpace(temp_space_);  
+79.         temp_space_ = nullptr;  
+80.         mem_map-&gt;Protect(PROT_READ | PROT_WRITE);  
+81.         CreateMainMallocSpace(mem_map.get(), kDefaultInitialSize, mem_map-&gt;Size(),  
+82.                               mem_map-&gt;Size());  
+83.         mem_map.release();  
+84.         // Compact to the main space from the bump pointer space, don't need to swap semispaces.  
+85.         AddSpace(main_space_);  
+86.         Compact(main_space_, bump_pointer_space_, kGcCauseCollectorTransition);  
+87.         mem_map.reset(bump_pointer_space_-&gt;ReleaseMemMap());  
+88.         RemoveSpace(bump_pointer_space_);  
+89.         bump_pointer_space_ = nullptr;  
+90.         const char* name = kUseRosAlloc ? kRosAllocSpaceName[1] : kDlMallocSpaceName[1];  
+91.         ......  
+92.         main_space_backup_.reset(CreateMallocSpaceFromMemMap(mem_map.get(), kDefaultInitialSize,  
+93.                                                              mem_map-&gt;Size(), mem_map-&gt;Size(),  
+94.                                                              name, true));  
+95.         ......  
+96.         mem_map.release();  
+97.       }  
+98.       break;  
+99.     }  
+100.     default: {  
+101.       ......  
+102.       break;  
+103.     }  
+104.   ChangeCollector(collector_type);  
+105.   tl-&gt;ResumeAll();  
+106.   ......  
+107. }  
+       这个函数定义在文件art/runtime/gc/heap.h中。
+       Heap类的成员函数TransitionCollector首先判断ART运行时当前使用的GC与要切换至的GC是一样的，那么就什么也不用做就返回了。
+         另一方面，如果ART运行时当前使用的GC与要切换至的GC是不一样的，那么接下来就要将ART运行时当前使用的GC切换至参数 collector_type描述的GC了。由于将GC切换是通过执行一次Semi-Space GC或者Generational  Semi-Space  GC来实现的，因此Heap类的成员函数TransitionCollector在继续往下执行之前，要先调用Heap类的成员函数 WaitForGcToCompleteLocked判断当前是否有GC正在执行。如果有的话，就进行等待，直到对应的GC执行完为止。
+         注意，有可能当前正在执行的GC就是要切换至的GC，在这种情况下，就没有必要将当前使用的GC切换为参数collector_type描述的GC了。 此外，只有从当前执行的GC和要切换至的GC不同时为Compacting GC或者Mark-Sweep  GC的时候，Heap类的成员函数TransitionCollector才会真正执行切换的操作。换句话说，只有从Compacting  GC切换为Mark-Sweep GC或者从Mark-Sweep GC切换为Compacting  GC时，Heap类的成员函数TransitionCollector才会真正执行切换的操作。但是，如果这时候ART运行时被禁止执行 Compacting  GC，即Heap类的成员函数disable_moving_gc_count_不等于0，那么Heap类的成员函数 TransitionCollector就需要继续等待，直到ART运行时重新允许执行Compacting  GC为止。这是因为接下来的GC切换操作是通过执行一次Compacting GC来实现的。
+       接下来的GC切换操作是通过调用Heap类的成员函数Compact来实现的。关于Heap类的成员函数Compact，我们在前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44910271">ART运行时Compacting GC为新创建对象分配内存的过程分析</rich_text><rich_text>一 文已经分析过了，它主要通过执行一次Semi-Space GC、Generational Semi-Space GC或者Mark-Compact  GC将指定的Source Space上的存活对象移动至指定的Target Space中。如果Source Space与Target  Space相同，那么执行的就是Mark-Compact GC，否则就是Semi-Space  GC或者Generational Semi-Space  GC。由于Heap类的成员函数Compact是需要在Stop-the-world的前提下执行的，因此在调用它的前后，需要执行挂起和恢复除当前正在 执行的线程之外的所有ART运行时线程。
+        Heap类的成员函数TransitionCollector通过switch语句来确定需要传递给成员函数Compact的Source  Space和Target  Space。通过这个switch语句，我们也可以更清楚看到Heap类的成员函数TransitionCollector允许从什么GC切换至什么 GC。
+       首先，可切换至的GC只有三种，分别为Semi-Space GC、Mark-Sweep  GC和Concurrent Mark-Sweep GC。其中，当要切换至的GC为Mark-Sweep GC和Concurrent  Mark-Sweep GC时，它们的切换过程是一样的。因此，接下来我们就分两种情况来讨论。
+       第一种情况是要切换至的GC为Semi-Space GC。根据我们前面的分析，这时候原来的GC只能为Mark-Sweep GC或者Concurrent Mark-Sweep GC。否则的话，就不需要执行GC切换操作。从前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44789295">ART运行时Compacting GC堆创建过程分析</rich_text><rich_text>一 文可以知道，当原来的GC为Mark-Sweep GC或者Concurrent Mark-Sweep GC时，ART运行时堆由Image  Space、Zygote Space、Non Moving Space、Main Space、Main Backup Space和Large  Object Space组成。这时候要做的是将Main Space上的存活对象移动至一个新创建的Bump Pointer  Space上去。也就是说，这时候的Source Space为Main Space，而Target Space为Bump Pointer  Space。
+       Main  Space就保存在Heap类的成员变量main_space_中，因此就很容易可以获得。但是这时候是没有现成的Bump Pointer  Space的，因此就需要创建一个。由于这时候的Main Backup  Space是闲置的，并且当GC切换完毕，它也用不上了，因此我们就可以将Main Backup  Space底层使用的内存块获取回来，然后再封装成一个Bump Pointer Space。注意，这时候创建的Bump Pointer  Space也是作为GC切换完成后的Semi-Space GC的From  Space使用的，因此，除了要将它保存在Heap类的成员变量bump_pointer_space_之外，还要将它添加到ART运行时堆的Space 列表中去。
+       这时候Source Space和Target Space均已准备完毕，因此就可以执行Heap类的成员函数Compact了。执行完毕，还需要做一系列的清理工作，包括：
+       1. 删除Main Space及其关联的Remembered Set。从前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44789295">ART运行时Compacting GC堆创建过程分析</rich_text><rich_text>一文可以知道，Heap类的成员变量dlmalloc_space_和rosalloc_space_指向的都是Main Space。既然现在Main Space要被删除了，因此就需要将它们设置为nullptr。
+       2. 删除Main Backup Space及其关联的Remembered Set。
+        3. 创建一个Bump Pointer  Space保存在Heap类的成员变量temp_space_中，作为GC切换完成后的Semi-Space GC的To  Space使用。注意，这个To Space底层使用的内存块是来自于原来的Main Space的。
+        这意味着将从Mark-Sweep GC或者Concurrent Mark-Sweep GC切换为Semi-Space GC之后，原来的Main  Space和Main Backup Space就消失了，并且多了两个Bump Pointer Space，其中一个作为From  Space，另外一个作为To Space，并且From Space上的对象来自于原来的Main Space的存活对象。
+        第二种情况是要切换至Mark-Sweep GC或者Concurrent Mark-Sweep  GC。根据我们前面的分析，这时候原来的GC只能为Semi-Space GC、Generational Semi-Space  GC或者Mark-Compact GC。否则的话，就不需要执行GC切换操作。从前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44789295">ART运行时Compacting GC堆创建过程分析</rich_text><rich_text>一 文可以知道，当原来的GC为Semi-Space GC、Generational Semi-Space GC或者Mark-Compact  GC时，ART运行时堆由Image Space、Zygote Space、Non Moving Space、Bump Pointer  Space、Temp Space和Large Object Space组成。这时候要做的是将Bump Pointer  Space上的存活对象移动至一个新创建的Main Space上去。也就是说，这时候的Source Space为Bump Pointer  Space，而Target Space为Main Space。
+       Bump Pointer  Space就保存在Heap类的成员变量bump_pointer_space_中，因此就很容易可以获得。但是这时候是没有现成的Main  Space的，因此就需要创建一个。由于这时候的Temp Space是闲置的，并且当GC切换完毕，它也用不上了，因此我们就可以将Temp  Space底层使用的内存块获取回来，然后再封装成一个Main  Space，这是通过调用Heap类的成员函数CreateMainMallocSpace来实现的。注意，Heap类的成员函数 CreateMainMallocSpace在执行的过程中，会将创建的Main  Space保存在Heap类的成员变量main_space_中，并且它也是作为GC切换完成后的Mark-Sweep GC或者Concurrent  Mark-Sweep GC的Main Space使用的，因此，就还要将它添加到ART运行时堆的Space列表中去。       
+       这时候Source Space和Target Space均已准备完毕，因此就可以执行Heap类的成员函数Compact了。执行完毕，还需要做一系列的清理工作，包括： 
+       1. 删除Bump Pointer Space。
+       2. 删除Temp Space。
+        3. 创建一个Main Backup  Space，保存在Heap类的成员变量main_space_backup_中，这是通过调用Heap类的成员函数 CreateMallocSpaceFromMemMap实现的，并且该Main Backup Space底层使用的内存块是来自于原来的Bump  Pointer Space的。
+       这样，GC切换的操作就基本执行完毕，最后还需要做的一件事情是调用Heap类的成员函数ChangeCollector记录当前使用的GC，以及相应地调整当前可用的内存分配器。这个函数的具体实现可以参考前面</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/44910271">ART运行时Compacting GC为新创建对象分配内存的过程分析</rich_text><rich_text>一文。
+
+</rich_text><encoded_png char_offset="953">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</encoded_png></node></node><node name="Dalvik" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text></rich_text><node name="1.Dalvik虚拟机垃圾收集机制简要介绍和学习计划 " prog_lang="custom-colors" readonly="False" tags="" unique_id="10"><rich_text>    伴随着“Dalvikis dead，long live  Dalvik“这行AOSP代码提交日志，在Android5.0中，ART运行时取代了Dalvik虚拟机。虽然Dalvik虚拟机已不再使用，但是它 曾经的作用是不可磨灭的。因此，在研究ART运行时的垃圾收集机制之前，先理解Dalvik虚拟机的垃圾收集机制也是很重要和有帮助的。因此，本文就对 Dalvik虚拟机的垃圾收集机进行简要介绍和制定学习计划。
 
     之所以说理解Dalvik虚拟机的垃圾收集机制对学习ART运行时的垃圾收集机制有帮助，是因为两者都使用到了一些共同或者相通的技术，并且前者的实现相对简单一些。这样我们就可以从简单的学起。等到有了一定的基础之后，再学习复杂的就会容易理解很多。
     好了，废话不多说，我们开始介绍Dalvik虚拟机的垃圾收集机制涉及到的基本概念或者说术语，如图1所示：
