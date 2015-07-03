@@ -425,7 +425,7 @@ typedef enum
 {
   FAP_START_NEW_TX,       </rich_text><rich_text foreground="#00000000ffff">//在fap_timer_isr_function()判断，如果这个标志置上，需要CE_HIGH()，开始发送数据; 这是power up延时之后要处理的</rich_text><rich_text> 
   FAP_TX_RX_INFINITE_TIMEOUT_EN,    </rich_text><rich_text foreground="#00000000ffff">//不会自动进入idle模式， 所以在fap_goto_idle_mode()函数会清这个标志</rich_text><rich_text>
-  FAP_LP_RX_EN,
+  FAP_LP_RX_EN,             </rich_text><rich_text foreground="#00000000ffff">//low power rx</rich_text><rich_text>
   FAP_CH_SYNC_EN,
   FAP_PDOWN_IDLE_EN,
   FAP_TX_SUCCESS,
@@ -625,8 +625,8 @@ typedef enum
         timer中断补偿
 </rich_text><rich_text foreground="#ffff00000000">        void fap_modify_timer_period(void)
         {
-              T2 = ~((FAP_TIMER_MODIFY_PERIOD*4) / 3);
-              TF2 = 0;
+              T2 = ~((FAP_TIMER_MODIFY_PERIOD*4) / 3);          //重新开始计时
+              TF2 = 0;                                                                     //清中断
         }
 </rich_text><rich_text foreground="#00000000ffff">        /**
         Specifies the value to be used when adjusting the FAP timer after every successful
@@ -793,6 +793,8 @@ of frequency channels will increase the average transmission latency.
 </rich_text><rich_text foreground="#00000000ffff">/**
 Specifies the time in [us] the receiver shall listen on each channel during receive 
 channel rotation.  
+
+接收端的timer 800us
 */</rich_text><rich_text>
 #define FAP_RX_PERIOD 800
 
@@ -826,8 +828,10 @@ as a long ACK payload requires longer retransmit delay.
 Specifies the number of #FAP_RX_PERIOD the receive channel rotation shall be halted
 after data is received. It is recommended that this is set &gt; 0 to ensure that
 acknowledge transmission is completed before channel rotation continues. 
+
+FAP_RX_PERIOD * FAP_RX_CH_HOLD_PERIODS = 800 * 5 = 4000us
 */</rich_text><rich_text>
-#define FAP_RX_CH_HOLD_PERIODS 5
+#define FAP_RX_CH_HOLD_PERIODS 5           
 
 </rich_text><rich_text foreground="#00000000ffff">/**
 Specifies the value to be used when adjusting the FAP timer after every successful

@@ -2192,7 +2192,240 @@ dma_addr_tvideobuf_to_dma_contig(struct videobuf_buffer *buf)
  
 最后，一个很好的关于v4l2的例子就是drviers/media/video/vivi.c,它使用了vmalloc类型的videobuf,可以通过阅读这份例子来学习v4l2驱动的写法。
                                  
-</rich_text></node></node><node name="匿名共享内存ashmem" prog_lang="custom-colors" readonly="False" tags="" unique_id="30"><rich_text></rich_text><node name="匿名共享内存ashmem" prog_lang="custom-colors" readonly="False" tags="" unique_id="31"><rich_text>    在上一文章</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6651971">Android系统匿名共享内存Ashmem（Anonymous Shared Memory）简要介绍和学习计划</rich_text><rich_text>中， 我们简要介绍了Android系统的匿名共享内存机制，其中，简要提到了它具有辅助内存管理系统来有效地管理内存的特点，但是没有进一步去了解它是如何实 现的。在本文中，我们将通过分析Android系统的匿名共享内存Ashmem驱动程序的源代码，来深入了解它是如何辅助内存管理系
+</rich_text></node></node><node name="红外通信" prog_lang="custom-colors" readonly="False" tags="" unique_id="36"><rich_text foreground="#00000000ffff">rc设备获取原始数据， 输出给decoder, decoder转换后，从input event输出给上层应用</rich_text><rich_text>
+</rich_text><rich_text scale="h3" weight="heavy">1. rc设备驱动</rich_text><rich_text scale="h3">                                           </rich_text><rich_text>
+  probe函数调用
+    rc = rc_allocate_device();
+    rc_register_device(rc)
+    
+  rc_register_device
+    调用device_add和input_register_device添加input设备
+    根据rc-&gt;driver_type = RC_DRIVER_IR_RAW调用rc = ir_raw_event_register(dev);
+  
+  ir_raw_event_register
+    </rich_text><rich_text foreground="#ffff00000000">创建decode线程</rich_text><rich_text>
+  	dev-&gt;raw-&gt;thread = kthread_run(ir_raw_event_thread, dev-&gt;raw,
+				       &quot;rc%ld&quot;, dev-&gt;devno);
+  
+static int ir_raw_event_thread(void *data)
+{
+    ...
+	while (!kthread_should_stop()) {
+
+		spin_lock_irq(&amp;raw-&gt;lock);
+		retval = kfifo_out(&amp;raw-&gt;kfifo, &amp;ev, sizeof(ev));                   </rich_text><rich_text foreground="#ffff00000000">//获取输入数据</rich_text><rich_text>
+		...
+		list_for_each_entry(handler, &amp;ir_raw_handler_list, list)    </rich_text><rich_text foreground="#ffff00000000">//遍历所有decode, 转换为相应键值, 并发送出去</rich_text><rich_text>
+			handler-&gt;decode(raw-&gt;dev, ev);
+        ...		
+    }    
+    ...
+}
+
+decode的注册是在
+rc-main.c
+    rc_core_init -&gt; ir_raw_init -&gt; init_decoders
+    
+    load_nec_decode()等函数是定义在rc-core-priv.h中的宏
+    
+rc设备通过下面函数往raw-&gt;kfifo注入数据    
+int ir_raw_event_store(struct rc_dev *dev, struct ir_raw_event *ev)    
+{
+	if (!dev-&gt;raw)
+		return -EINVAL;
+
+	IR_dprintk(2, &quot;sample: (%05dus %s)\n&quot;,
+		   TO_US(ev-&gt;duration), TO_STR(ev-&gt;pulse));
+
+	if (kfifo_in(&amp;dev-&gt;raw-&gt;kfifo, ev, sizeof(*ev)) != sizeof(*ev))
+		return -ENOMEM;
+
+	return 0;
+}
+
+enum raw_event_type {
+	IR_SPACE        = (1 &lt;&lt; 0),
+	IR_PULSE        = (1 &lt;&lt; 1),
+	IR_START_EVENT  = (1 &lt;&lt; 2),
+	IR_STOP_EVENT   = (1 &lt;&lt; 3),
+};
+
+struct ir_raw_event {
+	union {
+		u32             duration;
+
+		struct {
+			u32     carrier;
+			u8      duty_cycle;
+		};
+	};
+
+	unsigned                pulse:1;
+	unsigned                reset:1;
+	unsigned                timeout:1;
+	unsigned                carrier_report:1;
+};
+
+</rich_text><rich_text scale="h3" weight="heavy">2. 以ir-nec-decoder.c为例</rich_text><rich_text>
+enum nec_state {
+	STATE_INACTIVE,                     //9ms高电平
+	STATE_HEADER_SPACE,           //4.5ms低电平  
+	STATE_BIT_PULSE,                   //bit的高电平
+	STATE_BIT_SPACE,                   //bit的低电平  
+	STATE_TRAILER_PULSE,           //最后高电平 
+	STATE_TRAILER_SPACE,           //最后低电平  
+};
+
+在decode中：
+static int ir_nec_decode(struct rc_dev *dev, struct ir_raw_event ev)
+{
+    ...
+	switch (data-&gt;state) {
+
+	case STATE_INACTIVE:
+		if (!ev.pulse)
+		    break;
+		...
+		data-&gt;count = 0;
+		data-&gt;state = STATE_HEADER_SPACE;		
+        return 0;
+        
+	case STATE_HEADER_SPACE:
+		if (ev.pulse)
+			break;
+			data-&gt;state = STATE_BIT_PULSE;
+		...
+		return 0;
+		
+	case STATE_BIT_PULSE:
+		if (!ev.pulse)
+			break;
+		...
+		data-&gt;state = STATE_BIT_SPACE;
+		return 0;
+		
+	case STATE_BIT_SPACE:
+		if (ev.pulse)
+			break;
+		...
+		data-&gt;count++;
+
+		if (data-&gt;count == NEC_NBITS)
+			data-&gt;state = STATE_TRAILER_PULSE;
+		else
+			data-&gt;state = STATE_BIT_PULSE;									        
+		return 0;	
+		
+	case STATE_TRAILER_PULSE:
+		if (!ev.pulse)
+			break;
+        ...		
+        data-&gt;state = STATE_TRAILER_SPACE;
+        return 0;
+        
+	case STATE_TRAILER_SPACE:
+		if (ev.pulse)
+			break;        
+		...
+		rc_keydown(dev, scancode, 0);                       </rich_text><rich_text foreground="#ffff00000000">//获得键值, 并从input event输出给应用层</rich_text><rich_text>
+		data-&gt;state = STATE_INACTIVE;		
+		return 0;	
+    }    
+    ...
+}
+
+static int __init ir_nec_decode_init(void)
+{
+	ir_raw_handler_register(&amp;nec_handler);            </rich_text><rich_text foreground="#ffff00000000">//注册handler, 把nec_handler加到ir_raw_handler_list队列中</rich_text><rich_text>
+
+	printk(KERN_INFO &quot;IR NEC protocol handler initialized\n&quot;);
+	return 0;
+}
+
+static void __exit ir_nec_decode_exit(void)
+{
+	ir_raw_handler_unregister(&amp;nec_handler);
+}
+
+//rc-main.c
+void rc_keydown(struct rc_dev *dev, int scancode, u8 toggle)
+{
+	unsigned long flags;
+	u32 keycode = rc_g_keycode_from_table(dev, scancode);
+
+	spin_lock_irqsave(&amp;dev-&gt;keylock, flags);
+	ir_do_keydown(dev, scancode, keycode, toggle);
+
+	if (dev-&gt;keypressed) {
+		dev-&gt;keyup_jiffies = jiffies + msecs_to_jiffies(IR_KEYPRESS_TIMEOUT);       
+		mod_timer(&amp;dev-&gt;timer_keyup, dev-&gt;keyup_jiffies);       </rich_text><rich_text foreground="#ffff00000000">//设置keyup timeout</rich_text><rich_text>
+	}
+	spin_unlock_irqrestore(&amp;dev-&gt;keylock, flags);
+}
+
+</rich_text><rich_text foreground="#00000000ffff">//send keydown input event</rich_text><rich_text>
+static void ir_do_keydown(struct rc_dev *dev, int scancode,
+			  u32 keycode, u8 toggle)
+{
+	bool new_event = !dev-&gt;keypressed ||
+			 dev-&gt;last_scancode != scancode ||
+			 dev-&gt;last_toggle != toggle;
+
+	if (new_event &amp;&amp; dev-&gt;keypressed)
+		ir_do_keyup(dev, false);
+
+	input_event(dev-&gt;input_dev, EV_MSC, MSC_SCAN, scancode);    </rich_text><rich_text foreground="#ffff00000000">//发送scancode</rich_text><rich_text>
+
+	if (new_event &amp;&amp; keycode != KEY_RESERVED) {
+		/* Register a keypress */
+		dev-&gt;keypressed = true;
+		dev-&gt;last_scancode = scancode;
+		dev-&gt;last_toggle = toggle;
+		dev-&gt;last_keycode = keycode;
+
+		IR_dprintk(1, &quot;%s: key down event, &quot;
+			   &quot;key 0x%04x, scancode 0x%04x\n&quot;,
+			   dev-&gt;input_name, keycode, scancode);
+		input_report_key(dev-&gt;input_dev, keycode, 1);                       </rich_text><rich_text foreground="#ffff00000000">//发送keycode</rich_text><rich_text>
+	}
+
+	input_sync(dev-&gt;input_dev);
+}
+
+</rich_text><rich_text foreground="#00000000ffff">//send keyup input event</rich_text><rich_text>
+static void ir_do_keyup(struct rc_dev *dev, bool sync)
+{
+	if (!dev-&gt;keypressed)
+		return;
+
+	IR_dprintk(1, &quot;keyup key 0x%04x\n&quot;, dev-&gt;last_keycode);
+	input_report_key(dev-&gt;input_dev, dev-&gt;last_keycode, 0);
+	if (sync)
+		input_sync(dev-&gt;input_dev);
+	dev-&gt;keypressed = false;
+}
+
+</rich_text><rich_text scale="h3" weight="heavy">3. lirc</rich_text><rich_text>
+1). lirc从rc设备获得的原始数据转为lirc格式的信号数据，直接传给上层应用lircd, lircd通过conf把这些信号数据转为相应的键值
+2). 如果有两个lirc设备，要分别启动两个lircd进程，如下：
+&gt; lircd --driver=default --device=/dev/lirc1 --output=/var/run/lirc/lircd1 \
+    --pidfile=/var/run/lirc/lircd1.pid --listen
+&gt; lircd --driver=default --device=/dev/lirc --output=/var/run/lirc/lircd \
+    --pidfile=/var/run/lirc/lircd.pid --connect=localhost:8765
+
+All events will now be visible at /var/run/lirc/lircd. The second lircd      
+instance connects to the first instance using a TCP/IP      
+socket. The default port is 8765. It can be changed by providing      
+an optional parameter to the --listen switch. If you      
+have more lircd instances you want to connect to, you can      
+provide multiple --connect parameters to the last lircd      
+instance. Please note that lircd will not relay events received      
+from one lircd to another. So you can't daisy-chain      
+lircds. Instead you need a star topology setup.
+</rich_text></node><node name="sound" prog_lang="custom-colors" readonly="False" tags="" unique_id="37"><rich_text>
+</rich_text><node name="usb" prog_lang="custom-colors" readonly="False" tags="" unique_id="38"><rich_text>
+</rich_text></node></node><node name="匿名共享内存ashmem" prog_lang="custom-colors" readonly="False" tags="" unique_id="30"><rich_text>
+</rich_text><node name="匿名共享内存ashmem" prog_lang="custom-colors" readonly="False" tags="" unique_id="31"><rich_text>    在上一文章</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6651971">Android系统匿名共享内存Ashmem（Anonymous Shared Memory）简要介绍和学习计划</rich_text><rich_text>中， 我们简要介绍了Android系统的匿名共享内存机制，其中，简要提到了它具有辅助内存管理系统来有效地管理内存的特点，但是没有进一步去了解它是如何实 现的。在本文中，我们将通过分析Android系统的匿名共享内存Ashmem驱动程序的源代码，来深入了解它是如何辅助内存管理系
     Android系统的匿名共享内存Ashmem机制并没有自立山头，从头搞一套自己的共享内存机制，而是建立在Linux内核实现的共享内存的基础上 的。与此同时，它又向Linux内存管理系统的内存回收算法注册接口，告诉Linux内存管理系统它的某些内存块不再使用了，可以被回收了，不过，这些不 再使用的内存需要由它的使用者来告诉Ashmem驱动程序。通过这种用户-Ashmem驱动程序-内存管理系统三者的紧密合作，实现有效的内存管理机制， 适合移动设备小内存的特点。
     Android系统的匿名共享内存Ashmem驱动程序利用了Linux的共享内存子系统导出的接口来实现自己的功能，因此，它的实现非常小巧，总共代 码不到700行。虽然代码很少，但是这里不打算机械式地一行一行地阅读和分析Ashmem驱动程序的源代码，而是通过使用情景来分析，这样可以帮助我们清 晰地理解它的实现原理。我们这里所说的使用情景，将从Android系统的应用程序框架层提供的匿名共享内存接口开始，经过系统运行时库层，最终到达驱动 程序层，通过这样一个完整的过程来理解Android系统的匿名共享内存Ashmem机制。这里，我们将从上一篇文章</rich_text><rich_text link="webs http://blog.csdn.net/luoshengyang/article/details/6651971">Android系统匿名共享内存Ashmem（Anonymous Shared Memory）简要介绍和学习计划</rich_text><rich_text>介绍的Android应用程序框架层提供MemoryFile接口开始，分别介绍Android系统匿名共享内存的创建（open）、映射（mmap）、读写（read/write）以及锁定和解锁（pin/unpin）四个使用情景。
     在进入到这个四个使用情景前，我们先来看一下Ashmem驱动程序模块的初始化函数，看看它给用户空间暴露了什么接口，即它创建了什么样的设备文件，以 及提供了什么函数来操作这个设备文件。Ashmem驱动程序实现在kernel/common/mm/ashmem.c文件中，它的模块初始化函数定义为 ashmem_init：
@@ -7931,7 +8164,57 @@ error:
     </rich_text><rich_text foreground="#0000ff">return</rich_text><rich_text foreground="#000000"> ERR_PTR(retval);
 }</rich_text><rich_text>
 
-</rich_text></node></node><node name="各种总线match匹配函数" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text>
+</rich_text></node></node><node name="各种总线match匹配函数" prog_lang="custom-colors" readonly="False" tags="" unique_id="14"><rich_text>    kernel_init中do_basic_setup() -&gt; driver_init() -&gt; platform_bus_init() -&gt; ...初始化platform bus(虚拟总线)
+    设备向内核注册的时候platform_device_register() -&gt; platform_device_add() -&gt; ...内核把设备挂在虚拟的platform bus下
+    驱动注册的时候platform_driver_register() -&gt; driver_register() -&gt; bus_add_driver() -&gt; driver_attach() -&gt; bus_for_each_dev()
+    对每个挂在虚拟的platform bus的设备作__driver_attach() -&gt; driver_probe_device() -&gt; drv-&gt;bus-&gt;match()==platform_match() -&gt; 
+    比较strncmp(pdev-&gt;name, drv-&gt;name, BUS_ID_SIZE)，
+    如果相符就调用platform_drv_probe() -&gt; driver-&gt;probe()，如果probe成功则绑定该设备到该驱动.
+
+struct bus_type platform_bus_type = {
+	.name		= &quot;platform&quot;,
+	.dev_attrs	= platform_dev_attrs,
+	.match		= platform_match,
+	.uevent		= platform_uevent,
+	.pm		= &amp;platform_dev_pm_ops,
+};
+
+static int platform_match(struct device *dev, struct device_driver *drv)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_driver *pdrv = to_platform_driver(drv);
+
+	/* Attempt an OF style match first */
+	if (of_driver_match_device(dev, drv))
+		return 1;
+
+	/* Then try to match against the id table */
+	if (pdrv-&gt;id_table)
+		return platform_match_id(pdrv-&gt;id_table, pdev) != NULL;
+
+	/* fall-back to driver name match */
+	return (strcmp(pdev-&gt;name, drv-&gt;name) == 0);
+}
+
+static int platform_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	struct platform_device	*pdev = to_platform_device(dev);
+	int rc;
+
+	/* Some devices have extra OF data and an OF-style MODALIAS */
+	rc = of_device_uevent(dev,env);
+	if (rc != -ENODEV)
+		return rc;
+
+	add_uevent_var(env, &quot;MODALIAS=%s%s&quot;, PLATFORM_MODULE_PREFIX,
+		(pdev-&gt;id_entry) ? pdev-&gt;id_entry-&gt;name : pdev-&gt;name);
+	return 0;
+}
+    
+    </rich_text><rich_text foreground="#00000000ffff">可以定义不同的bus_type</rich_text><rich_text>
+    
+    </rich_text><rich_text foreground="#00000000ffff">当一个驱动注册[platform_driver_probe()]的时候， 功能上和使用platform_driver_register()是一样的，唯一的区别是它不能被以后其他的device register时probe，也就是说这个driver只能和一个device绑定</rich_text><rich_text>
+
 </rich_text><rich_text scale="h1">一. 驱动和设备匹配过程常用数据结构</rich_text><rich_text>
 
 </rich_text><rich_text scale="h2">1. of_device_id</rich_text><rich_text>
@@ -10301,7 +10584,219 @@ Android层的代码分析得不是很详细，这里只关注框架和流程。�
 9.     mutex_unlock(&amp;dpm_list_mtx);  
 10.     pm_runtime_remove(dev);  
 11. }
-</rich_text></node></node><node name="switch module" prog_lang="custom-colors" readonly="False" tags="" unique_id="25"><rich_text>
+</rich_text></node><node name=" Run-time PM 详解 " prog_lang="custom-colors" readonly="False" tags="" unique_id="39"><rich_text>每个device或者bus都会向run-time PM core注册3个callback
+struct dev_pm_ops {
+    ...
+    int (*runtime_suspend)(struct device *dev);
+    int (*runtime_resume)(struct device *dev);
+    int (*runtime_idle)(struct device *dev);
+    ...
+ };
+每个device或者bus都会有2个计数器，一个是device的usage counter,一个是device的active状态的children个数。当这个device的两个counter都减少为0的时候。
+run-time PM core就会去调用runtime_idle函数，但是这里的idle函数可不是当前device的idle函数。代码如下：
+if (dev-&gt;bus &amp;&amp; dev-&gt;bus-&gt;pm &amp;&amp; dev-&gt;bus-&gt;pm-&gt;runtime_idle) {  
+    spin_unlock_irq(&amp;dev-&gt;power.lock);
+  dev-&gt;bus-&gt;pm-&gt;runtime_idle(dev);
+  spin_lock_irq(&amp;dev-&gt;power.lock);
+} else if (dev-&gt;type &amp;&amp; dev-&gt;type-&gt;pm &amp;&amp; dev-&gt;type-&gt;pm-&gt;runtime_idle) {  
+    spin_unlock_irq(&amp;dev-&gt;power.lock);
+  dev-&gt;type-&gt;pm-&gt;runtime_idle(dev);
+  spin_lock_irq(&amp;dev-&gt;power.lock);
+} else if (dev-&gt;class &amp;&amp; dev-&gt;class-&gt;pm    &amp;&amp; dev-&gt;class-&gt;pm-&gt;runtime_idle) {  
+    spin_unlock_irq(&amp;dev-&gt;power.lock);
+  dev-&gt;class-&gt;pm-&gt;runtime_idle(dev);
+  spin_lock_irq(&amp;dev-&gt;power.lock);
+}
+    按照dev-&gt;bus, dev-&gt;type, dev-&gt;class的顺序去调用。大家会问了，那runtime_suspend函数什么时候调用？
+    runtime_suspend函数不会被RPM core主动去调用，一般情况下是在bus，或者class的idle函数里去调用。
+    例如：
+    static int xxx_runtime_idle(struct device *dev)
+    {
+        return pm_schedule_suspend(dev, 50);
+    }
+    pm_schedule_suspend函数会去调用device里的suspend函数，调用顺序代码如下：
+    if (dev-&gt;bus &amp;&amp; dev-&gt;bus-&gt;pm &amp;&amp; dev-&gt;bus-&gt;pm-&gt;runtime_suspend) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+        retval = dev-&gt;bus-&gt;pm-&gt;runtime_suspend(dev);
+        spin_lock_irq(&amp;dev-&gt;power.lock);  
+        dev-&gt;power.runtime_error = retval;
+    } else if (dev-&gt;type &amp;&amp; dev-&gt;type-&gt;pm    &amp;&amp; dev-&gt;type-&gt;pm-&gt;runtime_suspend) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+        retval = dev-&gt;type-&gt;pm-&gt;runtime_suspend(dev);
+        spin_lock_irq(&amp;dev-&gt;power.lock);  dev-&gt;power.runtime_error = retval;
+    } else if (dev-&gt;class &amp;&amp; dev-&gt;class-&gt;pm    &amp;&amp; dev-&gt;class-&gt;pm-&gt;runtime_suspend) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+        retval = dev-&gt;class-&gt;pm-&gt;runtime_suspend(dev);
+        spin_lock_irq(&amp;dev-&gt;power.lock);  dev-&gt;power.runtime_error = retval;
+    } else {  
+        retval = -ENOSYS;
+    }
+    发现了吧，和idle顺序是一模一样哒。当然肯定也会有不一样了，否则runtime_suspend函数没存在意义了。在跑完此dev的bus or type or class的suspend函数以后。紧接着会做一个巨艰巨的任务，就是
+    if (parent &amp;&amp; !parent-&gt;power.ignore_children) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+</rich_text><rich_text foreground="#cc3333">        pm_request_idle(parent);</rich_text><rich_text>
+        spin_lock_irq(&amp;dev-&gt;power.lock);
+    }
+    会去调用当前这个device的parent device的idle函数！！！之后会去递归的往上层调用。为啥会这么做呢？？？其实RPM机制总体来说就是管理总线结构和主次设备结构的电源。
+    假如一个bus上有2个device。这个bus首先会有一个bus_type，其次还会有一个代表bus的device（谁说bus不是device了！）首先命名以下，
+    bus device叫做Bdev, 两个bus上的子device是dev1, dev2。dev1,dev2是Bdev的子设备，也就是说dev1,dev2的parent是Bdev。 其中bus_type里会有一套runtime_pm的三个callback，Bdev自身还有另一套runtime_pm的三个callback。
+    当dev1的两个counter都为零了，就会调用bus_type里的runtime_idle，一般情况下这个idle会调用pm_runtime_suspend，仅按照上面的介绍，就会调用这个bus_type里的runtime_suspend call back。之后是不是就该是最重要的那一步了？</rich_text><rich_text foreground="#cc3333">pm_request_idle(parent);</rich_text><rich_text foreground="#000102">pm_request_idle里的一系列操作会首先判断parent的两个counter是否为零了，因为dev2还活着呢，所以条件不满足，返回！当dev2也来这么一套之后，再调用pm_request_idle(parent);的时候，Bdev里的runtime_idle就能跑啦。总结一下，bus_type的runtime_系列回调函数是用来处理bus上的device函数的。而bus自己的device的函数是用来处理自己的。因为体系结构的因素，bus套bus的情况，最后就会形成一个device大树。
+    runtime这套机制就可以从根到树顶都能管理得到。
+    比如：
+        I2C  device挂在I2C bus上，I2C bus controller是PCI的一个设备，因为挂在PCI上。这个PCI  bus一般还是在南桥上，然后再通过南桥在跑到北桥PCI上。。。。是不是块疯了。。。。但是有这么个递归电源管理。一切搞定。
+        
+    说完了睡流程了。还有醒流程。
+    当 device调用完suspend函数后，这个device就处于了一个suspended状态。当某个device被唤醒后，就会调用 pm_runtime_get_sync类似的函数。这个函数做了啥捏？
+    通过上述的睡过程，有点脑子的人就能想出醒流程，反着来呗！！！必须从大树顶往下 跑，才能最后让根伸出来。代码如下：
+if (!parent &amp;&amp; dev-&gt;parent) {  
+    /*   
+    * Increment the parent's resume counter and resume it if   
+    * necessary.   
+    */  
+    parent = dev-&gt;parent;  
+    spin_unlock(&amp;dev-&gt;power.lock);
+    pm_runtime_get_noresume(parent);
+    spin_lock(&amp;parent-&gt;power.lock);  
+    /*   
+    * We can resume if the parent's run-time PM is disabled or it   
+    * is set to ignore children.   
+    */  
+    if (!parent-&gt;power.disable_depth      &amp;&amp; !parent-&gt;power.ignore_children) {   
+        __pm_runtime_resume(parent, false);   
+        if (parent-&gt;power.runtime_status != RPM_ACTIVE)    
+            retval = -EBUSY;  
+    }  
+    spin_unlock(&amp;parent-&gt;power.lock);
+    spin_lock(&amp;dev-&gt;power.lock);  
+    if (retval)   
+        goto out;  
+    goto repeat;
+}</rich_text><rich_text>
+    首先跑这个device的parent的resume函数。之后
+    </rich_text><rich_text foreground="#000102">if (dev-&gt;bus &amp;&amp; dev-&gt;bus-&gt;pm &amp;&amp; dev-&gt;bus-&gt;pm-&gt;runtime_resume) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+        retval = dev-&gt;bus-&gt;pm-&gt;runtime_resume(dev);
+        spin_lock_irq(&amp;dev-&gt;power.lock);  
+        dev-&gt;power.runtime_error = retval;
+    } else if (dev-&gt;type &amp;&amp; dev-&gt;type-&gt;pm    &amp;&amp; dev-&gt;type-&gt;pm-&gt;runtime_resume) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+        retval = dev-&gt;type-&gt;pm-&gt;runtime_resume(dev);
+        spin_lock_irq(&amp;dev-&gt;power.lock);  
+        dev-&gt;power.runtime_error = retval;
+    } else if (dev-&gt;class &amp;&amp; dev-&gt;class-&gt;pm    &amp;&amp; dev-&gt;class-&gt;pm-&gt;runtime_resume) {  
+        spin_unlock_irq(&amp;dev-&gt;power.lock);
+        retval = dev-&gt;class-&gt;pm-&gt;runtime_resume(dev);
+        spin_lock_irq(&amp;dev-&gt;power.lock);  
+        dev-&gt;power.runtime_error = retval;
+    } else {  
+        retval = -ENOSYS;
+    }
+    跑的是bus的resume函数。通过这个函数进行递归，直到递归到树顶后,树顶的resume就开始run了，run完一个往下面继续传，直到我们的这一连串device的resume函数都跑完，我们的device就算醒了。
+    RPM常用接口如下： 
+    void pm_runtime_init(struct device *dev);    
+        - initialize the device run-time PM fields in 'struct dev_pm_info'
+    void pm_runtime_remove(struct device *dev);    
+        - make sure that the run-time PM of the device will be disabled after      
+        removing the device from device hierarchy
+    int pm_runtime_idle(struct device *dev);    
+        - execute the subsystem-level idle callback for the device; returns 0 on      
+        success or error code on failure, where -EINPROGRESS means that      
+        -&gt;runtime_idle() is already being executed
+    int pm_runtime_suspend(struct device *dev);    
+        - execute the subsystem-level suspend callback for the device; returns 0 on      
+        success, 1 if the device's run-time PM status was already 'suspended', or      
+        error code on failure, where -EAGAIN or -EBUSY means it is safe to attempt      
+        to suspend the device again in future
+    int pm_runtime_resume(struct device *dev);    
+        - execute the subsystem-level resume callback for the device; returns 0 on      
+        success, 1 if the device's run-time PM status was already 'active' or      
+        error code on failure, where -EAGAIN means it may be safe to attempt to      
+        resume the device again in future, but 'power.runtime_error' should be      
+        checked additionally
+    int pm_request_idle(struct device *dev);    
+        - submit a request to execute the subsystem-level idle callback for the      
+        device (the request is represented by a work item in pm_wq); returns 0 on      
+        success or error code if the request has not been queued up        
+    int pm_schedule_suspend(struct device *dev, unsigned int delay);    
+        - schedule the execution of the subsystem-level suspend callback for the      
+        device in future, where 'delay' is the time to wait before queuing up a      
+        suspend work item in pm_wq, in milliseconds (if 'delay' is zero, the work      
+        item is queued up immediately); returns 0 on success, 1 if the device's PM      
+        run-time status was already 'suspended', or error code if the request      
+        hasn't been scheduled (or queued up if 'delay' is 0); if the execution of      
+        -&gt;runtime_suspend() is already scheduled and not yet expired, the new      
+        value of 'delay' will be used as the time to wait
+    int pm_request_resume(struct device *dev);    
+        - submit a request to execute the subsystem-level resume callback for the      
+        device (the request is represented by a work item in pm_wq); returns 0 on      
+        success, 1 if the device's run-time PM status was already 'active', or      
+        error code if the request hasn't been queued up
+    void pm_runtime_get_noresume(struct device *dev);    
+        - increment the device's usage counter
+    int pm_runtime_get(struct device *dev);    
+        - increment the device's usage counter, run pm_request_resume(dev) and      
+        return its result
+    int pm_runtime_get_sync(struct device *dev);    
+        - increment the device's usage counter, run pm_runtime_resume(dev) and      
+        return its result
+    void pm_runtime_put_noidle(struct device *dev);    
+        - decrement the device's usage counter
+    int pm_runtime_put(struct device *dev);    
+        - decrement the device's usage counter, run pm_request_idle(dev) and return      
+        its result
+    int pm_runtime_put_sync(struct device *dev);    
+        - decrement the device's usage counter, run pm_runtime_idle(dev) and return      
+        its result
+    void pm_runtime_enable(struct device *dev);    
+        - enable the run-time PM helper functions to run the device bus type's      
+        run-time PM callbacks described in Section 2
+    int pm_runtime_disable(struct device *dev);    
+        - prevent the run-time PM helper functions from running subsystem-level      
+        run-time PM callbacks for the device, make sure that all of the pending      
+        run-time PM operations on the device are either completed or canceled;      
+        returns 1 if there was a resume request pending and it was necessary to      
+        execute the subsystem-level resume callback for the device to satisfy that      
+        request, otherwise 0 is returned
+    void pm_suspend_ignore_children(struct device *dev, bool enable);    
+        - set/unset the power.ignore_children flag of the device
+    int pm_runtime_set_active(struct device *dev);    
+        - clear the device's 'power.runtime_error' flag, set the device's run-time      
+        PM status to 'active' and update its parent's counter of 'active'      
+        children as appropriate (it is only valid to use this function if      
+        'power.runtime_error' is set or 'power.disable_depth' is greater than      
+        zero); it will fail and return error code if the device has a parent      
+        which is not active and the 'power.ignore_children' flag of which is unset
+    void pm_runtime_set_suspended(struct device *dev);    
+        - clear the device's 'power.runtime_error' flag, set the device's run-time      
+        PM status to 'suspended' and update its parent's counter of 'active'      
+        children as appropriate (it is only valid to use this function if      
+        'power.runtime_error' is set or 'power.disable_depth' is greater than      
+        zero)
+    bool pm_runtime_suspended(struct device *dev);    
+        - return true if the device's runtime PM status is 'suspended', or false      
+        otherwise
+    void pm_runtime_allow(struct device *dev);    
+        - set the power.runtime_auto flag for the device and decrease its usage      
+        counter (used by the /sys/devices/.../power/control interface to      
+        effectively allow the device to be power managed at run time)
+    void pm_runtime_forbid(struct device *dev);    
+        - unset the power.runtime_auto flag for the device and increase its usage      
+        counter (used by the /sys/devices/.../power/control interface to      
+        effectively prevent the device from being power managed at run time)</rich_text><rich_text>
+        
+    可以中断里跑的接口：
+    </rich_text><rich_text foreground="#000102">pm_request_idle()
+    pm_schedule_suspend()
+    pm_request_resume()
+    pm_runtime_get_noresume()
+    pm_runtime_get()
+    pm_runtime_put_noidle()
+    pm_runtime_put()
+    pm_suspend_ignore_children()
+    pm_runtime_set_active()
+    pm_runtime_set_suspended()
+    pm_runtime_enable()</rich_text><rich_text>
+    </rich_text></node></node><node name="switch module" prog_lang="custom-colors" readonly="False" tags="" unique_id="25"><rich_text>
     switch是Android引进的一个新驱动，用于检测一些开关量。比如检测耳机插入和ＵＳＢ设备插入等。
  
 </rich_text><rich_text scale="h2">Switch的构架原理</rich_text><rich_text>
