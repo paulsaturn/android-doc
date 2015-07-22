@@ -1532,12 +1532,24 @@ fap_tx_data(&amp;wdp_general_buffer, WDP_TX_DATA_TIMEOUT);
     监听数据
     调用gzll_rx_data()函数进入Host状态; 超时，自动切换到Idle状态。
     调用gzll_goto_idle()从Host切换到Idle状态
- 
+    
+    GZLL_HOST_MODE_0 : 低延迟操作方式    
+    GZLL_HOST_MODE_1 : 低功耗操作方式
+    
     </rich_text><rich_text weight="heavy">3). </rich_text><rich_text foreground="#000000" weight="heavy">GZLL_DEVICE_ACTIVE</rich_text><rich_text>
     发送数据    
     调用gzll_tx_data()函数进入Device状态；超时，自动切换到Idle状态。
     调用gzll_goto_idle()从Device切换到Idle状态。
-
+    
+    GZLL_DEVICE_MODE_0：使用上一次通道发送 
+    GZLL_DEVICE_MODE_1：如果sync_on == true, 使用上一次通道发送; 否则随机通道发送
+    GZLL_DEVICE_MODE_2：使用上一次通道发送
+    GZLL_DEVICE_MODE_3：随机通道发送
+    GZLL_DEVICE_MODE_4：如果sync_on == true, 使用估计通道发送; 否则随机通道发送    
+    
+    (1). 在接收或发送成功后调用gzll_chm_hold_rx_channel()函数，表示保留当前通道一段时间    
+    (2). sync_on == true, 表示时间已经同步， 所以发送包要在timer中断中启动RF发送(调用GZLL_RFCE_PULSE())
+    
 </rich_text><rich_text scale="h3" weight="heavy">3. Channel selection policies</rich_text><rich_text>
 </rich_text><rich_text weight="heavy">1). in asynchronous mode</rich_text><rich_text>
     • Frequency agility (FA)
@@ -1552,6 +1564,148 @@ fap_tx_data(&amp;wdp_general_buffer, WDP_TX_DATA_TIMEOUT);
 </rich_text><rich_text scale="h3" weight="heavy">4. Protocol timing in Gazell</rich_text><rich_text>
 </rich_text><rich_text weight="heavy">1). Low latency mode</rich_text><rich_text>
 </rich_text><rich_text weight="heavy">2). Low power mode </rich_text><rich_text>
+
+</rich_text><rich_text scale="h3" weight="heavy">5. 函数解析</rich_text><rich_text>
+void gzll_timer_isr_function(void)
+{
+  uint16_t temp;
+
+  GZLL_INTERRUPTS_DISABLE();
+  gzll_chm_execute();                         </rich_text><rich_text foreground="#ffff00000000">// Execute radio channel manager</rich_text><rich_text>
+
+  </rich_text><rich_text foreground="#ffff00000000">// If timer period temporaly modified - restore correct setting.</rich_text><rich_text>
+  #ifndef GZLL_HOST_ONLY
+  if(gzll_timer_period_modified == 1)   </rich_text><rich_text foreground="#ffff00000000">//在发送成功后调整timer period, 设置gzll_timer_period_modified = 1</rich_text><rich_text>
+  {
+    gzll_set_timer_period(gzll_dyn_params[GZLL_PARAM_RX_PERIOD]);   </rich_text><rich_text foreground="#ffff00000000">//恢复原来timer period</rich_text><rich_text>
+    gzll_timer_period_modified = 0;
+  }
+  #endif
+
+  // If receive state
+  #ifndef GZLL_DEVICE_ONLY
+  if(gzll_state_var == GZLL_HOST_ACTIVE)
+  {
+    temp = gzll_chm_get_current_rx_channel();      </rich_text><rich_text foreground="#ffff00000000">// Get channel radio should be monitoring</rich_text><rich_text>
+    GZLL_RFCK_ENABLE();
+
+    </rich_text><rich_text foreground="#ffff00000000">// If new channel should be monitored</rich_text><rich_text>
+    if(temp != gzll_channel_tab_index)          </rich_text><rich_text foreground="#ffff00000000">//如果rx channel index不等于gzll_channel_tab_index, 切换到rx channel index</rich_text><rich_text>
+    {
+      GZLL_RFCE_LOW();
+      hal_nrf_set_rf_channel(gzll_channel_tab[temp]); </rich_text><rich_text foreground="#ffff00000000">// Change channel</rich_text><rich_text>
+      GZLL_RFCE_HIGH();                       </rich_text><rich_text foreground="#ffff00000000">// Set CE high here to minimize RX off time</rich_text><rich_text>
+      gzll_channel_tab_index = temp;
+    }
+
+    temp = gzll_chm_get_rx_ce_offset();       </rich_text><rich_text foreground="#ffff00000000">// Get number of periods until CE should be set high</rich_text><rich_text>
+
+    // Radio CE handling
+    if(gzll_chm_get_rx_ce_offset() == 0)        </rich_text><rich_text foreground="#ffff00000000">//power up and set rfce high</rich_text><rich_text>
+    {
+      gzll_set_radio_power_on(true);
+      gzll_radio_active_f = true;
+      GZLL_RFCE_HIGH();
+    }
+    else    </rich_text><rich_text foreground="#ffff00000000">//Set rfce low and power down</rich_text><rich_text>
+    {
+      GZLL_RFCE_LOW();
+      gzll_radio_active_f = false;
+      gzll_set_radio_power_on(false);
+    }
+
+    gzll_timeout_counter++;
+
+    temp = gzll_dyn_params[GZLL_PARAM_RX_TIMEOUT];
+    if(gzll_dyn_params[GZLL_PARAM_RX_TIMEOUT] &gt; 0 &amp;&amp; (gzll_timeout_counter &gt;= temp))
+    {
+      gzll_set_system_idle();
+    }
+  }
+  else
+  #endif
+  {
+    // If transmit state
+    #ifndef GZLL_HOST_ONLY
+    if(gzll_state_var == GZLL_DEVICE_ACTIVE)
+    {
+      // If pending TX payload
+      if(gzll_pending_tx_start)     </rich_text><rich_text foreground="#ffff00000000">//在timer中发送包</rich_text><rich_text>
+      {
+        temp = gzll_chm_get_tx_ce_offset();
+
+        if( !gzll_sync_on ||
+              (temp == 0 &amp;&amp; (gzll_channel_tab_index == gzll_chm_get_current_rx_channel()))
+        )
+        {
+          GZLL_RFCE_PULSE();
+          gzll_radio_active_f = true;
+          gzll_pending_tx_start = 0;
+        }
+      }
+    }
+    #endif
+  }
+
+  #ifndef GZLL_HOST_ONLY
+  if(gzll_sync_period &gt; 0)              </rich_text><rich_text foreground="#ffff00000000">//同步时间超时，sync_on = false</rich_text><rich_text>
+  {
+    gzll_sync_period--;
+  }
+  else
+  {
+    gzll_sync_on = false;
+  }
+  #endif
+
+  GZLL_RFCK_DISABLE();
+  GZLL_INTERRUPTS_ENABLE();
+}
+
+</rich_text><rich_text foreground="#ffff00000000">//执行channel管理</rich_text><rich_text>
+static void gzll_chm_execute()      
+{
+  if(gzll_chm_rx_channel_hold &gt; 0)
+  {
+    gzll_chm_rx_channel_hold--;        </rich_text><rich_text foreground="#ffff00000000">//保持rx channel的计数器</rich_text><rich_text>         
+  };
+
+  </rich_text><rich_text foreground="#ffff00000000">// Increment channel synchronization counters</rich_text><rich_text>
+  gzll_chm_rx_mode1_sequence = (gzll_chm_rx_mode1_sequence + 1) % gzll_dyn_params[GZLL_PARAM_HOST_MODE_1_CYCLE_PERIOD];
+
+  if( (gzll_dyn_params[GZLL_PARAM_HOST_MODE] == GZLL_HOST_MODE_0) ||
+      (gzll_chm_rx_mode1_sequence == 0))
+  {
+    gzll_chm_rx_channel_index = (gzll_chm_rx_channel_index + 1) % gzll_channel_tab_size;    </rich_text><rich_text foreground="#ffff00000000">//当前的rx channel index</rich_text><rich_text>
+  }
+}
+
+</rich_text><rich_text foreground="#ffff00000000">//返回当前的rx channel index</rich_text><rich_text>
+static uint8_t gzll_chm_get_current_rx_channel()
+{
+  if(gzll_chm_rx_channel_hold &gt; 0)
+  {
+    return gzll_chm_hold_rx_channel_index;
+  }
+  else
+  {
+    return gzll_chm_rx_channel_index;
+  }
+}
+
+</rich_text><rich_text foreground="#ffff00000000">//返回下一个的rx channel index</rich_text><rich_text>
+</rich_text><rich_text foreground="#ffff00000000">//在gzll_start_new_tx(GZLL_CHANNEL_ESTIMATED)调用到</rich_text><rich_text>
+static uint8_t gzll_chm_get_next_rx_channel()
+{
+  if(gzll_chm_rx_channel_hold &gt; 1)
+  {
+    return gzll_chm_hold_rx_channel_index;                                        </rich_text><rich_text foreground="#ffff00000000">//保持的rx channel index</rich_text><rich_text>                      
+  }
+  else
+  {
+    return (gzll_chm_rx_channel_index + 1) % gzll_channel_tab_size; </rich_text><rich_text foreground="#ffff00000000">//下一个rx channel index</rich_text><rich_text>
+  }
+}
 
 </rich_text><rich_text scale="h2" weight="heavy">二.Gazell Pairing Library (gzp)</rich_text><rich_text>
 基于Gazell Link Layer的动态配对功能库
