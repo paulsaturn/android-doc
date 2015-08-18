@@ -2192,7 +2192,188 @@ dma_addr_tvideobuf_to_dma_contig(struct videobuf_buffer *buf)
  
 最后，一个很好的关于v4l2的例子就是drviers/media/video/vivi.c,它使用了vmalloc类型的videobuf,可以通过阅读这份例子来学习v4l2驱动的写法。
                                  
-</rich_text></node></node><node name="红外通信" prog_lang="custom-colors" readonly="False" tags="" unique_id="36"><rich_text foreground="#00000000ffff">rc设备获取原始数据， 输出给decoder, decoder转换后，从input event输出给上层应用</rich_text><rich_text>
+</rich_text></node><node name="V4L2 CONTROLS" prog_lang="custom-colors" readonly="False" tags="" unique_id="40"><rich_text> 内核中相关的文件是：v4l2-ctrls.h  v4l2-ctrls.c
+ V4L2 CONTROLS机制主要提供了设置硬件的方法，包含两个主要的对象：
+ struct v4l2_ctrl
+    代表一个控制变量和它的值，例如：声音。
+ struct v4l2_ctrl_handler
+    是用来管理v4l2_ctrl的。
+  
+ 使用v4l2 control的步骤：
+ 1.将v4l2_ctrl_handler增加到驱动顶层结构体中：
+ struct foo_dev {
+     ...
+    struct v4l2_ctrl_handler ctrl_handler;
+     ...
+ };
+  
+ struct foo_dev *foo;
+ 
+ 2.初始化v4l2_ctrl_handler:
+     v4l2_ctrl_handler_init(&amp;foo-&gt;ctrl_handler, nr_of_controls);
+     第二个参数nr_of_controls是你要使用的控制变量的个数。
+
+ 3.关联v4l2_ctrl_handler和v4l2_device:
+ struct foo_dev {
+     ...
+     struct v4l2_device v4l2_dev;
+     ...
+     struct v4l2_ctrl_handler ctrl_handler;
+     ...
+ };
+  
+ foo-&gt;v4l2_dev.ctrl_handler = &amp;foo-&gt;ctrl_handler;
+ 然后从v4l2_ioctl_ops中移除所有的控制函数：vidioc_queryctrl, vidioc_querymenu, vidioc_g_ctrl, vidioc_s_ctrl,vidioc_g_ext_ctrls, vidioc_try_ext_ctrls and vidioc_s_ext_ctrls。    
+
+static const struct v4l2_ctrl_ops foo_ctrl_ops = {
+	.s_ctrl = foo_s_ctrl,
+};
+
+ 对于子设备，我们这样做：
+ struct foo_dev {
+     ...
+     struct v4l2_subdev sd;
+     ...
+     struct v4l2_ctrl_handler ctrl_handler;
+     ...
+ };
+  
+ foo-&gt;sd.ctrl_handler = &amp;foo-&gt;ctrl_handler;
+ 然后对v4l2_subdev_core_ops结构增加函数支持：
+     .queryctrl = v4l2_subdev_queryctrl,
+     .querymenu = v4l2_subdev_querymenu,
+     .g_ctrl = v4l2_subdev_g_ctrl,
+     .s_ctrl = v4l2_subdev_s_ctrl,
+     .g_ext_ctrls = v4l2_subdev_g_ext_ctrls,
+     .try_ext_ctrls = v4l2_subdev_try_ext_ctrls,
+     .s_ext_ctrls = v4l2_subdev_s_ext_ctrls,
+
+ 4.在驱动退出的时候清除v4l2_ctrl_handler:
+ v4l2_ctrl_handler_free(&amp;foo-&gt;ctrl_handler);
+  
+ 5.增加控制变量：
+（1）struct v4l2_ctrl *v4l2_ctrl_new_std(struct v4l2_ctrl_handler *hdl,
+                const struct v4l2_ctrl_ops *ops,
+                u32 id, s32 min, s32 max, u32 step, s32 def);
+    这个函数用来增加非菜单式的控制变量，如声音等。min是最小值,max是最大值,step是步进长度，def是默认值。这个函数适用于在某一范围内均匀变化的控制变量。
+    例：
+    v4l2_ctrl_new_std(&amp;foo-&gt;ctrl_handler, &amp;foo_ctrl_ops,V4L2_CID_VOLUM, 0, 255, 1, 128);
+  
+（2）struct v4l2_ctrl *v4l2_ctrl_new_std_menu(struct v4l2_ctrl_handler *hdl,
+                 const struct v4l2_ctrl_ops *ops,
+                 u32 id, s32 max, s32 skip_mask, s32 def);
+     这个函数用来增加菜单式的控制变量，max是菜单最大值,skip_mask是屏蔽标志，比如它的值是0x4,就么就屏蔽菜单值为4的菜单选项，def是默认的菜单值。这个函数适用于从0开始，相邻变量值增加1的控制变量。
+     例：
+     enum{
+         BW_6M,
+         BW_7M,
+         BW_8M
+     }BW;
+     v4l2_ctrl_new_std_menu(&amp;foo-&gt;ctrl_handler,&amp;foo_ctrl_ops,V4L2_CID_BW,BW_8M
+         ,0,BW_6M);
+  
+ （3）struct v4l2_ctrl *v4l2_ctrl_new_int_menu(struct v4l2_ctrl_handler *hdl,
+                 const struct v4l2_ctrl_ops *ops,
+                 u32 id, s32 max, s32 def, const s64 *qmenu_int);
+     这个函数用来增加整数型菜单的控制变量，max是最大的菜单索引号，def是默认的菜单索引号，qmenu_int是菜单的数组指针。这个函数适用于变量值是不连续的无规则的整数的控制变量。
+    例：
+    static const s64 audio_sample_qmenu[] = {22100,44100,48000,96000};
+     v4l2_ctrl_new_int_menu(&amp;foo-&gt;ctrl_handler,&amp;foo_ctrl_ops,V4L2_CID_AUDIOSAMPLERATE,ARRAY_SIZE(audio_sample_qmenu)-1,1,audio_sample_qmenu);
+
+（4）struct v4l2_ctrl *v4l2_ctrl_new_std_menu_items(
+                 struct v4l2_ctrl_handler *hdl,
+                 const struct v4l2_ctrl_ops *ops, u32 id, s32 max,
+                 s32 skip_mask, s32 def, const char * const *qmenu);
+ 这个函数用来增加一个驱动指定的菜单数组给控制变量，max是菜单最大索引号，skip_mask是需要跳过的菜单的索引号，def是默认菜单索引号，qmenu是菜单数组。
+ 例：
+ static const char * const test_pattern[] = {
+     &quot;Disabled&quot;,
+     &quot;Vertical Bars&quot;,
+     &quot;Solid Black&quot;,
+     &quot;Solid White&quot;,
+ };
+ v4l2_ctrl_new_std_menu_items(&amp;foo-&gt;ctrl_handler, &amp;foo_ctrl_ops,
+     V4L2_CID_TEST_PATTERN, ARRAY_SIZE(test_pattern) - 1, 0,
+     0, test_pattern);
+  
+ 设置变量的值一般是在初始化了v4l2_ctrl_handler之后进行，在最后需要检查一下有没有错误 ：
+ if (foo-&gt;ctrl_handler.error) {
+     int err = foo-&gt;ctrl_handler.error;
+  
+     v4l2_ctrl_handler_free(&amp;foo-&gt;ctrl_handler);
+     return err;
+ }
+  
+ 6.（可选，推荐使用）使用控制变量的默认值初始化所有硬件：
+     v4l2_ctrl_handler_setup(&amp;foo-&gt;ctrl_handler);
+     这个函数会调用s_ctrl设置每个控制变量到硬件或其他地方。
+  
+ 7.最后，实现v4l2_ctrl_ops结构体：
+ static const struct v4l2_ctrl_ops foo_ctrl_ops = {
+     .s_ctrl = foo_s_ctrl,
+ };
+ static int foo_s_ctrl(struct v4l2_ctrl *ctrl)
+ {
+     struct foo *state = container_of(ctrl-&gt;handler, struct foo, ctrl_handler);
+  
+     switch (ctrl-&gt;id) {
+     case V4L2_CID_BRIGHTNESS:
+         write_reg(0x123, ctrl-&gt;val);
+         break;
+     case V4L2_CID_CONTRAST:
+         write_reg(0x456, ctrl-&gt;val);
+         break;
+     }
+     return 0;
+ }
+  
+ 上面就是V4L2框架提供的基本的控制变量的使用方法，下面是bttv驱动的实例代码：
+ struct bttv {
+     ......
+      
+     struct v4l2_ctrl_handler   ctrl_handler;
+     struct v4l2_ctrl_handler   radio_ctrl_handler;
+     ......
+ };
+  
+ static int bttv_probe(struct pci_dev *dev, const struct pci_device_id *pci_id)
+ {
+     ......
+     hdl = &amp;btv-&gt;ctrl_handler;
+     v4l2_ctrl_handler_init(hdl, 20);
+     btv-&gt;c.v4l2_dev.ctrl_handler = hdl;
+     v4l2_ctrl_handler_init(&amp;btv-&gt;radio_ctrl_handler, 6);
+     ......
+     v4l2_ctrl_new_std(hdl, &amp;bttv_ctrl_ops,
+         V4L2_CID_BRIGHTNESS, 0, 0xff00, 0x100, 32768);
+    v4l2_ctrl_new_std(hdl, &amp;bttv_ctrl_ops,
+         V4L2_CID_CONTRAST, 0, 0xff80, 0x80, 0x6c00);
+     v4l2_ctrl_new_std(hdl, &amp;bttv_ctrl_ops,
+         V4L2_CID_SATURATION, 0, 0xff80, 0x80, 32768);
+     ......
+     v4l2_ctrl_handler_setup(hdl);  </rich_text><rich_text foreground="#ffff00000000">//默认值初始化硬件</rich_text><rich_text>
+     ......
+ }
+  
+ static const struct v4l2_ctrl_ops bttv_ctrl_ops = {
+     .s_ctrl = bttv_s_ctrl,
+ };
+  
+ static int bttv_s_ctrl(struct v4l2_ctrl *c)
+ {
+     struct bttv *btv = container_of(c-&gt;handler, struct bttv, ctrl_handler);
+     int val;
+  
+     switch (c-&gt;id) {
+     case V4L2_CID_BRIGHTNESS:
+         bt848_bright(btv, c-&gt;val);
+         break;
+     case V4L2_CID_HUE:
+         bt848_hue(btv, c-&gt;val);
+         break;
+     ......
+}
+         </rich_text></node></node><node name="红外通信" prog_lang="custom-colors" readonly="False" tags="" unique_id="36"><rich_text foreground="#00000000ffff">rc设备获取原始数据， 输出给decoder, decoder转换后，从input event输出给上层应用</rich_text><rich_text>
 </rich_text><rich_text scale="h3" weight="heavy">1. rc设备驱动</rich_text><rich_text scale="h3">                                           </rich_text><rich_text>
   probe函数调用
     rc = rc_allocate_device();
