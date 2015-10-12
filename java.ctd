@@ -729,7 +729,53 @@ test </rich_text><rich_text foreground="#0000ff">static</rich_text><rich_text> 2
  　　从以上的分析中可以看出，静态内部类与非静态的内部类还是有很大的不同的。一般程序开发人员可以这么理解，</rich_text><rich_text foreground="#ff0000" weight="heavy">非静态的内部类对象隐式地在外部类中保存了一个引用，指向创建它的外部类对象。</rich_text><rich_text>不管这么理解，程序开发人员都需要牢记静态内部类与非静态内部类的差异。如是否可以创建静态的成员方法与成员变量(静态内部类可以创建静态的成员而非静态的内部类不可以)、对于访问外部类的成员的限制(静态内部类只可以访问外部类中的静态成员变量与成员方法而非静态的内部类即可以访问静态的也可以访问非静态的外部类成员方法与成员变量)。这两个差异是静态内部类与非静态外部类最大的差异，也是静态内部类之所以存在的原因。了解了这个差异之后，程序开发人员还需要知道，在什么情况下该使用静态内部类。如在程序测试的时候，为了避免在各个Java源文件中书写主方法的代码，可以将主方法写入到静态内部类中，以减少代码的书写量，让代码更加的简洁。
  
   　　总之，静态内部类在Java语言中是一个很特殊的类，跟普通的静态类以及非静态的内部类都有很大的差异。作为程序开发人员，必须要知道他们之间的差异，并在实际工作中在合适的地方采用合适的类。不过总的来说，静态内部类的使用频率并不是很高。但是在有一些场合，如果没有这个内部静态类的话，可能会起到事倍功半的反面效果
-</rich_text></node></node><node name="char和byte的转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. 显示shell打印
+</rich_text></node></node><node name="Java:谈谈protected访问权限 " prog_lang="custom-colors" readonly="False" tags="" unique_id="20"><rich_text>来谈谈protected访问权限问题。
+看下面示例1：</rich_text><rich_text underline="single">Test.java</rich_text><rich_text>
+class MyObject {} 
+public class Test {    
+    public static void main(</rich_text><rich_text foreground="#80ffbb">String</rich_text><rich_text>[] args) {       
+        MyObject obj = new MyObject();       
+        obj.clone(); // Compile error.    
+    }
+}
+    此时出现上文提到的错误：The method clone from the type Object is not visiuable.我们已经清楚Object.clone()是protected方法。这说明，该方法可以被同包（java.lang）下和它（java.lang.Object）的子类访问。这里是MyObject类（默认继承java.lang.Object）。同样Test也是java.lang.Object的子类。但是，不能在一个子类中访问另一个子类的protected方法，尽管这两个子类继承自同一个父类。
+再看示例2：</rich_text><rich_text underline="single">Test2.java</rich_text><rich_text>
+class MyObject2 {    
+    protected Object clone() throws CloneNotSupportedException {       
+        return super.clone();    
+    }
+} 
+
+public class Test2 {    
+    public static void main(String[] args) throws CloneNotSupportedException {       
+        MyObject2 obj = new MyObject2();       
+        obj.clone(); // Compile OK.    
+    }
+}
+    这里，我们在MyObject2类中覆盖（override）父类的clone（）方法，在另一个类Test2中调用clone（）方法，编译通过。编译通过的原因显而易见，当你在MyObject2类中覆盖clone（）方法时，MyObject2类和Test2类在同一个包下，所以此protected方法对Test2类可见。分析到这里，我们在回忆一下</rich_text><rich_text link="webs http://zhangjunhd.blog.51cto.com/blog/113473/18122">Java中的浅复制与深复制</rich_text><rich_text>文中，章节2.2中的声明，</rich_text><rich_text style="italic">②在派生类中覆盖基类的clone()方法，并声明为public。</rich_text><rich_text>现在明白这句话的原因了吧（为了让其它类能调用这个类的clone()方法，重载之后要把clone()方法的属性设置为public）。
+下面再来看示例3：</rich_text><rich_text underline="single">Test3.java</rich_text><rich_text>
+package 1
+class MyObject3 {
+    protected Object clone() throws CloneNotSupportedException {       
+        return super.clone();    
+    }
+} 
+
+package 2
+public class Test3 extends MyObject3 {    
+    public static void main(String args[]) {       
+        MyObject3 obj = new MyObject3();       
+        obj.clone(); // Compile error.       
+        Test3 tobj = new Test3();       
+        tobj.clone();// Complie OK.    
+    }
+}
+    这里我用Test3类继承MyObject3，注意这两个类是不同包的，否则就是示例2的情形。在Test3类中调用Test3类的实例tobj的clone（）方法，编译通过。而同样调用MyObject3类的实例obj的clone（）方法，编译错误！意想不到的结果，protected方法不是可以被继承类访问吗？必须明确，类Test3确实是继承了类MyObject3（包括它的clone方法），所以在类Test3中可以调用自己的clone方法。但类MyObject3的protected方法对其不同包子类Test3来说，是不可见的。
+    这里再给出《java in a nutshell》中的一段话：
+    protected  access requires a little more elaboration. Suppose class A declares a  protected field x and is extended by a class B, which is defined in a  different package (this last point is important). Class B inherits the  protected field x, and its code can access that field in the current  instance of B or in any other instances of B that the code can refer to.  This does not mean, however, that the code of class B can start reading  the protected fields of arbitrary instances of A! If an object is an  instance of A but is not an instance of B, its fields are obviously not  inherited by B, and the code of class B cannot read them.
+    顺便说两句，国内的很多Java书籍在介绍访问权限时，一般都这样描述（形式各异，内容一致）：方法的访问控制：
+</rich_text><rich_text justification="left"></rich_text><rich_text>
+</rich_text><table char_offset="2614" col_max="400" col_min="40"><row><cell> </cell><cell>public</cell><cell>protected</cell><cell>default</cell><cell>private</cell></row><row><cell>同类</cell><cell>T</cell><cell>T</cell><cell>T</cell><cell>T</cell></row><row><cell>同包</cell><cell>T</cell><cell>T</cell><cell>T</cell><cell> </cell></row><row><cell>子类(不同包)</cell><cell>T</cell><cell>T</cell><cell> </cell><cell> </cell></row><row><cell>不同包中无继承关系的类</cell><cell>T</cell><cell> </cell><cell> </cell><cell> </cell></row><row><cell>点击这里</cell><cell>点击这里</cell><cell>点击这里</cell><cell>点击这里</cell><cell>点击这里</cell></row></table></node><node name="char和byte的转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="1"><rich_text>1. 显示shell打印
         StringBuilder strBuilder = new StringBuilder();
         String text1 = &quot;hello\tworld\bwubao\n1234566\r645390\n&quot;;
         int len1 = text1.length();
