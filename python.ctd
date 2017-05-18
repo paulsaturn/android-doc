@@ -555,20 +555,41 @@ import os,stat,time
     print os.path.isfile(path)     #如果path是一个存在的文件，返回True。否则返回False
     print os.path.isdir(path)      #如果path是一个存在的目录，则返回True。否则返回False
     print os.path.dirname(os.path.abspath(path))
-    </rich_text></node><node name="类型转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text>int(x [,base ])         将x转换为一个整数    
+    </rich_text></node><node name="类型转换" prog_lang="custom-colors" readonly="False" tags="" unique_id="2"><rich_text scale="h3" weight="heavy">int(x [,base ])         将x转换为一个整数    
 long(x [,base ])        将x转换为一个长整数    
 float(x )               将x转换到一个浮点数    
 complex(real [,imag ])  创建一个复数    
 str(x )                 将对象 x 转换为字符串    
 repr(x )                将对象 x 转换为表达式字符串    
-eval(str )              用来计算在字符串中的有效</rich_text><rich_text link="webs http://www.2cto.com/kf/web/Python/">Python</rich_text><rich_text>表达式,并返回一个对象    
+eval(str )              用来计算在字符串中的有效</rich_text><rich_text link="webs http://www.2cto.com/kf/web/Python/" scale="h3" weight="heavy">Python</rich_text><rich_text scale="h3" weight="heavy">表达式,并返回一个对象    
 tuple(s )               将序列 s 转换为一个元组    
 list(s )                将序列 s 转换为一个列表    
 chr(x )                 将一个整数转换为一个字符    
 unichr(x )              将一个整数转换为Unicode字符    
 ord(x )                 将一个字符转换为它的整数值    
 hex(x )                 将一个整数转换为一个十六进制字符串    
-oct(x )                 将一个整数转换为一个八进制字符串  </rich_text></node><node name="字符串操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text scale="h2">去空格及特殊符号</rich_text><rich_text>
+oct(x )                 将一个整数转换为一个八进制字符串  
+
+bin(x)                  将整数x转换为二进制字符串，x是int对象</rich_text><rich_text>
+(1). 
+&gt;&gt; bin(9999)
+'0b10011100001111'
+&gt;&gt; bin(9999).count('1')
+8
+
+(2)
+def CountBits(n):
+  n = (n &amp; 0x5555555555555555) + ((n &amp; 0xAAAAAAAAAAAAAAAA) &gt;&gt; 1)
+  n = (n &amp; 0x3333333333333333) + ((n &amp; 0xCCCCCCCCCCCCCCCC) &gt;&gt; 2)
+  n = (n &amp; 0x0F0F0F0F0F0F0F0F) + ((n &amp; 0xF0F0F0F0F0F0F0F0) &gt;&gt; 4)
+  n = (n &amp; 0x00FF00FF00FF00FF) + ((n &amp; 0xFF00FF00FF00FF00) &gt;&gt; 8)
+  n = (n &amp; 0x0000FFFF0000FFFF) + ((n &amp; 0xFFFF0000FFFF0000) &gt;&gt; 16)
+  n = (n &amp; 0x00000000FFFFFFFF) + ((n &amp; 0xFFFFFFFF00000000) &gt;&gt; 32) # This last &amp; isn't strictly necessary.
+  return n
+
+原理：
+    In order to understand how this works imagine that you divide the entire 64-bit string into 64 1-bit buckets. Each bucket's value is equal to the number of bits set in the bucket (0 if no bits are set and 1 if one bit is set). The first transformation results in an analogous state, but with 32 buckets each 2-bit long. This is achieved by appropriately shifting the buckets and adding their values (one addition takes care of all buckets since no carry can occur across buckets - n-bit number is always long enough to encode number n). Further transformations lead to states with exponentially decreasing number of buckets of exponentially growing size until we arrive at one 64-bit long bucket. This gives the number of bits set in the original argument.  
+  </rich_text></node><node name="字符串操作" prog_lang="custom-colors" readonly="False" tags="" unique_id="4"><rich_text scale="h2">去空格及特殊符号</rich_text><rich_text>
 s.strip().lstrip().rstrip(</rich_text><rich_text foreground="#800000">','</rich_text><rich_text>)
 
 </rich_text><rich_text scale="h2">复制字符串</rich_text><rich_text>
