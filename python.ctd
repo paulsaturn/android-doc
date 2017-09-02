@@ -577,6 +577,20 @@ print('总共处理了 %s 张图片'%(i))
 
 
 =====================================================
+判断文件结束
+=====================================================
+</rich_text><rich_text scale="h3">1. for ... in ...</rich_text><rich_text>
+with open(&quot;file&quot;) as fh:
+    for line in fh:
+        print(line.strip())
+        
+</rich_text><rich_text scale="h3">2. while fh.readline():</rich_text><rich_text>
+with open(&quot;file&quot;) as fh:
+    line = fh.readline()
+    while line:
+        print(line.strip())
+        line = fh.readline()
+=====================================================
 </rich_text><rich_text scale="h2">os 与 stat 在文件中获取相关的信息</rich_text><rich_text>
 =====================================================
 1.
