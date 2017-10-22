@@ -39,9 +39,11 @@ $ git stash save --keep-index    # stash only unstaged files
 如果想要从远程仓库中克隆一个特定的分支该怎么做呢？通常你会使用git clone，不过这么做会将所有其他分支都一并克隆下来。一个便捷的方式是使用git remote add：
 $ git init  
 $ git remote add -t  -f origin 
-$ git checkout </rich_text><rich_text weight="heavy">5. 将cherry-pick远程提交合并到自己的分支中</rich_text><rich_text>
+$ git checkout 
+</rich_text><rich_text weight="heavy">5. 将cherry-pick远程提交合并到自己的分支中</rich_text><rich_text>
 更有甚者，如果只想将远程仓库的一个特定提交合并到自己的分支中该怎么做呢？可以使用git cherry-pick 来选择给定SHA值的提交，然后将其合并到当前分支中：
-$ git cherry-pick </rich_text><rich_text weight="heavy">6. 应用来自于不相关的本地仓库的补丁</rich_text><rich_text>
+$ git cherry-pick 
+</rich_text><rich_text weight="heavy">6. 应用来自于不相关的本地仓库的补丁</rich_text><rich_text>
 如果需要将另一个不相关的本地仓库的提交补丁应用到当前仓库该怎么做呢？答案就是下面这条命令：
 $ git --git-dir=/.git format-patch -k -1 --stdout  | git am -3 -k
 </rich_text><rich_text weight="heavy">7. 忽略追踪文件中的变更</rich_text><rich_text>
@@ -492,6 +494,14 @@ v1.6.2-rc1-20-g8c5b85c.tar.gz
 2.zip包
 $ git archive master --prefix='project/' --format=zip &gt; `git describe master`.zip
 
+#导出最新的版本库
+git archive -o ../latest.zip HEAD
+#导出指定提交记录
+git archive -o ../git-1.4.0.tar 8996b47 
+#导出一个目录
+git archive -o ../git-1.4.0-docs.zip  HEAD:Documentation/  
+#导出为tar.gz格式
+git archive   8996b47 | gzip &gt; ../git-1.4.0.tar.gz
 ================================================================================
 tag的处理
 ================================================================================
