@@ -1215,7 +1215,7 @@ find_all() 和 find() 只搜索当前节点的所有子节点,孙子节点等. f
 			</table>
 		</node>
 	</node>
-	<node custom_icon_id="0" foreground="" is_bold="False" name="环境设置" prog_lang="custom-colors" readonly="False" tags="" ts_creation="1507901285.89" ts_lastsave="1507901422.38" unique_id="8">
+	<node custom_icon_id="0" foreground="" is_bold="False" name="环境设置" prog_lang="custom-colors" readonly="False" tags="" ts_creation="1507901285.89" ts_lastsave="1509009752.13" unique_id="8">
 		<rich_text>1.安装package
 查看pip版本
 pip -V
@@ -1230,7 +1230,19 @@ sudo pip3 install xxx
 install 改为 uninstall
 
 3.升级
-sudo pip install --upgrade xxx</rich_text>
+sudo pip install --upgrade xxx
+
+4. 在当前目录下的终端输入
+  1). ipython notebook
+    打开一个浏览器jupyter IDE测试代码，编辑python文件
+    并in[]指定一块代码，可以选择某一块去重新修改并运行
+  2).按Shift + Enter运行脚本
+  3).in [ ]的后面可以输入一段代码(多行,不能留空行), 然后按Shift + Enter运行这段代码
+    也可以每段只有一行代码，代码变量在一个文件上是全局的(类似python的终端)
+  4).在终端按Ctrl + C来退出IDE.
+  5).new创建一个新的扩展名为ipynb的文件，可以另存为其他的名字，有自动保存的机制
+  下次可以重新打开这个文件来编辑.
+</rich_text>
 	</node>
 	<node custom_icon_id="0" foreground="" is_bold="False" name="sqlite3" prog_lang="custom-colors" readonly="False" tags="" ts_creation="0.0" ts_lastsave="0.0" unique_id="5">
 		<rich_text>    SQLite数据库是一款非常小巧的嵌入式开源数据库软件，也就是说没有独立的维护进程，所有的维护都来自于程序本身(而且可以完全内存模式运行）。它使 用一个文件存储整个数据库，操作十分方便。它的最大优点是使用方便，功能相比于其它大型数据库来说，确实有些差距。但是性能表现上，SQLITE并不逊 色。麻雀虽小，五脏俱全， sqlite 实现了多数 sql-92 的标准，比如说 transaction 、 trigger 和复杂的查询等。
